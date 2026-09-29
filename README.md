@@ -33,15 +33,32 @@ AI Receptionist & Clinical Management Platform built for medical practices, clin
 Start the backend and frontend dev server:
 ```bash
 node serve.js
+# or using npm
+npm start
 ```
 The application will be accessible at:
 - **Patient Portal**: `http://localhost:3000/`
 - **Admin & Doctor Dashboard**: `http://localhost:3000/admin.html`
 
-### 3. Running Backend Tests
+### 3. Running with Docker 🐳
+
+Build and run using Docker:
+```bash
+docker build -t ai-reception-zeroweb .
+docker run -d -p 3000:3000 --name ai-receptionist ai-reception-zeroweb
+```
+
+Or using Docker Compose:
+```bash
+docker compose up -d
+```
+
+### 4. Running Backend Tests
 Execute the comprehensive automated test suite:
 ```bash
 node backend/test_suite.js
+# or using npm
+npm test
 ```
 
 ---

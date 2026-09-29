@@ -1,0 +1,20 @@
+{
+  "name": "ai-reception-zeroweb",
+  "version": "1.0.0",
+  "description": "AI Receptionist & Clinical Management Platform",
+  "main": "serve.js",
+  "scripts": {
+    "start": "node serve.js",
+    "backend": "node backend/server.js",
+    "test": "node backend/test_suite.js"
+  },
+  "keywords": [
+    "ai-receptionist",
+    "clinic",
+    "appointment-booking",
+    "triage",
+    "doctor-copilot"
+  ],
+  "author": "aryanugroho1",
+  "license": "ISC"
+}
