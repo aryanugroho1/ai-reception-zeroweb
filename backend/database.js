@@ -140,19 +140,66 @@ class DatabaseEngine {
       updated_at: new Date().toISOString()
     });
 
+    // Tenants 4 - 16 (PRD Milestone Active Tenants)
+    const extraTenants = [
+      { id: 't-siti-004-uuid', slug: 'drg_siti_ortho', name: 'drg. Siti Fadilah Orthodontics', phone: '6281122334455', plan: 'PRO', cat: 'DENTAL', subUntil: '2026-10-22' },
+      { id: 't-hendra-005-uuid', slug: 'dr_hendra_anak', name: 'dr. Hendra Sp.A Anak Ceria', phone: '6281566778899', plan: 'STARTER', cat: 'PEDIATRICS', subUntil: '2026-10-30' },
+      { id: 't-sarah-006-uuid', slug: 'dr_sarah_skin', name: 'dr. Sarah Estetika & Skincare', phone: '6281933445566', plan: 'CLINIC', cat: 'AESTHETICS', subUntil: '2026-11-04' },
+      { id: 't-kevin-007-uuid', slug: 'drg_kevin_bali', name: 'drg. Kevin Dental Estetik Bali', phone: '6281377889900', plan: 'PRO', cat: 'DENTAL', subUntil: '2026-10-25' },
+      { id: 't-anton-008-uuid', slug: 'dr_anton_jantung', name: 'dr. Anton Spesialis Jantung', phone: '6281244556677', plan: 'STARTER', cat: 'CARDIOLOGY', subUntil: '2026-10-19' },
+      { id: 't-wahyu-009-uuid', slug: 'dr_wahyu_paru', name: 'dr. Wahyu Paru Mandiri', phone: '6281788990011', plan: 'STARTER', cat: 'PULMONOLOGY', subUntil: '2026-10-26' },
+      { id: 't-linda-010-uuid', slug: 'drg_linda_jogja', name: 'drg. Linda Dental Care Jogja', phone: '6281233445588', plan: 'STARTER', cat: 'DENTAL', subUntil: '2026-10-27' },
+      { id: 't-fajar-011-uuid', slug: 'dr_fajar_ortho', name: 'dr. Fajar Orthopedi Mandiri', phone: '6281511223377', plan: 'PRO', cat: 'ORTHOPEDICS', subUntil: '2026-10-20' },
+      { id: 't-nadia-012-uuid', slug: 'dr_nadia_dermatology', name: 'dr. Nadia Kulit & Kelamin', phone: '6281900112244', plan: 'CLINIC', cat: 'DERMATOLOGY', subUntil: '2026-11-01' },
+      { id: 't-gunawan-013-uuid', slug: 'dr_gunawan_mata', name: 'dr. Gunawan Spesialis Mata', phone: '6281288776655', plan: 'STARTER', cat: 'OPHTHALMOLOGY', subUntil: '2026-10-17' },
+      { id: 't-lukman-014-uuid', slug: 'dr_lukman_obgyn', name: 'dr. Lukman Sp.OG Kebidanan Mandiri', phone: '6281344332211', plan: 'PRO', cat: 'OBGYN', subUntil: '2026-10-24' },
+      { id: 't-melani-015-uuid', slug: 'dr_melani_keluarga', name: 'dr. Melani Praktek Keluarga', phone: '6281599881122', plan: 'STARTER', cat: 'FAMILY_PRACTICE', subUntil: '2026-10-28' },
+      { id: 't-wawan-016-uuid', slug: 'drg_wawan_sby', name: 'drg. Wawan Gigi Keluarga Surabaya', phone: '6281800112233', plan: 'STARTER', cat: 'DENTAL', subUntil: '2026-10-21' }
+    ];
+
+    extraTenants.forEach(t => {
+      this.tenants.set(t.id, {
+        id: t.id,
+        slug: t.slug,
+        name: t.name,
+        owner_phone: t.phone,
+        category: t.cat,
+        timezone: 'Asia/Jakarta',
+        country_code: 'ID',
+        scheduling_type: 'SLOT_BASED',
+        is_accepting_patients: true,
+        reschedule_cutoff_hours: 2,
+        max_reschedule_count: 2,
+        subscription_plan: t.plan,
+        subscription_until: `${t.subUntil}T23:59:59.000Z`,
+        created_at: new Date('2026-02-01T00:00:00Z').toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    });
+
     // Sample Active Invoices
-    this.subscriptionInvoices.set('inv-001', {
-      id: 'inv-001',
-      tenant_id: t1Id,
-      invoice_number: 'INV-MYR-849201',
-      plan_tier: 'PRO',
-      amount: 299000,
-      payment_provider: 'MAYAR',
-      payment_ref_id: 'PAY-REF-MAYAR-9981',
-      status: 'PAID',
-      paid_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: new Date().toISOString()
+    const sampleInvoices = [
+      { id: 'INV-MYR-849201', tenant_id: t1Id, plan: 'PRO', amount: 299000, paid_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() },
+      { id: 'INV-MYR-849202', tenant_id: 't-sarah-006-uuid', plan: 'CLINIC', amount: 599000, paid_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
+      { id: 'INV-MYR-849203', tenant_id: 't-lukman-014-uuid', plan: 'PRO', amount: 299000, paid_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+      { id: 'INV-MYR-849204', tenant_id: t2Id, plan: 'STARTER', amount: 149000, paid_at: new Date(Date.now() - 11 * 24 * 60 * 60 * 1000).toISOString() },
+      { id: 'INV-MYR-849205', tenant_id: 't-siti-004-uuid', plan: 'PRO', amount: 299000, paid_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }
+    ];
+
+    sampleInvoices.forEach(inv => {
+      this.subscriptionInvoices.set(inv.id, {
+        id: inv.id,
+        tenant_id: inv.tenant_id,
+        invoice_number: inv.id,
+        plan_tier: inv.plan,
+        amount: inv.amount,
+        payment_provider: 'MAYAR',
+        payment_ref_id: `PAY-REF-${inv.id}`,
+        status: 'PAID',
+        paid_at: inv.paid_at,
+        created_at: inv.paid_at,
+        updated_at: new Date().toISOString()
+      });
     });
 
     // Sample Past & Active Appointments for drg. Maya

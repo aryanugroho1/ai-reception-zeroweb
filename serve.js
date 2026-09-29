@@ -1,9 +1,14 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { AppServer } = require('./backend/server');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
+
+// Initialize integrated backend API engine
+const backendApp = new AppServer(PORT);
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -16,6 +21,12 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer((req, res) => {
+  // 1. Unified Backend API Routing (/api/*)
+  if (req.url.startsWith('/api/')) {
+    return backendApp.handleRequest(req, res);
+  }
+
+  // 2. Static Frontend & Super Admin Routing
   let reqPath = req.url.split('?')[0];
   if (reqPath === '/' || reqPath === '') {
     reqPath = '/index.html';
@@ -47,5 +58,8 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Landing page live at: http://${HOST}:${PORT}`);
+  console.log(`[Unified Server] Landing Page & Super Admin live at: http://${HOST}:${PORT}`);
+  console.log(`[Unified Server] REST API live at: http://${HOST}:${PORT}/api/health`);
 });
+
+module.exports = { server, backendApp };

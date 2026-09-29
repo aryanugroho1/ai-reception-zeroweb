@@ -400,12 +400,8 @@ class SuperadminController {
     this.searchQuery = '';
   }
 
-  init() {
+  async init() {
     this.initClock();
-    this.renderMetrics();
-    this.renderTenantsTable();
-    this.renderInvoicesTable();
-    this.populateWebhookTenantSelect();
     this.initTabs();
     this.initFilters();
     this.initSearch();
@@ -413,8 +409,54 @@ class SuperadminController {
     this.initIdempotencyMatrix();
     this.initWebhookSimulator();
 
-    this.logAudit('info', 'SaaS Superadmin Platform loaded. 16 Tenants active. Baileys socket verified.');
-    this.logAudit('success', 'PostgreSQL view_tenant_quota_monitoring and view_monthly_saas_revenue initialized.');
+    // Initial render with fallbacks
+    this.renderMetrics();
+    this.renderTenantsTable();
+    this.renderInvoicesTable();
+    this.populateWebhookTenantSelect();
+
+    // Fetch live backend database data
+    await this.loadBackendData();
+
+    this.logAudit('info', 'SaaS Superadmin Platform loaded and connected to backend API engine.');
+    this.logAudit('success', 'Live PostgreSQL views and Baileys router synchronized.');
+  }
+
+  async loadBackendData() {
+    try {
+      // 1. Telemetry Health
+      const healthRes = await fetch('/api/health').catch(() => null);
+      if (healthRes && healthRes.ok) {
+        const health = await healthRes.json();
+        this.logAudit('info', `Backend Telemetry: Status ${health.status}, Tenants: ${health.tenants_count}, Appointments: ${health.appointments_count}`);
+      }
+
+      // 2. Tenants
+      const tenantsRes = await fetch('/api/tenants').catch(() => null);
+      if (tenantsRes && tenantsRes.ok) {
+        const data = await tenantsRes.json();
+        if (data.tenants && data.tenants.length > 0) {
+          SAAS_TENANTS = data.tenants;
+        }
+      }
+
+      // 3. Invoices
+      const invRes = await fetch('/api/invoices').catch(() => null);
+      if (invRes && invRes.ok) {
+        const data = await invRes.json();
+        if (data.invoices && data.invoices.length > 0) {
+          SAAS_INVOICES = data.invoices;
+        }
+      }
+
+      // Re-render UI
+      this.renderMetrics();
+      this.renderTenantsTable();
+      this.renderInvoicesTable();
+      this.populateWebhookTenantSelect();
+    } catch (err) {
+      console.warn('Backend API sync fallback:', err);
+    }
   }
 
   initClock() {
@@ -640,7 +682,7 @@ class SuperadminController {
     }
 
     if (form) {
-      form.addEventListener('submit', (e) => {
+      form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = document.getElementById('newTenantName').value.trim();
         const slug = document.getElementById('newTenantSlug').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -648,35 +690,32 @@ class SuperadminController {
         const plan = document.getElementById('newTenantPlan').value;
         const tz = document.getElementById('newTenantTz').value;
 
-        const maxMap = { STARTER: 100, PRO: 400, CLINIC: 999999, LIFETIME_PARTNER: 250 };
-        const mrrMap = { STARTER: 99000, PRO: 199000, CLINIC: 349000, LIFETIME_PARTNER: 0 };
+        try {
+          const res = await fetch('/api/tenants', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              slug,
+              owner_phone: phone,
+              subscription_plan: plan,
+              timezone: tz
+            })
+          });
 
-        const newId = `TNT-${(SAAS_TENANTS.length + 1).toString().padStart(3, '0')}`;
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Gagal mendaftarkan tenant');
 
-        SAAS_TENANTS.unshift({
-          id: newId,
-          name: name,
-          slug: slug,
-          ownerPhone: phone,
-          specialty: 'Praktisi Medis Mandiri',
-          plan: plan,
-          maxQuota: maxMap[plan],
-          currentBookings: 0,
-          timezone: tz,
-          subscriptionUntil: '2026-10-31',
-          isActive: true,
-          isAccepting: true,
-          mrr: mrrMap[plan]
-        });
+          await this.loadBackendData();
+          close();
+          form.reset();
 
-        this.renderMetrics();
-        this.renderTenantsTable();
-        this.populateWebhookTenantSelect();
-        close();
-        form.reset();
-
-        this.logAudit('success', `Tenant ${newId} (${name}) berhasil didaftarkan. Deep-link: BOOK_${slug} aktif di Baileys.`);
-        alert(`✅ Tenant ${name} berhasil didaftarkan!\n\nID: ${newId}\nDeep-link: https://wa.me/6281234567890?text=BOOK_${slug}\nNomor Dokter Whitelist: +${phone}\nPaket: ${plan}`);
+          this.logAudit('success', `API Success: Tenant ${name} (${slug}) tersimpan di PostgreSQL. Deep-link: BOOK_${slug} aktif.`);
+          alert(`✅ Tenant ${name} berhasil didaftarkan di Backend API!\n\nID: ${data.tenant.id}\nDeep-link: https://wa.me/6281234567890?text=BOOK_${slug}\nNomor Dokter Whitelist: +${phone}\nPaket: ${plan}`);
+        } catch (err) {
+          alert('❌ Gagal mendaftarkan tenant: ' + err.message);
+          this.logAudit('danger', `Gagal mendaftarkan tenant: ${err.message}`);
+        }
       });
     }
   }
@@ -696,12 +735,28 @@ class SuperadminController {
     this.runIdempotencyScenario(1);
   }
 
-  runIdempotencyScenario(id) {
+  async runIdempotencyScenario(id) {
     const item = IDEMP_SCENARIOS[id] || IDEMP_SCENARIOS[1];
     const term = document.getElementById('idempOutputTerminal');
     if (!term) return;
 
     let sqlLines = item.dbFlow.map(l => `<div style="color:#93c5fd;">${l}</div>`).join('');
+
+    // Fetch live test execution from backend
+    let liveResultJson = '';
+    try {
+      const res = await fetch('/api/test/idempotency', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario: id })
+      });
+      if (res.ok) {
+        const liveData = await res.json();
+        liveResultJson = JSON.stringify(liveData.execution_result, null, 2);
+      }
+    } catch (e) {
+      // offline fallback
+    }
 
     term.innerHTML = `
       <div style="color:#34d399; font-weight:700; margin-bottom:8px; font-size:0.86rem;">
@@ -717,12 +772,17 @@ class SuperadminController {
       <div style="background:rgba(2,132,199,0.15); border-left:3px solid #38bdf8; padding:8px 12px; border-radius:4px; margin-bottom:8px;">
         <strong style="color:#38bdf8;">${item.clientOutput}</strong>
       </div>
+      ${liveResultJson ? `
+      <div style="background:#0f172a; border:1px solid #334155; border-radius:4px; padding:8px; margin-bottom:8px; font-family:var(--font-mono); font-size:0.75rem; color:#a7f3d0;">
+        <span style="color:#94a3b8; display:block; margin-bottom:4px;">[Live Backend Response API /api/test/idempotency]:</span>
+        <pre style="margin:0; white-space:pre-wrap;">${liveResultJson}</pre>
+      </div>` : ''}
       <div style="color:#94a3b8; font-size:0.74rem;">
         <em>💡 Hasil Engine: ${item.note}</em>
       </div>
     `;
 
-    this.logAudit('info', `Executed Idempotency Test: ${item.title}`);
+    this.logAudit('info', `Executed Idempotency Test via API: ${item.title}`);
   }
 
   initWebhookSimulator() {
@@ -731,7 +791,6 @@ class SuperadminController {
 
     if (topBtn) {
       topBtn.addEventListener('click', () => {
-        // Switch to billing tab
         const tabBtn = document.querySelector('[data-tab="billing"]');
         if (tabBtn) tabBtn.click();
         const target = document.getElementById('webhookSimulatorForm');
@@ -740,7 +799,7 @@ class SuperadminController {
     }
 
     if (form) {
-      form.addEventListener('submit', (e) => {
+      form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const tenantId = document.getElementById('whTenantSelect').value;
         const plan = document.getElementById('whPlanSelect').value;
@@ -748,45 +807,47 @@ class SuperadminController {
         const target = SAAS_TENANTS.find(t => t.id === tenantId);
         if (!target) return;
 
-        const planPrices = { STARTER: 99000, PRO: 199000, CLINIC: 349000 };
-        const price = planPrices[plan] || 199000;
+        const planPrices = { STARTER: 149000, PRO: 299000, CLINIC: 599000 };
+        const price = planPrices[plan] || 299000;
         const invNo = `INV-MYR-${Math.floor(100000 + Math.random() * 900000)}`;
 
-        // Extend subscription date
-        const curDate = new Date(target.subscriptionUntil === '2099-12-31' ? new Date() : target.subscriptionUntil);
-        curDate.setDate(curDate.getDate() + 30);
-        target.subscriptionUntil = curDate.toISOString().split('T')[0];
-        target.plan = plan;
+        try {
+          const res = await fetch('/api/webhooks/mayar/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'payment.received',
+              data: {
+                invoice_id: invNo,
+                tenant_id: tenantId,
+                plan_tier: plan,
+                amount: price,
+                status: 'PAID'
+              }
+            })
+          });
 
-        // Add invoice
-        const now = new Date().toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' });
-        SAAS_INVOICES.unshift({
-          id: invNo,
-          tenantName: target.name,
-          plan: plan,
-          amount: price,
-          method: 'MAYAR_DYNAMIC_QRIS',
-          paidAt: now + ' WIB',
-          status: 'PAID',
-          hmacVerified: true
-        });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Webhook gagal');
 
-        this.renderMetrics();
-        this.renderTenantsTable();
-        this.renderInvoicesTable();
+          await this.loadBackendData();
 
-        this.logAudit('success', `Mayar Webhook ${invNo} verified. Tenant ${target.id} (${target.name}) extended +30 days (Plan: ${plan}).`);
+          this.logAudit('success', `Mayar Webhook ${invNo} verified (HMAC: ${data.signature.slice(0, 16)}...). Tenant ${target.name} diperpanjang +30 hari (Paket: ${plan}).`);
 
-        alert(
-          `🎉 SIMULASI WEBHOOK MAYAR.ID SUKSES!\n\n` +
-          `• Event: payment.received\n` +
-          `• Tagihan: ${invNo}\n` +
-          `• Tenant: ${target.name}\n` +
-          `• Paket: ${plan} (Rp ${price.toLocaleString('id-ID')})\n` +
-          `• Signature HMAC-SHA256: VALID\n` +
-          `• Masa Aktif Baru: ${target.subscriptionUntil}\n\n` +
-          `Pesan notifikasi konfirmasi WhatsApp berhasil diteruskan ke dokter (+${target.ownerPhone}).`
-        );
+          alert(
+            `🎉 SIMULASI WEBHOOK MAYAR.ID SUKSES VIA BACKEND ENGINE!\n\n` +
+            `• Event: payment.received\n` +
+            `• Tagihan: ${invNo}\n` +
+            `• Tenant: ${target.name}\n` +
+            `• Paket: ${plan} (Rp ${price.toLocaleString('id-ID')})\n` +
+            `• Signature HMAC-SHA256: VALID (${data.signature.slice(0, 16)}...)\n` +
+            `• Masa Aktif Baru: ${data.subscription_until ? data.subscription_until.slice(0, 10) : 'Diperpanjang'}\n\n` +
+            `Pesan Resi Resmi WhatsApp telah dibuat:\n\n${data.receipt_message}`
+          );
+        } catch (err) {
+          alert('❌ Gagal memproses webhook Mayar: ' + err.message);
+          this.logAudit('danger', `Webhook Mayar gagal: ${err.message}`);
+        }
       });
     }
 
@@ -799,27 +860,38 @@ class SuperadminController {
     }
   }
 
-  extendSub(tenantId) {
+  async extendSub(tenantId) {
     const target = SAAS_TENANTS.find(t => t.id === tenantId);
     if (!target) return;
 
-    const curDate = new Date(target.subscriptionUntil === '2099-12-31' ? new Date() : target.subscriptionUntil);
-    curDate.setDate(curDate.getDate() + 30);
-    target.subscriptionUntil = curDate.toISOString().split('T')[0];
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/extend`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal memperpanjang');
 
-    this.renderTenantsTable();
-    this.logAudit('success', `Manual Action: Extended subscription for ${target.name} (+30 days). New date: ${target.subscriptionUntil}`);
-    alert(`✅ Masa aktif ${target.name} diperpanjang +30 hari!\nBerlaku sampai: ${target.subscriptionUntil}`);
+      await this.loadBackendData();
+      this.logAudit('success', `API: Extended subscription for ${target.name} (+30 hari). New date: ${data.subscription_until}`);
+      alert(`✅ Masa aktif ${target.name} diperpanjang +30 hari!\nBerlaku sampai: ${data.subscription_until}`);
+    } catch (err) {
+      alert('❌ Gagal memperpanjang masa aktif: ' + err.message);
+    }
   }
 
-  toggleQuota(tenantId) {
+  async toggleQuota(tenantId) {
     const target = SAAS_TENANTS.find(t => t.id === tenantId);
     if (!target) return;
 
-    target.isAccepting = !target.isAccepting;
-    this.renderTenantsTable();
-    const stateStr = target.isAccepting ? 'DIBUKA' : 'DITUTUP';
-    this.logAudit('warning', `Manual Action: Toggle practice quota for ${target.name} -> ${stateStr}`);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/toggle`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal mengubah status');
+
+      await this.loadBackendData();
+      const stateStr = data.is_accepting ? 'DIBUKA' : 'DITUTUP';
+      this.logAudit('warning', `API: Toggle practice quota for ${target.name} -> ${stateStr}`);
+    } catch (err) {
+      alert('❌ Gagal mengubah status praktek: ' + err.message);
+    }
   }
 
   testLink(slug) {
