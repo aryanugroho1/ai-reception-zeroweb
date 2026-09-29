@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Super Admin SaaS Control Panel - PraktikaAI Engine</title>
+  <meta name="description" content="Super Admin Platform untuk manajemen multi-tenant dokter mandiri, monitoring kuota, penagihan Mayar.id, dan kesehatan Baileys Gateway.">
+  <link rel="stylesheet" href="admin.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+</head>
+<body>
+
+  <!-- Top Administrative Navigation -->
+  <header class="admin-topbar">
+    <div class="admin-topbar-inner">
+      <div class="admin-brand">
+        <a href="index.html" class="brand-link" title="Kembali ke Landing Page">
+          <div class="brand-badge-icon">🛡️</div>
+          <div>
+            <div class="brand-title">Praktika<span class="gradient-text">AI</span> <span class="admin-badge">SUPERADMIN</span></div>
+            <div class="brand-sub">Multi-Tenant Autonomous Engine (PRD v3.0-PROD)</div>
+          </div>
+        </a>
+      </div>
+
+      <div class="admin-telemetry-pill">
+        <div class="status-indicator">
+          <span class="pulse-dot green"></span>
+          <span>Baileys Gateway: <strong>ONLINE</strong></span>
+        </div>
+        <div class="divider-v"></div>
+        <div class="status-indicator">
+          <span>Redis Cluster: <strong>CONNECTED</strong></span>
+        </div>
+        <div class="divider-v"></div>
+        <div class="status-indicator" id="liveServerClock">
+          <span>WIB: <strong>--:--:--</strong></span>
+        </div>
+      </div>
+
+      <div class="admin-actions">
+        <button class="btn btn-secondary btn-sm" id="btnTestWebhookTop">
+          ⚡ <span>Test Webhook Mayar</span>
+        </button>
+        <button class="btn btn-primary btn-sm btn-pulse" id="btnOpenAddTenant">
+          + <span>Daftarkan Tenant Baru</span>
+        </button>
+        <a href="index.html" class="btn btn-ghost btn-sm" title="Kembali ke Landing Page">
+          ← <span>Web Publik</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Admin Layout -->
+  <div class="admin-wrapper">
+    <div class="container-fluid">
+      
+      <!-- Top Metrics Overview (PRD Section 10.1 Key Metrics Views) -->
+      <section class="admin-metrics-grid">
+        
+        <div class="admin-stat-card">
+          <div class="stat-card-head">
+            <span class="stat-card-title">Monthly Recurring Revenue (MRR)</span>
+            <span class="stat-card-icon" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">💰</span>
+          </div>
+          <div class="stat-card-val" id="metricMrr">Rp 3.840.000</div>
+          <div class="stat-card-meta">
+            <span class="growth-tag positive">↑ +28.5% MoM</span>
+            <span class="meta-label">Target Fase 3 (16/20 Tenant VPS)</span>
+          </div>
+        </div>
+
+        <div class="admin-stat-card">
+          <div class="stat-card-head">
+            <span class="stat-card-title">Tenant Dokter Aktif</span>
+            <span class="stat-card-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">🩺</span>
+          </div>
+          <div class="stat-card-val" id="metricTenants">16 Tenant</div>
+          <div class="stat-card-meta">
+            <span class="badge-mini pro">4 Pro</span>
+            <span class="badge-mini starter">10 Starter</span>
+            <span class="badge-mini partner">2 Partner</span>
+          </div>
+        </div>
+
+        <div class="admin-stat-card">
+          <div class="stat-card-head">
+            <span class="stat-card-title">Booking Bulan Ini</span>
+            <span class="stat-card-icon" style="background: rgba(192, 132, 252, 0.15); color: #c084fc;">📅</span>
+          </div>
+          <div class="stat-card-val" id="metricBookings">1.842 Tiket</div>
+          <div class="stat-card-meta">
+            <span class="meta-highlight" style="color: #34d399;">0 Overlap</span>
+            <span class="meta-label">• GIST Range-Lock Baileys</span>
+          </div>
+        </div>
+
+        <div class="admin-stat-card">
+          <div class="stat-card-head">
+            <span class="stat-card-title">Kesehatan Gateway Baileys</span>
+            <span class="stat-card-icon" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24;">⚡</span>
+          </div>
+          <div class="stat-card-val">99.98% SLA</div>
+          <div class="stat-card-meta">
+            <span class="meta-highlight">1 Nomor Multi-Tenant</span>
+            <span class="meta-label">• Latensi &lt; 1.4 dtk</span>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Sub-Navigation Navigation Tabs -->
+      <nav class="admin-nav-tabs">
+        <button class="tab-btn active" data-tab="tenants">
+          🏢 <span>Manajemen Tenant &amp; Kuota</span>
+        </button>
+        <button class="tab-btn" data-tab="billing">
+          💳 <span>Penagihan Mayar.id &amp; Invoices</span>
+        </button>
+        <button class="tab-btn" data-tab="gateway">
+          🤖 <span>Router Gateway Baileys (+62 812-3456-7890)</span>
+        </button>
+        <button class="tab-btn" data-tab="idempotency">
+          🛡️ <span>Matriks Idempotensi (PRD Sec 7)</span>
+        </button>
+        <button class="tab-btn" data-tab="schema">
+          📜 <span>PostgreSQL Views &amp; DDL</span>
+        </button>
+      </nav>
+
+      <!-- ==================================================================
+           TAB 1: TENANT & QUOTA MANAGEMENT
+           ================================================================== -->
+      <section class="admin-tab-pane active" id="paneTenants">
+        
+        <!-- Filter and Search Bar -->
+        <div class="pane-controls-bar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="tenantSearchInput" placeholder="Cari nama dokter, klinik, slug, atau nomor HP..." autocomplete="off">
+          </div>
+
+          <div class="filter-pills" id="tenantFilterPills">
+            <button class="filter-pill active" data-filter="ALL">Semua (16)</button>
+            <button class="filter-pill" data-filter="STARTER">Starter (10)</button>
+            <button class="filter-pill" data-filter="PRO">Pro (4)</button>
+            <button class="filter-pill" data-filter="LIFETIME_PARTNER">Lifetime Partner (2)</button>
+            <button class="filter-pill" data-filter="OVER_QUOTA">Kuota &gt;75% (3)</button>
+          </div>
+
+          <button class="btn btn-primary" id="btnPaneAddTenant">+ Tambah Dokter</button>
+        </div>
+
+        <!-- Tenants Data Table -->
+        <div class="table-container">
+          <table class="admin-table" id="tenantsTable">
+            <thead>
+              <tr>
+                <th>ID / SLUG</th>
+                <th>NAMA PRAKTEK &amp; DOKTER</th>
+                <th>NOMOR WHATSAPP</th>
+                <th>PAKET &amp; TIMEZONE</th>
+                <th>UTILISASI KUOTA BULAN INI</th>
+                <th>MASA AKTIF</th>
+                <th>STATUS</th>
+                <th style="text-align: right;">AKSI OPERATOR</th>
+              </tr>
+            </thead>
+            <tbody id="tenantsTableBody">
+              <!-- Rendered via admin.js -->
+            </tbody>
+          </table>
+        </div>
+
+      </section>
+
+      <!-- ==================================================================
+           TAB 2: BILLING & MAYAR.ID INVOICES
+           ================================================================== -->
+      <section class="admin-tab-pane" id="paneBilling">
+        
+        <div class="billing-grid">
+          <!-- Left: Revenue Aggregation Summary (PRD Section 10.1) -->
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <h3 class="admin-card-title">📊 Rekapitulasi MRR &amp; Arus Kas (View PostgreSQL)</h3>
+              <span class="badge-mini" style="background:#1e293b; color:#38bdf8;">view_monthly_saas_revenue</span>
+            </div>
+            
+            <div class="chart-box">
+              <div style="font-size:0.75rem; color:#8696a0; margin-bottom:8px; display:flex; justify-content:space-between;">
+                <span>Tren Pertumbuhan Pendapatan Bulanan (Fase 1 s/d Fase 3):</span>
+                <span style="color:#34d399; font-weight:700;">Target VPS Terpenuhi</span>
+              </div>
+              <svg viewBox="0 0 500 140" style="width: 100%; height: auto; display: block;">
+                <defs>
+                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#10b981" stop-opacity="0.5"/>
+                    <stop offset="100%" stop-color="#10b981" stop-opacity="0.0"/>
+                  </linearGradient>
+                </defs>
+                <line x1="40" y1="20" x2="480" y2="20" stroke="#1f2c34" stroke-dasharray="3,3"/>
+                <line x1="40" y1="60" x2="480" y2="60" stroke="#1f2c34" stroke-dasharray="3,3"/>
+                <line x1="40" y1="100" x2="480" y2="100" stroke="#1f2c34" stroke-dasharray="3,3"/>
+                <!-- Area -->
+                <polygon points="50,110 130,95 210,80 290,55 370,40 450,22 450,115 50,115" fill="url(#revGrad)"/>
+                <!-- Line -->
+                <polyline points="50,110 130,95 210,80 290,55 370,40 450,22" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round"/>
+                <!-- Points -->
+                <circle cx="50" cy="110" r="4" fill="#10b981"/>
+                <circle cx="130" cy="95" r="4" fill="#10b981"/>
+                <circle cx="210" cy="80" r="4" fill="#10b981"/>
+                <circle cx="290" cy="55" r="4" fill="#10b981"/>
+                <circle cx="370" cy="40" r="4" fill="#10b981"/>
+                <circle cx="450" cy="22" r="5" fill="#fff" stroke="#059669" stroke-width="2"/>
+                <!-- Labels -->
+                <text x="50" y="132" fill="#64748b" font-size="10" text-anchor="middle">Mei (Pilot)</text>
+                <text x="130" y="132" fill="#64748b" font-size="10" text-anchor="middle">Jun</text>
+                <text x="210" y="132" fill="#64748b" font-size="10" text-anchor="middle">Jul</text>
+                <text x="290" y="132" fill="#64748b" font-size="10" text-anchor="middle">Agu (BEP)</text>
+                <text x="370" y="132" fill="#64748b" font-size="10" text-anchor="middle">Sep</text>
+                <text x="450" y="132" fill="#34d399" font-weight="bold" font-size="10" text-anchor="middle">Okt (Aktif)</text>
+              </svg>
+            </div>
+
+            <div class="revenue-summary-list">
+              <div class="rev-sum-item">
+                <span>Fase 1 (Pilot di Rumah - 2 Dokter Partner):</span>
+                <strong>Rp 0 (Subsidi Hardware)</strong>
+              </div>
+              <div class="rev-sum-item">
+                <span>Fase 2 (Break-Even SSD - 4 Tenant Pro):</span>
+                <strong>Rp 796.000 / bln</strong>
+              </div>
+              <div class="rev-sum-item highlight">
+                <span>Fase 3 Sekarang (16 Tenant Berbayar):</span>
+                <strong style="color:#34d399;">Rp 3.840.000 / bln</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Live Webhook Testing Console -->
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <h3 class="admin-card-title">⚡ Mayar.id Webhook Dispatcher</h3>
+              <span class="badge-mini" style="background:rgba(16,185,129,0.2); color:#34d399;">HMAC-SHA256 Ready</span>
+            </div>
+            
+            <p style="font-size:0.82rem; color:#94a3b8; line-height:1.5; margin-bottom:1rem;">
+              Uji coba penerimaan event callback Mayar.id <code>payment.received</code>. Sistem akan otomatis memvalidasi signature header, memperpanjang masa aktif tenant +30 hari, dan mengirim pesan WhatsApp konfirmasi ke nomor dokter pemilik.
+            </p>
+
+            <form id="webhookSimulatorForm" class="webhook-form">
+              <div class="form-group">
+                <label>Pilih Target Tenant / Dokter:</label>
+                <select id="whTenantSelect" class="admin-select">
+                  <!-- Filled via JS -->
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Paket Langganan:</label>
+                <select id="whPlanSelect" class="admin-select">
+                  <option value="PRO">Pro Tier - Rp 199.000 (+400 Booking/bln)</option>
+                  <option value="STARTER">Starter Tier - Rp 99.000 (+100 Booking/bln)</option>
+                  <option value="CLINIC">Clinic Multi-Staff - Rp 349.000 (Unlimited)</option>
+                </select>
+              </div>
+
+              <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">
+                🚀 Tembakkan Webhook (Simulate QRIS Paid)
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Invoices Ledger Table -->
+        <div class="table-container" style="margin-top: 1.5rem;">
+          <div style="padding: 12px 16px; background:#0f172a; border-bottom:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:0.88rem; color:#f1f5f9;">Buku Besar Invoice Langganan (subscription_invoices)</strong>
+            <span style="font-size:0.75rem; color:#64748b;">Sinkronisasi Gateway Mayar.id</span>
+          </div>
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>INVOICE ID</th>
+                <th>TENANT</th>
+                <th>PAKET</th>
+                <th>NOMINAL</th>
+                <th>METODE</th>
+                <th>TANGGAL BAYAR</th>
+                <th>STATUS</th>
+                <th>HMAC SIGNATURE</th>
+              </tr>
+            </thead>
+            <tbody id="invoicesTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+
+      </section>
+
+      <!-- ==================================================================
+           TAB 3: BAILEYS SINGLE-NUMBER GATEWAY
+           ================================================================== -->
+      <section class="admin-tab-pane" id="paneGateway">
+        
+        <div class="gateway-architecture-grid">
+          <!-- Gateway Status Card -->
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <h3 class="admin-card-title">🤖 Status Socket Baileys Multi-Device</h3>
+              <span class="badge-mini" style="background:#064e3b; color:#34d399;">CONNECTED</span>
+            </div>
+
+            <div class="gateway-status-box">
+              <div class="gw-row">
+                <span>Nomor Gateway Tunggal:</span>
+                <strong style="font-family:var(--font-mono); color:#38bdf8;">+62 812-3456-7890</strong>
+              </div>
+              <div class="gw-row">
+                <span>Versi Baileys:</span>
+                <span style="font-family:var(--font-mono);">@whiskeysockets/baileys v6.7.12</span>
+              </div>
+              <div class="gw-row">
+                <span>Arsitektur Multi-Tenant:</span>
+                <span class="badge-mini partner">Single-Number Gateway Router</span>
+              </div>
+              <div class="gw-row">
+                <span>Session Store:</span>
+                <span style="font-family:var(--font-mono);">Redis multi_tenant_auth:state</span>
+              </div>
+              <div class="gw-row">
+                <span>Pesan Ingress Hari Ini:</span>
+                <strong id="gwMessageCount">4.281 Pesan</strong>
+              </div>
+              <div class="gw-row">
+                <span>Latensi Pemrosesan Rata-rata:</span>
+                <strong style="color:#34d399;">1.15 Detik</strong>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top:1rem;">
+              <button class="btn btn-secondary btn-sm" onclick="alert('Baileys Ping test OK! Socket response: 18ms.')">📡 Test Socket Ping</button>
+              <button class="btn btn-secondary btn-sm" onclick="alert('Session Redis cache synced. 16 tenant credentials verified.')">🔄 Sync Auth State</button>
+            </div>
+          </div>
+
+          <!-- Router Workflow Explanation (PRD Section 3) -->
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <h3 class="admin-card-title">🔀 Alur Routing Ingress (PRD Seksi 3)</h3>
+              <span class="badge-mini" style="background:#1e293b; color:#94a3b8;">Zero-Web Flow</span>
+            </div>
+
+            <div class="ingress-flow-diagram">
+              <div class="flow-step">
+                <span class="flow-num">1</span>
+                <div>
+                  <strong>Pesan Masuk di Gateway Tunggal (+62 812-3456-7890)</strong>
+                  <p>Seluruh pesan dari pasien &amp; dokter masuk ke satu nomor bot WhatsApp yang sama.</p>
+                </div>
+              </div>
+              <div class="flow-step">
+                <span class="flow-num">2</span>
+                <div>
+                  <strong>Evaluasi Whitelist Nomor Pengirim (Sender JID)</strong>
+                  <p>Jika pengirim ada di daftar nomor pemilik tenant &rarr; Diarahkan ke <em>Doctor Copilot Tool Calling Engine</em>.</p>
+                </div>
+              </div>
+              <div class="flow-step">
+                <span class="flow-num">3</span>
+                <div>
+                  <strong>Deep Link Slug Parser (Pasien)</strong>
+                  <p>Jika bukan dokter &rarr; Parser membaca awalan <code>BOOK_{slug}</code> atau session aktif untuk menentukan tenant tujuan.</p>
+                </div>
+              </div>
+              <div class="flow-step">
+                <span class="flow-num">4</span>
+                <div>
+                  <strong>Isolasi Database &amp; GIST Range-Lock</strong>
+                  <p>Semua kueri dikarantina berdasarkan <code>tenant_id</code> dan diverifikasi terhadap kuota tier aktif.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ==================================================================
+           TAB 4: IDEMPOTENCY & CONCURRENCY MATRIX RUNNER (PRD Section 7)
+           ================================================================== -->
+      <section class="admin-tab-pane" id="paneIdempotency">
+        
+        <div class="admin-card" style="margin-bottom: 1.5rem;">
+          <div class="admin-card-head">
+            <h3 class="admin-card-title">🛡️ Uji 7 Skenario Matriks Idempotensi &amp; Konkurensi (PRD Seksi 7)</h3>
+            <span class="badge-mini" style="background:rgba(2,132,199,0.2); color:#38bdf8;">Deterministic Test Suite</span>
+          </div>
+          <p style="font-size:0.85rem; color:#94a3b8; line-height:1.6;">
+            Klik skenario di bawah ini untuk mensimulasikan bagaimana PostgreSQL GIST Range-Lock, UNIQUE constraint, dan Redis Cache mengamankan ribuan pesan WhatsApp serentak tanpa pernah terjadi <em>race condition</em> atau <em>double booking</em>:
+          </p>
+
+          <div class="idemp-buttons-grid">
+            <button class="idemp-test-btn active" data-scenario="1">
+              <strong>Skenario 1</strong>
+              <span>Successful Booking (Normal)</span>
+            </button>
+            <button class="idemp-test-btn" data-scenario="2">
+              <strong>Skenario 2</strong>
+              <span>Occupied Slot (Tabrakan Waktu)</span>
+            </button>
+            <button class="idemp-test-btn" data-scenario="3">
+              <strong>Skenario 3</strong>
+              <span>Inactive Service / Kuota Tutup</span>
+            </button>
+            <button class="idemp-test-btn" data-scenario="4">
+              <strong>Skenario 4</strong>
+              <span>Double-Booking Pasien Identik</span>
+            </button>
+            <button class="idemp-test-btn" data-scenario="5">
+              <strong>Skenario 5</strong>
+              <span>Repeated Request (Jaringan Lag)</span>
+            </button>
+            <button class="idemp-test-btn" data-scenario="6">
+              <strong>Skenario 6</strong>
+              <span>Key Sama Payload Berbeda (422)</span>
+            </button>
+            <button class="idemp-test-btn" data-scenario="7">
+              <strong>Skenario 7</strong>
+              <span>Concurrent Race Condition Lock</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Terminal Output Viewer -->
+        <div class="terminal-card">
+          <div class="terminal-head">
+            <div class="terminal-dots">
+              <span></span><span></span><span></span>
+            </div>
+            <span class="terminal-title">PostgreSQL Transaction Engine &amp; WhatsApp Response Stream</span>
+            <span class="badge-mini" style="background:#1e293b; color:#34d399;">SQL TRACE LIVE</span>
+          </div>
+          <div class="terminal-body" id="idempOutputTerminal">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ==================================================================
+           TAB 5: POSTGRESQL VIEWS & DDL SCHEMA
+           ================================================================== -->
+      <section class="admin-tab-pane" id="paneSchema">
+        
+        <div class="admin-card">
+          <div class="admin-card-head">
+            <h3 class="admin-card-title">📜 DDL PostgreSQL &amp; Agregasi Multi-Tenant (PRD Seksi 9 &amp; 10)</h3>
+            <span class="badge-mini partner">Production Schema</span>
+          </div>
+
+          <div class="code-viewer">
+            <pre><code>-- 1. Tenants Table dengan Gating Paket & Kuota
+CREATE TABLE tenants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    owner_phone VARCHAR(20) NOT NULL,
+    timezone VARCHAR(50) DEFAULT 'Asia/Jakarta',
+    subscription_plan VARCHAR(20) DEFAULT 'STARTER', -- STARTER, PRO, CLINIC, LIFETIME_PARTNER
+    subscription_until TIMESTAMPTZ NOT NULL,
+    is_accepting_patients BOOLEAN DEFAULT true,
+    reschedule_cutoff_hours INT DEFAULT 2,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Anti-Tumpang Tindih Jadwal (PostgreSQL btree_gist Range-Lock)
+CREATE TABLE appointments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    service_id UUID NOT NULL REFERENCES services(id),
+    customer_phone VARCHAR(20) NOT NULL,
+    customer_name VARCHAR(100) NOT NULL,
+    scheduled_time TSTZRANGE NOT NULL,
+    status VARCHAR(30) DEFAULT 'CONFIRMED',
+    EXCLUDE USING gist (
+        tenant_id WITH =,
+        scheduled_time WITH &&
+    ) WHERE (status NOT IN ('CANCELLED'))
+);
+
+-- 3. View Monitoring Utilisasi Kuota Bulanan Tenant (PRD 10.1)
+CREATE OR REPLACE VIEW view_tenant_quota_monitoring AS
+SELECT 
+    t.id AS tenant_id,
+    t.name AS tenant_name,
+    t.slug,
+    t.subscription_plan,
+    t.subscription_until,
+    COUNT(a.id) AS current_month_bookings,
+    CASE 
+        WHEN t.subscription_plan = 'STARTER' THEN 100
+        WHEN t.subscription_plan = 'PRO' THEN 400
+        WHEN t.subscription_plan = 'LIFETIME_PARTNER' THEN 250
+        ELSE 999999 
+    END AS max_allowed_quota
+FROM tenants t
+LEFT JOIN appointments a ON t.id = a.tenant_id 
+    AND a.created_at >= DATE_TRUNC('month', NOW())
+    AND a.status NOT IN ('CANCELLED')
+GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code></pre>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Bottom System Audit Event Stream -->
+      <section class="admin-event-console" style="margin-top: 2rem;">
+        <div class="console-head">
+          <span>📡 Live Event Audit Log (Baileys Ingress • Mayar Webhook • GIST Range-Lock)</span>
+          <button class="btn-clear-log" id="btnClearLog">Hapus Tampilan Log</button>
+        </div>
+        <div class="console-body" id="systemAuditLog">
+          <!-- Streamed logs injected via JS -->
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 1: Tambah Tenant Baru
+       ======================================================================== -->
+  <div class="admin-modal" id="modalAddTenant">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>+ Daftarkan Tenant Dokter Baru</h3>
+        <button class="btn-close-modal" id="btnCloseAddTenant">&times;</button>
+      </div>
+      <form id="formAddTenant">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Nama Dokter / Klinik: <span style="color:#f87171;">*</span></label>
+            <input type="text" class="admin-input" id="newTenantName" placeholder="Contoh: dr. Anton Sp.A (Spesialis Anak)" required>
+          </div>
+          <div class="form-group">
+            <label>Slug Deep-Link (Huruf kecil &amp; underscore): <span style="color:#f87171;">*</span></label>
+            <input type="text" class="admin-input" id="newTenantSlug" placeholder="dr_anton_anak" required>
+            <span class="field-hint">Link Pasien: https://wa.me/6281234567890?text=BOOK_[slug]</span>
+          </div>
+          <div class="form-group">
+            <label>Nomor WhatsApp Dokter (JID Whitelist): <span style="color:#f87171;">*</span></label>
+            <input type="text" class="admin-input" id="newTenantPhone" placeholder="6281234567890" required>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Paket Langganan:</label>
+              <select class="admin-select" id="newTenantPlan">
+                <option value="STARTER">Starter Tier (100 Booking/bln)</option>
+                <option value="PRO" selected>Pro Tier (400 Booking/bln)</option>
+                <option value="CLINIC">Clinic Tier (Unlimited)</option>
+                <option value="LIFETIME_PARTNER">Lifetime Partner (Fase 1)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Timezone Operasional:</label>
+              <select class="admin-select" id="newTenantTz">
+                <option value="Asia/Jakarta">WIB (Asia/Jakarta)</option>
+                <option value="Asia/Makassar">WITA (Asia/Makassar)</option>
+                <option value="Asia/Jayapura">WIT (Asia/Jayapura)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btnCancelAddTenant">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan &amp; Aktifkan di Baileys</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
