@@ -8,6 +8,15 @@
   <meta name="keywords" content="asisten booking salon, whatsapp bot barbershop, bot reservasi spa massage, resepsionis ai klinik dokter, booking otomatis whatsapp, zero web receptionist">
   <link rel="stylesheet" href="index.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('praktika_theme') || localStorage.getItem('praktika_admin_theme');
+        var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
 
@@ -28,8 +37,9 @@
       </ul>
 
       <div class="nav-actions">
-        <button class="btn btn-primary btn-pulse" data-open-trial id="navCtaTrial">
-          <span>Coba Gratis 30 Hari</span> →
+        <button type="button" class="btn-theme-toggle" id="btnThemeToggle" title="Ganti Mode Tampilan (Day / Night)" aria-label="Toggle Day / Night Mode">
+          <span class="theme-toggle-icon" id="themeIcon">☀️</span>
+          <span class="theme-toggle-text" id="themeLabel">Day</span>
         </button>
       </div>
     </div>
@@ -435,8 +445,51 @@
           <span class="discount-tag">HEMAT 20%</span>
         </div>
 
-        <div class="pricing-grid">
-          
+        <div class="pricing-grid pricing-grid-4">
+
+          <!-- Free Plan -->
+          <div class="pricing-card pricing-card-free">
+            <h3 class="plan-name">Free</h3>
+            <div class="plan-framing">Coba tanpa kartu kredit, selamanya</div>
+
+            <div class="plan-price-wrap">
+              <span class="plan-currency"></span>
+              <span class="plan-price" style="font-size:2.4rem;">Gratis</span>
+            </div>
+            <div class="plan-subtext">Cocok untuk mencoba dan membuktikan sendiri sebelum berlangganan. Tidak perlu kartu kredit.</div>
+
+            <ul class="plan-features-list">
+              <li class="feature-item">
+                <span class="feature-icon-check">✓</span>
+                <span>Maksimal <strong>25 booking</strong> / bulan</span>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon-check">✓</span>
+                <span>1 nomor WhatsApp bisnis</span>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon-check">✓</span>
+                <span>Antrean &amp; slot waktu dasar</span>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon-check">✓</span>
+                <span>Perintah <code>NEXT</code> &amp; <code>DONE</code></span>
+              </li>
+              <li class="feature-item disabled">
+                <span class="feature-icon-cross">✕</span>
+                <span>AI Copilot (NLP Bahasa Alami)</span>
+              </li>
+              <li class="feature-item disabled">
+                <span class="feature-icon-cross">✕</span>
+                <span>Smart Nudge &amp; Analytics Chart</span>
+              </li>
+            </ul>
+
+            <button class="btn btn-free" data-buy-plan="FREE" id="btnBuyFree">
+              Mulai Gratis Sekarang
+            </button>
+          </div>
+
           <!-- Starter Plan -->
           <div class="pricing-card">
             <h3 class="plan-name">Starter</h3>

@@ -1622,8 +1622,59 @@ function initNavObserver() {
   });
 }
 
+// --- Day & Night Theme Engine ---
+class ThemeEngine {
+  constructor() {
+    this.btn = document.getElementById('btnThemeToggle');
+    this.iconEl = document.getElementById('themeIcon');
+    this.labelEl = document.getElementById('themeLabel');
+  }
+
+  init() {
+    const saved = localStorage.getItem('praktika_theme') || localStorage.getItem('praktika_admin_theme');
+    let theme = saved;
+    if (!theme) {
+      theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day';
+    }
+    this.apply(theme);
+
+    if (this.btn) {
+      this.btn.addEventListener('click', () => {
+        const cur = document.documentElement.getAttribute('data-theme') || 'day';
+        const next = (cur === 'night' || cur === 'dark') ? 'day' : 'night';
+        this.apply(next);
+      });
+    }
+  }
+
+  apply(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('praktika_theme', theme);
+    localStorage.setItem('praktika_admin_theme', theme);
+
+    const isNight = (theme === 'night' || theme === 'dark');
+
+    // Update browser-level color-scheme so native controls (scrollbars, inputs) match
+    document.documentElement.style.colorScheme = isNight ? 'dark' : 'light';
+
+    if (this.iconEl) this.iconEl.textContent = isNight ? '🌙' : '☀️';
+    if (this.labelEl) this.labelEl.textContent = isNight ? 'Night' : 'Day';
+    if (this.btn) {
+      this.btn.title = isNight ? 'Beralih ke Day Mode (Terang)' : 'Beralih ke Night Mode (Gelap)';
+      // Trigger icon pop animation
+      this.iconEl && this.iconEl.animate(
+        [{ transform: 'scale(0.6) rotate(-30deg)' }, { transform: 'scale(1.2) rotate(10deg)' }, { transform: 'scale(1) rotate(0deg)' }],
+        { duration: 380, easing: 'cubic-bezier(0.34,1.56,0.64,1)' }
+      );
+    }
+  }
+}
+
 // --- Application Bootstrapping ---
 document.addEventListener('DOMContentLoaded', () => {
+  const theme = new ThemeEngine();
+  theme.init();
+
   const patientSim = new PatientSimulator();
   patientSim.init();
 
