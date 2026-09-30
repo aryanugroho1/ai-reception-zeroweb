@@ -974,6 +974,25 @@ class MayarPaymentModal {
     document.querySelectorAll('[data-buy-plan]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const plan = e.currentTarget.dataset.buyPlan;
+        // FREE plan goes to the registration/trial modal, not the payment modal
+        if (plan === 'FREE') {
+          const trialModalEl = document.getElementById('trialModal');
+          if (trialModalEl) {
+            // Reset the trial modal to its form view
+            const formContainer = document.getElementById('trialFormContainer');
+            const successView = document.getElementById('trialSuccessView');
+            const submitBtn = document.getElementById('trialSubmitBtn');
+            const couponInput = document.getElementById('trialCouponCode');
+            const couponAlert = document.getElementById('trialCouponAlert');
+            if (formContainer) formContainer.style.display = 'block';
+            if (successView) successView.style.display = 'none';
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<span>🚀 Aktifkan Paket Free &amp; Scan WhatsApp Sekarang →</span>'; }
+            if (couponInput) couponInput.value = '';
+            if (couponAlert) couponAlert.style.display = 'none';
+            trialModalEl.classList.add('active');
+          }
+          return;
+        }
         this.open(plan);
       });
     });
