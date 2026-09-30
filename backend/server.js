@@ -339,6 +339,108 @@ class AppServer {
         });
       }
 
+      // 2H. Coupon Redemption Endpoint (Skips Mayar.id): POST /api/subscriptions/redeem-coupon
+      if (pathname === '/api/subscriptions/redeem-coupon' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const rawCode = (body.coupon || '').toUpperCase().trim();
+        const validCoupons = {
+          'PILOTPRO': { plan: 'PRO', durationDays: 365, label: 'Free Pro Tier 1 Tahun (Pilot Project)' },
+          'PILOTLIFETIME': { plan: 'LIFETIME_PARTNER', durationDays: 36500, label: 'Free Lifetime Partner Selamanya (Pilot Project)' },
+          'FREEPRO': { plan: 'PRO', durationDays: 365, label: 'Free Pro Tier 1 Tahun' }
+        };
+
+        const couponConfig = validCoupons[rawCode];
+        if (!couponConfig) {
+          return this.sendJson(res, 400, {
+            error: 'Kode kupon tidak valid. Gunakan kupon pilot resmi: PILOTPRO atau PILOTLIFETIME',
+            code: 'INVALID_COUPON'
+          });
+        }
+
+        const cleanPhone = (body.phone || '').replace(/[^0-9]/g, '');
+        if (!cleanPhone || cleanPhone.length < 9) {
+          return this.sendJson(res, 400, { error: 'Nomor WhatsApp bisnis tidak valid (minimal 9 digit angka)', code: 'INVALID_PHONE' });
+        }
+
+        const bizName = (body.business_name || body.name || 'Bisnis Pilot').trim();
+        const subUntil = new Date(Date.now() + couponConfig.durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+        // Check if tenant already exists with this phone
+        let tenant = this.db.getTenantByPhone(cleanPhone);
+        if (tenant) {
+          tenant.name = bizName || tenant.name;
+          tenant.subscription_plan = couponConfig.plan;
+          tenant.subscription_until = subUntil;
+          tenant.updated_at = new Date().toISOString();
+        } else {
+          const rawSlug = (body.slug || bizName).toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 25);
+          const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
+          tenant = this.db.createTenant({
+            name: bizName,
+            slug: uniqueSlug,
+            owner_phone: cleanPhone,
+            category: body.category || 'GENERAL_PRACTICE',
+            subscription_plan: couponConfig.plan,
+            subscription_until: subUntil,
+            timezone: 'Asia/Jakarta'
+          });
+
+          // Seed default starter services for new pilot tenant
+          try {
+            this.db.createService({
+              tenant_id: tenant.id,
+              name: 'Layanan Utama / Reservasi',
+              duration_minutes: 40,
+              price: 150000,
+              is_active: true
+            });
+            this.db.createService({
+              tenant_id: tenant.id,
+              name: 'Treatment Tambahan',
+              duration_minutes: 60,
+              price: 250000,
+              is_active: true
+            });
+          } catch (e) {}
+        }
+
+        // Generate Baileys onboarding connect token
+        const token = this.baileys.generateConnectToken(tenant.id);
+        const connectUrl = `/connect?token=${token}`;
+
+        // Record a zero-rupiah invoice in database (Mayar skipped)
+        const invId = `INV-COUPON-${Date.now()}`;
+        this.db.subscriptionInvoices.set(invId, {
+          id: invId,
+          tenant_id: tenant.id,
+          invoice_number: invId,
+          plan_tier: couponConfig.plan,
+          amount: 0,
+          payment_provider: `COUPON_${rawCode}`,
+          payment_ref_id: `COUPON-REDEEMED-${rawCode}`,
+          status: 'PAID',
+          paid_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+        return this.sendJson(res, 200, {
+          success: true,
+          message: `Kupon ${rawCode} berhasil diterapkan! Mayar.id dilewati.`,
+          coupon: rawCode,
+          plan: couponConfig.plan,
+          label: couponConfig.label,
+          tenant: {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            plan: tenant.subscription_plan,
+            subscription_until: tenant.subscription_until.slice(0, 10)
+          },
+          connect_url: connectUrl
+        });
+      }
+
       // 3. Create Booking: POST /api/bookings
       if (pathname === '/api/bookings' && method === 'POST') {
         const body = await this.readRequestBody(req);

@@ -933,6 +933,20 @@ class MayarPaymentModal {
     this.invoiceNumberEl = document.getElementById('modalInvoiceNo');
     this.countdown = 30 * 60;
     this.timerInterval = null;
+
+    // Coupon & Pilot components
+    this.couponInput = document.getElementById('couponCodeInput');
+    this.applyCouponBtn = document.getElementById('btnApplyCoupon');
+    this.couponStatusMsg = document.getElementById('couponStatusMsg');
+    this.pilotFormBox = document.getElementById('pilotCouponFormBox');
+    this.pilotDesc = document.getElementById('pilotCouponDesc');
+    this.pilotBizName = document.getElementById('pilotBizName');
+    this.pilotBizPhone = document.getElementById('pilotBizPhone');
+    this.submitPilotBtn = document.getElementById('btnSubmitPilotCoupon');
+    this.qrisBoxContainer = document.getElementById('qrisBoxContainer');
+    this.qrisActionBtns = document.getElementById('qrisActionBtns');
+    this.activeCoupon = null;
+    this.originalPrice = 'Rp 199.000';
   }
 
   init() {
@@ -953,6 +967,124 @@ class MayarPaymentModal {
     if (this.simulateBtn) {
       this.simulateBtn.addEventListener('click', () => this.simulateWebhookSuccess());
     }
+
+    // Apply Coupon Code
+    if (this.applyCouponBtn) {
+      this.applyCouponBtn.addEventListener('click', () => this.applyCoupon());
+    }
+    if (this.couponInput) {
+      this.couponInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.applyCoupon();
+        }
+      });
+    }
+
+    // Submit Pilot Coupon Form (Skip Mayar & Redirect to Connect WhatsApp)
+    if (this.submitPilotBtn) {
+      this.submitPilotBtn.addEventListener('click', () => this.submitPilotCoupon());
+    }
+  }
+
+  applyCoupon() {
+    const code = (this.couponInput ? this.couponInput.value : '').toUpperCase().trim();
+    const validCodes = ['PILOTPRO', 'PILOTLIFETIME', 'FREEPRO'];
+
+    if (!code) {
+      this.showCouponMsg('Masukkan kode kupon terlebih dahulu.', '#ef4444');
+      return;
+    }
+
+    if (validCodes.includes(code)) {
+      this.activeCoupon = code;
+      const isLifetime = code === 'PILOTLIFETIME';
+      const label = isLifetime ? 'LIFETIME PARTNER SELAMANYA' : 'PRO TIER 1 TAHUN';
+
+      // Hide QRIS Box and Mayar Buttons
+      if (this.qrisBoxContainer) this.qrisBoxContainer.style.display = 'none';
+      if (this.qrisActionBtns) this.qrisActionBtns.style.display = 'none';
+
+      // Update Plan Price to Rp 0
+      this.planAmountEl.innerHTML = `<span style="text-decoration:line-through; color:#94a3b8; font-size:0.95rem; margin-right:6px;">${this.originalPrice}</span> <span style="color:#10b981; font-weight:800;">Rp 0 (KUPON PILOT)</span>`;
+      
+      // Update Pilot Box
+      if (this.pilotDesc) {
+        this.pilotDesc.textContent = `Akses ${label} berhasil aktif! Pembayaran Mayar.id dilewati (100% Free).`;
+      }
+      if (this.pilotFormBox) {
+        this.pilotFormBox.style.display = 'block';
+      }
+
+      this.showCouponMsg(`✅ Kupon <strong>${code}</strong> valid! Mayar.id dilewati. Silakan lengkapi info bisnis untuk scan WhatsApp.`, '#15803d');
+      if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
+    } else {
+      this.showCouponMsg('❌ Kode kupon tidak valid. Gunakan kupon pilot resmi: <strong>PILOTPRO</strong> atau <strong>PILOTLIFETIME</strong>.', '#b91c1c');
+    }
+  }
+
+  showCouponMsg(html, color) {
+    if (this.couponStatusMsg) {
+      this.couponStatusMsg.style.display = 'block';
+      this.couponStatusMsg.style.color = color;
+      this.couponStatusMsg.innerHTML = html;
+    }
+  }
+
+  async submitPilotCoupon() {
+    const bizName = (this.pilotBizName ? this.pilotBizName.value : '').trim();
+    const phone = (this.pilotBizPhone ? this.pilotBizPhone.value : '').trim();
+
+    if (!bizName) {
+      alert('Mohon masukkan nama bisnis / klinik / salon / dokter Anda.');
+      if (this.pilotBizName) this.pilotBizName.focus();
+      return;
+    }
+
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (!cleanPhone || cleanPhone.length < 9) {
+      alert('Mohon masukkan nomor WhatsApp bisnis yang valid (minimal 9 digit).');
+      if (this.pilotBizPhone) this.pilotBizPhone.focus();
+      return;
+    }
+
+    this.submitPilotBtn.disabled = true;
+    this.submitPilotBtn.innerHTML = '⏳ Menyiapkan QR Code WhatsApp & Aktivasi Akun...';
+
+    try {
+      const resp = await fetch('/api/subscriptions/redeem-coupon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coupon: this.activeCoupon,
+          business_name: bizName,
+          phone: cleanPhone
+        })
+      });
+
+      const data = await resp.json();
+      if (!resp.ok || !data.success) {
+        throw new Error(data.error || 'Gagal meredeem kupon pilot.');
+      }
+
+      if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
+      
+      alert(
+        `🎉 SELAMAT! PILOT PROJECT DIAKTIFKAN!\n\n` +
+        `• Bisnis: ${data.tenant.name}\n` +
+        `• Paket: ${data.label}\n` +
+        `• WhatsApp: ${cleanPhone}\n` +
+        `• Gateway Mayar.id: DILEWATI (Rp 0)\n\n` +
+        `Sistem akan langsung membuka halaman Scan QR WhatsApp untuk menghubungkan nomor Anda.`
+      );
+
+      this.close();
+      window.location.href = data.connect_url;
+    } catch (err) {
+      alert(`⚠️ Gagal aktivasi: ${err.message}`);
+      this.submitPilotBtn.disabled = false;
+      this.submitPilotBtn.innerHTML = '🚀 Lanjut Scan WhatsApp (Gratis) →';
+    }
   }
 
   open(planKey) {
@@ -965,9 +1097,21 @@ class MayarPaymentModal {
     const target = plans[planKey] || plans.PRO;
     const invNo = 'INV-MYR-' + Math.floor(100000 + Math.random() * 900000);
 
+    this.originalPrice = target.price;
     this.planNameEl.textContent = target.name;
     this.planAmountEl.textContent = target.price;
     this.invoiceNumberEl.textContent = invNo;
+
+    // Reset coupon state
+    this.activeCoupon = null;
+    if (this.couponInput) this.couponInput.value = '';
+    if (this.couponStatusMsg) {
+      this.couponStatusMsg.style.display = 'none';
+      this.couponStatusMsg.innerHTML = '';
+    }
+    if (this.pilotFormBox) this.pilotFormBox.style.display = 'none';
+    if (this.qrisBoxContainer) this.qrisBoxContainer.style.display = 'block';
+    if (this.qrisActionBtns) this.qrisActionBtns.style.display = 'flex';
 
     this.simulateBtn.disabled = false;
     this.simulateBtn.innerHTML = '⚡ Simulasikan Scan QRIS & Webhook Mayar.id';
@@ -1002,10 +1146,10 @@ class MayarPaymentModal {
     setTimeout(() => {
       this.simulateBtn.innerHTML = '✅ Pembayaran Berhasil! Terverifikasi';
       this.simulateBtn.className = 'btn btn-secondary';
-      sfx.playPop();
+      if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
 
       alert(
-        `🎉 NOTIFIKASI WHATSAPP DOKTER:\n\n` +
+        `🎉 NOTIFIKASI WHATSAPP DOKTER/PEMILIK USAHA:\n\n` +
         `✅ Pembayaran Terkonfirmasi!\n` +
         `Langganan ${this.planNameEl.textContent} aktif untuk 30 hari ke depan.\n` +
         `Total: ${this.planAmountEl.textContent}\n` +
@@ -1046,14 +1190,49 @@ class FreeTrialModal {
     }
 
     if (this.form) {
-      this.form.addEventListener('submit', (e) => {
+      this.form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const docName = document.getElementById('trialDocName').value;
         const clinicName = document.getElementById('trialClinicName').value;
         const phone = document.getElementById('trialPhone').value;
-        const slug = clinicName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const couponEl = document.getElementById('trialCouponCode');
+        const coupon = couponEl ? couponEl.value.trim().toUpperCase() : '';
 
-        sfx.playPop();
+        // If coupon provided, redeem via API and skip to QR pairing
+        if (coupon) {
+          try {
+            const resp = await fetch('/api/subscriptions/redeem-coupon', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                coupon: coupon,
+                business_name: clinicName || docName,
+                name: docName,
+                phone: phone
+              })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.success) {
+              if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
+              alert(
+                `🎉 KUPON PILOT AKTIF!\n\n` +
+                `Selamat ${docName}!\n` +
+                `Paket: ${data.label}\n` +
+                `Mayar.id dilewati. Langsung buka halaman scan QR WhatsApp!`
+              );
+              this.close();
+              window.location.href = data.connect_url;
+              return;
+            } else {
+              alert(`Peringatan Kupon: ${data.error || 'Kupon tidak valid'}. Melanjutkan uji coba standar...`);
+            }
+          } catch (err) {
+            console.warn('Coupon redeem error:', err);
+          }
+        }
+
+        const slug = clinicName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
         alert(
           `🚀 SELAMAT, ${docName.toUpperCase()}!\n\n` +
           `Akun bot uji coba 30 hari untuk "${clinicName}" telah disiapkan:\n` +

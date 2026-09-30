@@ -724,8 +724,46 @@
         </div>
       </div>
 
+      <!-- Coupon & Pilot Promo Code Box (Skip Mayar.id) -->
+      <div class="qris-coupon-box" id="qrisCouponBox" style="margin: 1rem 0; padding: 14px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:0.84rem; font-weight:700; color:#0a0f1d;">🎟️ Punya Kupon Akses Pilot?</span>
+          <span style="font-size:0.72rem; color:#008767; font-weight:800; background:rgba(0,210,158,0.15); padding:2px 8px; border-radius:6px;">SKIP MAYAR.ID</span>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="couponCodeInput" placeholder="Masukkan kode: PILOTPRO / PILOTLIFETIME" style="flex:1; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:10px; font-size:0.84rem; font-family:var(--font-mono); text-transform:uppercase; background:#fff; color:#0a0f1d; outline:none;">
+          <button type="button" class="btn btn-secondary" id="btnApplyCoupon" style="padding:9px 16px; font-size:0.84rem; font-weight:700;">Terapkan</button>
+        </div>
+        <div id="couponStatusMsg" style="font-size:0.78rem; margin-top:8px; display:none; line-height:1.4;"></div>
+      </div>
+
+      <!-- Free Pilot WhatsApp Onboarding Box (Shown when Coupon Valid) -->
+      <div id="pilotCouponFormBox" style="display:none; margin: 1rem 0; padding: 16px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 16px; text-align: left;">
+        <div style="font-weight: 800; color: #166534; font-size: 0.94rem; margin-bottom: 4px;">
+          🎉 Kupon Pilot Valid! Pembayaran Mayar.id Dilewati (Gratis Rp 0)
+        </div>
+        <div style="font-size: 0.8rem; color: #15803d; margin-bottom: 14px;" id="pilotCouponDesc">
+          Paket PRO gratis aktif untuk nomor WhatsApp bisnis Anda.
+        </div>
+        
+        <div style="margin-bottom: 10px;">
+          <label style="display:block; font-size:0.8rem; font-weight:700; color:#1e293b; margin-bottom:4px;">Nama Bisnis / Salon / Barber / Dokter: <span style="color:#ef4444;">*</span></label>
+          <input type="text" id="pilotBizName" placeholder="Contoh: The Heritage Barbershop / Ayra Salon / drg. Maya" required style="width:100%; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; background:#fff; color:#0a0f1d; outline:none;">
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display:block; font-size:0.8rem; font-weight:700; color:#1e293b; margin-bottom:4px;">Nomor WhatsApp Bisnis yang akan dihubungkan: <span style="color:#ef4444;">*</span></label>
+          <input type="tel" id="pilotBizPhone" placeholder="Contoh: 081234567890" required style="width:100%; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; background:#fff; color:#0a0f1d; outline:none;">
+          <span style="font-size:0.72rem; color:#64748b;">Nomor ini akan langsung dibuatkan QR Code untuk di-scan dengan WhatsApp.</span>
+        </div>
+
+        <button type="button" class="btn btn-primary btn-pulse" id="btnSubmitPilotCoupon" style="width:100%; padding:12px; font-size:0.95rem;">
+          🚀 Lanjut Scan WhatsApp (Gratis) →
+        </button>
+      </div>
+
       <!-- Realistic Dynamic QR Code -->
-      <div class="qris-box">
+      <div class="qris-box" id="qrisBoxContainer">
         <div class="qris-logo-row">
           <span>QRIS NASIONAL</span>
           <span style="color:#0284c7;">MAYAR.ID INSTANT</span>
@@ -773,7 +811,7 @@
         </div>
       </div>
 
-      <div class="qris-action-btns">
+      <div class="qris-action-btns" id="qrisActionBtns">
         <button class="btn btn-primary btn-pulse" id="simulatePaymentBtn">
           ⚡ Simulasikan Scan QRIS & Webhook Mayar.id
         </button>
@@ -820,9 +858,17 @@
           <input type="text" id="trialClinicName" required placeholder="Contoh: The Heritage Barbershop / Ayra Salon / Maya Dental" style="width:100%; padding:10px 14px; background:#111a2c; border:1px solid var(--border-subtle); border-radius:10px; color:#fff; font-size:0.9rem; outline:none;">
         </div>
 
-        <div style="margin-bottom:1.5rem;">
+        <div style="margin-bottom:1rem;">
           <label style="display:block; font-size:0.82rem; font-weight:600; color:#cbd5e1; margin-bottom:6px;">Nomor WhatsApp Bisnis / Owner</label>
           <input type="tel" id="trialPhone" required placeholder="Contoh: 081234567890" style="width:100%; padding:10px 14px; background:#111a2c; border:1px solid var(--border-subtle); border-radius:10px; color:#fff; font-size:0.9rem; outline:none;">
+        </div>
+
+        <div style="margin-bottom:1.5rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <label style="font-size:0.82rem; font-weight:600; color:#cbd5e1;">Kode Kupon Akses Pilot (Opsional)</label>
+            <span style="font-size:0.72rem; color:#00d29e; font-weight:700;">PRO / LIFETIME FREE</span>
+          </div>
+          <input type="text" id="trialCouponCode" placeholder="Masukkan PILOTPRO atau PILOTLIFETIME jika ada" style="width:100%; padding:10px 14px; background:#111a2c; border:1px solid var(--border-subtle); border-radius:10px; color:#fff; font-size:0.88rem; outline:none; text-transform:uppercase; font-family:var(--font-mono);">
         </div>
 
         <button type="submit" class="btn btn-primary btn-pulse" style="width:100%; padding:12px;">
