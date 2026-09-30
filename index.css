@@ -1396,6 +1396,131 @@ section {
 }
 
 /* ==========================================================================
+   Testimonials Section
+   ========================================================================== */
+.testimonials-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.75rem;
+}
+
+@media (max-width: 900px) {
+  .testimonials-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.testimonial-card {
+  background: #ffffff;
+  border-radius: 22px;
+  border: 1.5px solid #e2e8f0;
+  padding: 2.2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.testimonial-card:hover {
+  transform: translateY(-5px);
+  border-color: rgba(0, 210, 158, 0.5);
+  box-shadow: 0 20px 40px -4px rgba(0, 210, 158, 0.16);
+}
+
+.testimonial-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: 20px;
+  width: fit-content;
+  margin-bottom: 1rem;
+}
+
+.testimonial-tag.barber {
+  background: rgba(255, 94, 54, 0.12);
+  color: #ff5e36;
+  border: 1px solid rgba(255, 94, 54, 0.28);
+}
+
+.testimonial-tag.salon {
+  background: rgba(236, 72, 153, 0.12);
+  color: #db2777;
+  border: 1px solid rgba(236, 72, 153, 0.28);
+}
+
+.testimonial-tag.doctor {
+  background: rgba(0, 210, 158, 0.12);
+  color: #008767;
+  border: 1px solid rgba(0, 210, 158, 0.28);
+}
+
+.testimonial-stars {
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+  letter-spacing: 2px;
+}
+
+.testimonial-quote {
+  font-size: 0.96rem;
+  color: #334155;
+  line-height: 1.68;
+  font-style: italic;
+  margin-bottom: 1.75rem;
+  flex: 1;
+}
+
+.testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 1.25rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.author-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00d29e 0%, #ff5e36 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+}
+
+.author-name {
+  font-size: 0.94rem;
+  font-weight: 800;
+  color: #0a0f1d;
+}
+
+.author-role {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.author-metric {
+  margin-top: 8px;
+  display: inline-block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #008767;
+  background: rgba(0, 210, 158, 0.1);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* ==========================================================================
    Pricing Section (PRD Section 4 & 12.1)
    ========================================================================== */
 .pricing-billing-switch {

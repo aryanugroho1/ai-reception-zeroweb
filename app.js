@@ -171,6 +171,78 @@ const SCENARIOS = {
     ]
   },
 
+  barber: {
+    title: 'The Heritage Barbershop 💈',
+    status: '+62 813-8899-0011 • Bisnis Terverifikasi • Online',
+    chips: ['Halo bro, mau booking haircut jam 5 sore', 'Bro Kevin - Fade & Beard', 'Lihat Jadwal Barber'],
+    messages: [
+      {
+        sender: 'user',
+        text: 'Halo bro, mau booking gentleman haircut sore ini jam 17:00 bisa?',
+        time: '14:30'
+      },
+      {
+        sender: 'bot',
+        text: 'Halo Bro! Selamat datang di *The Heritage Barbershop* 💈✂️\n\nUntuk sore ini jam 17:00 WIB kursi barber kami masih tersedia.\n\nPaket Tersedia:\n• *Gentleman Haircut & Styling* (±40 mnt)\n• *Beard Trim & Hot Towel Shave* (±20 mnt)\n\nBoleh info nama bro untuk pemesanan kursi?',
+        time: '14:30'
+      },
+      {
+        sender: 'user',
+        text: 'Bro Kevin - Fade & Beard',
+        time: '14:31'
+      },
+      {
+        sender: 'bot',
+        text: '💈 *Booking Berhasil Dikonfirmasi!*\n━━━━━━━━━━━━━━━━━━━━\n🏷️ Booking ID: *#BRB-305*\n👤 Customer: *Bro Kevin*\n✂️ Layanan: *Gentleman Haircut & Shave*\n⏰ Waktu: *Hari ini, 17:00 WIB*\n💈 Barber: *Master Barber Rendi (Kursi #2)*\n📍 Lokasi: *The Heritage, Jl. Senopati No. 22*\n━━━━━━━━━━━━━━━━━━━━\n_Mohon hadir tepat waktu ya bro. Pengingat otomatis akan dikirim 30 menit sebelum jadwal._',
+        time: '14:31',
+        isConfirmed: true,
+        bookingDetails: {
+          clientName: 'Bro Kevin',
+          service: 'Gentleman Haircut & Shave',
+          time: 'Hari ini, 17:00 WIB',
+          ticket: '#BRB-305',
+          practice: 'The Heritage Barbershop'
+        }
+      }
+    ]
+  },
+
+  spa: {
+    title: 'Orchid Wellness & Spa Massage 🌿',
+    status: '+62 811-3344-5566 • Bisnis Terverifikasi • Online',
+    chips: ['Sore kak, reservasi massage 90m malam ini', 'Ibu Melati - Aromatherapy Spa', 'Menu Treatment'],
+    messages: [
+      {
+        sender: 'user',
+        text: 'Sore kak, mau tanya ada slot kosong untuk massage refleksi 90 menit nanti malam jam 19:00?',
+        time: '15:10'
+      },
+      {
+        sender: 'bot',
+        text: 'Selamat sore Kak! Selamat datang di *Orchid Wellness & Spa* 🌿✨\n\nUntuk malam ini jam 19:00 WIB ruang private aromatherapy massage kami masih tersedia untuk 1 orang.\n\nPilihan Paket:\n• *Balinese Deep Tissue Massage (90m)*\n• *Aromatherapy Reflexology Spa (90m)*\n\nBoleh dibantu nama tamu untuk kami siapkan ruang relaksasinya Kak?',
+        time: '15:10'
+      },
+      {
+        sender: 'user',
+        text: 'Ibu Melati - Aromatherapy Spa',
+        time: '15:11'
+      },
+      {
+        sender: 'bot',
+        text: '🌿 *Reservasi Spa Berhasil Dikonfirmasi!*\n━━━━━━━━━━━━━━━━━━━━\n🏷️ Booking ID: *#SPA-412*\n👤 Tamu: *Ibu Melati*\n💆‍♀️ Treatment: *Aromatherapy Reflexology (90m)*\n⏰ Waktu: *Hari ini, 19:00 WIB*\n🕯️ Ruangan: *Private Suite Jasmine*\n📍 Lokasi: *Orchid Wellness, Lantai 2*\n━━━━━━━━━━━━━━━━━━━━\n_Minyak esensial hangat & herbal tea siap menyambut kehadiran Ibu Melati._',
+        time: '15:11',
+        isConfirmed: true,
+        bookingDetails: {
+          clientName: 'Ibu Melati',
+          service: 'Aromatherapy Reflexology (90m)',
+          time: 'Hari ini, 19:00 WIB',
+          ticket: '#SPA-412',
+          practice: 'Orchid Wellness & Spa'
+        }
+      }
+    ]
+  },
+
   general: {
     title: 'dr. Rian Sp.PD Praktek Mandiri 🩺',
     status: '+62 812-7788-9900 • Bisnis Terverifikasi • Online',
@@ -212,7 +284,7 @@ const SCENARIOS = {
 const DOCTOR_INITIAL_MESSAGES = [
   {
     sender: 'system',
-    text: '🔒 Sesi Asisten Dokter Mandiri Aktif (Zero-Web) • Multi-Tenant WhatsApp\nNomor Terverifikasi Bisnis • Baileys Multi-Session Engine Online',
+    text: '🔒 Sesi Asisten Bisnis & Praktek Aktif (Zero-Web) • Multi-Tenant WhatsApp\nNomor Terverifikasi Bisnis • Baileys Multi-Session Gateway Online',
     time: '16:00'
   },
   {
@@ -222,7 +294,7 @@ const DOCTOR_INITIAL_MESSAGES = [
   },
   {
     sender: 'bot',
-    text: 'Berikut rangkuman performa praktek dan insight cerdas hari ini:',
+    text: 'Berikut rangkuman performa bisnis dan insight cerdas hari ini:',
     hasDashboard: true,
     time: '16:00'
   }
