@@ -213,7 +213,12 @@
             <button class="filter-pill" data-filter="OVER_QUOTA">Kuota &gt;75% (3)</button>
           </div>
 
-          <button class="btn btn-primary" id="btnPaneAddTenant">+ Tambah Dokter</button>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-secondary" id="btnPurgeSamples" style="border-color:#f87171; color:#f87171; display:inline-flex; align-items:center; gap:6px;" title="Hapus semua akun sample demo agar bersih saat Go-Live">
+              🗑️ <span>Hapus Akun Sample</span>
+            </button>
+            <button class="btn btn-primary" id="btnPaneAddTenant">+ Tambah Dokter</button>
+          </div>
         </div>
 
         <!-- Tenants Data Table -->
@@ -367,55 +372,46 @@
       </section>
 
       <!-- ==================================================================
-           TAB 3: BAILEYS SINGLE-NUMBER GATEWAY
+           TAB 3: WHATSAPP MULTI-SESSION GATEWAY (PER-DOKTER)
            ================================================================== -->
       <section class="admin-tab-pane" id="paneGateway">
         
         <div class="gateway-architecture-grid">
-          <!-- Gateway Status Card -->
+          <!-- Gateway Multi-Session Overview Card -->
           <div class="admin-card">
             <div class="admin-card-head">
-              <h3 class="admin-card-title">🤖 Status Socket Baileys Multi-Device</h3>
-              <span class="badge-mini" style="background:#064e3b; color:#34d399;">CONNECTED</span>
+              <h3 class="admin-card-title">🤖 WhatsApp Multi-Session Controller</h3>
+              <span class="badge-mini" style="background:#064e3b; color:#34d399;">MULTI-DEVICE READY</span>
             </div>
 
             <div class="gateway-status-box">
               <div class="gw-row">
-                <span>Nomor Gateway Tunggal:</span>
-                <strong style="font-family:var(--font-mono); color:#38bdf8;">+62 812-3456-7890</strong>
+                <span>Model Arsitektur:</span>
+                <strong style="color:#38bdf8;">Multi-Session Per-Tenant (Nomor Asli Dokter)</strong>
               </div>
               <div class="gw-row">
-                <span>Versi Baileys:</span>
-                <span style="font-family:var(--font-mono);">@whiskeysockets/baileys v6.7.12</span>
+                <span>Engine Socket:</span>
+                <span style="font-family:var(--font-mono);">@whiskeysockets/baileys MultiFileAuthState</span>
               </div>
               <div class="gw-row">
-                <span>Arsitektur Multi-Tenant:</span>
-                <span class="badge-mini partner">Single-Number Gateway Router</span>
+                <span>Penyimpanan Kredensial:</span>
+                <span style="font-family:var(--font-mono);">sessions/{tenant_id} (Persistent Volume)</span>
               </div>
               <div class="gw-row">
-                <span>Session Store:</span>
-                <span style="font-family:var(--font-mono);">Redis multi_tenant_auth:state</span>
-              </div>
-              <div class="gw-row">
-                <span>Pesan Ingress Hari Ini:</span>
-                <strong id="gwMessageCount">4.281 Pesan</strong>
-              </div>
-              <div class="gw-row">
-                <span>Latensi Pemrosesan Rata-rata:</span>
-                <strong style="color:#34d399;">1.15 Detik</strong>
+                <span>Portal Onboarding Dokter:</span>
+                <span style="color:#34d399; font-weight:600;">/connect?token={magic_token}</span>
               </div>
             </div>
 
             <div style="display:flex; gap:10px; margin-top:1rem;">
-              <button class="btn btn-secondary btn-sm" onclick="alert('Baileys Ping test OK! Socket response: 18ms.')">📡 Test Socket Ping</button>
-              <button class="btn btn-secondary btn-sm" onclick="alert('Session Redis cache synced. 16 tenant credentials verified.')">🔄 Sync Auth State</button>
+              <button class="btn btn-secondary btn-sm" id="btnRefreshWaTable">🔄 Refresh Sesi WhatsApp</button>
             </div>
           </div>
 
-          <!-- Router Workflow Explanation (PRD Section 3) -->
+          <!-- Router Workflow Explanation -->
           <div class="admin-card">
             <div class="admin-card-head">
-              <h3 class="admin-card-title">🔀 Alur Routing Ingress (PRD Seksi 3)</h3>
+              <h3 class="admin-card-title">🔀 Alur Mandiri Dokter (User Journey)</h3>
               <span class="badge-mini" style="background:#1e293b; color:#94a3b8;">Zero-Web Flow</span>
             </div>
 
@@ -423,33 +419,49 @@
               <div class="flow-step">
                 <span class="flow-num">1</span>
                 <div>
-                  <strong>Pesan Masuk di Gateway Tunggal (+62 812-3456-7890)</strong>
-                  <p>Seluruh pesan dari pasien &amp; dokter masuk ke satu nomor bot WhatsApp yang sama.</p>
+                  <strong>Dokter Membayar &amp; Menerima Link Onboarding</strong>
+                  <p>Setelah webhook Mayar sukses, sistem mengirim instruksi &amp; link <code>/connect?token=...</code> ke nomor dokter.</p>
                 </div>
               </div>
               <div class="flow-step">
                 <span class="flow-num">2</span>
                 <div>
-                  <strong>Evaluasi Whitelist Nomor Pengirim (Sender JID)</strong>
-                  <p>Jika pengirim ada di daftar nomor pemilik tenant &rarr; Diarahkan ke <em>Doctor Copilot Tool Calling Engine</em>.</p>
+                  <strong>Dokter Scan QR via Perangkat Tertaut</strong>
+                  <p>Dokter membuka WhatsApp HP ➔ Perangkat Tertaut ➔ Scan QR di layar. Kredensial tersimpan aman di server.</p>
                 </div>
               </div>
               <div class="flow-step">
                 <span class="flow-num">3</span>
                 <div>
-                  <strong>Deep Link Slug Parser (Pasien)</strong>
-                  <p>Jika bukan dokter &rarr; Parser membaca awalan <code>BOOK_{slug}</code> atau session aktif untuk menentukan tenant tujuan.</p>
-                </div>
-              </div>
-              <div class="flow-step">
-                <span class="flow-num">4</span>
-                <div>
-                  <strong>Isolasi Database &amp; GIST Range-Lock</strong>
-                  <p>Semua kueri dikarantina berdasarkan <code>tenant_id</code> dan diverifikasi terhadap kuota tier aktif.</p>
+                  <strong>Pasien Chat Langsung ke Nomor Dokter</strong>
+                  <p>AI Receptionist otomatis membalas atas nama klinik tersebut dengan jadwal praktek dan triage terisolasi.</p>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Live WhatsApp Sessions Table -->
+        <div class="table-container" style="margin-top: 1.5rem;">
+          <div style="padding: 12px 16px; background:#0f172a; border-bottom:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:0.88rem; color:#f1f5f9;">Status Sesi WhatsApp Tiap Dokter / Klinik</strong>
+            <span style="font-size:0.75rem; color:#64748b;">Multi-Session Manager Baileys</span>
+          </div>
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>NAMA PRAKTEK &amp; SLUG</th>
+                <th>KATEGORI</th>
+                <th>NOMOR WHATSAPP TERHUBUNG</th>
+                <th>STATUS KONEKSI</th>
+                <th>LINK ONBOARDING DOKTER</th>
+                <th style="text-align: right;">AKSI OPERATOR</th>
+              </tr>
+            </thead>
+            <tbody id="waSessionsTableBody">
+              <!-- Rendered via admin.js -->
+            </tbody>
+          </table>
         </div>
 
       </section>
@@ -645,6 +657,28 @@ GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code>
           <button type="submit" class="btn btn-primary">Simpan &amp; Aktifkan di Baileys</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL 2: Scan QR Baileys Admin -->
+  <div class="admin-modal" id="modalAdminQr">
+    <div class="modal-dialog" style="max-width: 480px; text-align: center;">
+      <div class="modal-header">
+        <h3 id="modalQrTitle">📱 Scan QR WhatsApp Dokter</h3>
+        <button class="btn-close-modal" id="btnCloseAdminQr">&times;</button>
+      </div>
+      <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; padding: 24px;">
+        <div id="modalQrStatus" style="font-size: 13px; font-weight: 600; color: #fbbf24; margin-bottom: 12px;">Menyiapkan QR...</div>
+        <div style="background:#fff; padding:12px; border-radius:12px; border:2px solid #334155; margin-bottom:16px; min-width: 250px; min-height: 250px; display: flex; align-items: center; justify-content: center;">
+          <img id="modalQrImage" src="" alt="WhatsApp QR Code" style="width: 240px; height: 240px; object-fit: contain; display: block;">
+        </div>
+        <p style="font-size: 13px; color: #94a3b8; line-height: 1.4;">
+          Buka WhatsApp di HP Dokter / Klinik ➔ Menu Titik 3 / Pengaturan ➔ <strong>Perangkat Tertaut (Linked Devices)</strong> ➔ Scan QR di atas.
+        </p>
+      </div>
+      <div class="modal-footer" style="justify-content:center;">
+        <button type="button" class="btn btn-secondary" id="btnCloseAdminQrBtn">Tutup</button>
+      </div>
     </div>
   </div>
 

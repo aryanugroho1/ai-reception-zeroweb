@@ -11,6 +11,8 @@ gmail_accounts.json
 # Temporary & intermediate files
 .tmp/
 temp/
+sessions/
+auth_baileys/
 *.log
 
 # OS & IDE files

@@ -13,6 +13,7 @@ const { RescheduleService } = require('./reschedule');
 const { MayarPaymentService } = require('./mayar_service');
 const { DoctorCopilotEngine } = require('./doctor_copilot');
 const { IngressRouter } = require('./ingress_router');
+const { BaileysManager } = require('./baileys_manager');
 
 class AppServer {
   constructor(port = 4000) {
@@ -29,6 +30,11 @@ class AppServer {
       tierGating: this.tierGating,
       rescheduleService: this.reschedule
     });
+    this.baileys = new BaileysManager({
+      db: this.db,
+      ingressRouter: this.ingressRouter
+    });
+    this.mayar.baileys = this.baileys;
 
     this.adminSessions = new Map();
     this.adminUsername = process.env.ADMIN_USERNAME || 'admin';
@@ -85,6 +91,7 @@ class AppServer {
     const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = parsedUrl.pathname;
     const method = req.method.toUpperCase();
+    const query = Object.fromEntries(parsedUrl.searchParams.entries());
 
     // CORS pre-flight
     if (method === 'OPTIONS') {
@@ -265,7 +272,51 @@ class AppServer {
         });
       }
 
-      // 2E. Tenant Public Catalog & Info: GET /api/tenants/:slug
+      // 2E. Purge Sample Demo Tenants (Super Admin Protected): POST /api/tenants/purge-samples
+      if (pathname === '/api/tenants/purge-samples' && method === 'POST') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const sampleSlugs = ['drg_maya', 'dr_rian_dalam', 'klinik_estetika_ayra'];
+        let deletedCount = 0;
+        for (const slug of sampleSlugs) {
+          const t = this.db.getTenantBySlug(slug);
+          if (t) {
+            await this.baileys.disconnectSession(t.id, true);
+            this.db.deleteTenant(t.id);
+            deletedCount++;
+          }
+        }
+        return this.sendJson(res, 200, {
+          success: true,
+          deleted_count: deletedCount,
+          message: `Berhasil membersihkan ${deletedCount} akun dokter sample demo.`
+        });
+      }
+
+      // 2F. Delete Single Tenant (Super Admin Protected): DELETE /api/tenants/:id
+      const deleteTenantMatch = pathname.match(/^\/api\/tenants\/([a-zA-Z0-9_-]+)$/);
+      if (deleteTenantMatch && method === 'DELETE') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const tId = deleteTenantMatch[1];
+        const tenant = this.db.tenants.get(tId) || this.db.getTenantBySlug(tId);
+        if (!tenant) {
+          return this.sendJson(res, 404, { error: 'Tenant dokter tidak ditemukan' });
+        }
+        // Cleanup WhatsApp Baileys session files if any
+        await this.baileys.disconnectSession(tenant.id, true);
+        this.db.deleteTenant(tenant.id);
+        return this.sendJson(res, 200, {
+          success: true,
+          deleted_id: tenant.id,
+          name: tenant.name,
+          message: `Akun ${tenant.name} berhasil dihapus permanen.`
+        });
+      }
+
+      // 2G. Tenant Public Catalog & Info: GET /api/tenants/:slug
       const tenantMatch = pathname.match(/^\/api\/tenants\/([a-zA-Z0-9_-]+)$/);
       if (tenantMatch && method === 'GET') {
         const slug = tenantMatch[1];
@@ -413,6 +464,121 @@ class AppServer {
           tenant_slug: body.tenant_slug
         });
         return this.sendJson(res, 200, response);
+      }
+
+      // --- 7A. BAILEYS MULTI-SESSION MANAGEMENT (Super Admin Protected) ---
+      // List all WhatsApp sessions across all tenants
+      if (pathname === '/api/baileys/sessions' && method === 'GET') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const sessions = this.baileys.getAllSessions();
+        return this.sendJson(res, 200, { sessions });
+      }
+
+      // Start session / request QR code for a specific tenant
+      const startBaileysMatch = pathname.match(/^\/api\/baileys\/sessions\/([a-zA-Z0-9_-]+)\/start$/);
+      if (startBaileysMatch && method === 'POST') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const tenantId = startBaileysMatch[1];
+        try {
+          const session = await this.baileys.startSession(tenantId);
+          return this.sendJson(res, 200, session);
+        } catch (err) {
+          return this.sendJson(res, 500, { error: err.message });
+        }
+      }
+
+      // Get status & QR code for a specific tenant
+      const statusBaileysMatch = pathname.match(/^\/api\/baileys\/sessions\/([a-zA-Z0-9_-]+)\/status$/);
+      if (statusBaileysMatch && method === 'GET') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const tenantId = statusBaileysMatch[1];
+        const session = this.baileys.getSessionStatus(tenantId);
+        if (!session) {
+          return this.sendJson(res, 404, { error: 'Tenant tidak ditemukan' });
+        }
+        return this.sendJson(res, 200, session);
+      }
+
+      // Disconnect WhatsApp session for a tenant
+      const disconnectBaileysMatch = pathname.match(/^\/api\/baileys\/sessions\/([a-zA-Z0-9_-]+)\/disconnect$/);
+      if (disconnectBaileysMatch && method === 'POST') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const tenantId = disconnectBaileysMatch[1];
+        await this.baileys.disconnectSession(tenantId, true);
+        return this.sendJson(res, 200, { success: true, message: 'Sesi WhatsApp berhasil diputus dan direset.' });
+      }
+
+      // Send test message through tenant's WhatsApp
+      if (pathname === '/api/baileys/send-test' && method === 'POST') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const body = await this.readRequestBody(req);
+        try {
+          const testRes = await this.baileys.sendTestMessage(body.tenant_id, body.recipient, body.message || 'Halo dari Praktika AI Receptionist!');
+          return this.sendJson(res, 200, testRes);
+        } catch (err) {
+          return this.sendJson(res, 400, { error: err.message });
+        }
+      }
+
+      // --- 7B. DOCTOR ONBOARDING PORTAL ENDPOINTS (Token Verified) ---
+      // Verify doctor onboarding token
+      if (pathname === '/api/connect/verify' && method === 'GET') {
+        const token = query.token;
+        const tenantId = this.baileys.verifyConnectToken(token);
+        if (!tenantId) {
+          return this.sendJson(res, 403, { error: 'Token onboarding tidak valid atau telah kedaluwarsa.', valid: false });
+        }
+        const session = this.baileys.getSessionStatus(tenantId);
+        return this.sendJson(res, 200, { valid: true, ...session });
+      }
+
+      // Doctor initiates WhatsApp connection / request QR
+      if (pathname === '/api/connect/start' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const token = body.token || query.token;
+        const tenantId = this.baileys.verifyConnectToken(token);
+        if (!tenantId) {
+          return this.sendJson(res, 403, { error: 'Token onboarding tidak valid atau telah kedaluwarsa.' });
+        }
+        try {
+          const session = await this.baileys.startSession(tenantId);
+          return this.sendJson(res, 200, session);
+        } catch (err) {
+          return this.sendJson(res, 500, { error: err.message });
+        }
+      }
+
+      // Doctor polls live status / QR code
+      if (pathname === '/api/connect/status' && method === 'GET') {
+        const token = query.token;
+        const tenantId = this.baileys.verifyConnectToken(token);
+        if (!tenantId) {
+          return this.sendJson(res, 403, { error: 'Token onboarding tidak valid atau telah kedaluwarsa.' });
+        }
+        const session = this.baileys.getSessionStatus(tenantId);
+        return this.sendJson(res, 200, session);
+      }
+
+      // Doctor disconnects their WhatsApp
+      if (pathname === '/api/connect/disconnect' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const token = body.token || query.token;
+        const tenantId = this.baileys.verifyConnectToken(token);
+        if (!tenantId) {
+          return this.sendJson(res, 403, { error: 'Token onboarding tidak valid atau telah kedaluwarsa.' });
+        }
+        await this.baileys.disconnectSession(tenantId, true);
+        return this.sendJson(res, 200, { success: true, message: 'WhatsApp klinik berhasil diputus.' });
       }
 
       // 8. Financial MRR View: GET /api/reports/mrr

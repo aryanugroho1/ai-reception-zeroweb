@@ -580,6 +580,7 @@ class SuperadminController {
       this.renderTenantsTable();
       this.renderInvoicesTable();
       this.populateWebhookTenantSelect();
+      this.renderWaSessionsTable();
     } catch (err) {
       console.warn('Backend API sync fallback:', err);
     }
@@ -707,6 +708,7 @@ class SuperadminController {
               ${t.isAccepting ? 'Tutup' : 'Buka'}
             </button>
             <button class="tbl-btn" onclick="window.adminCtrl.testLink('${t.slug}')" title="Buka Link WhatsApp Pasien">Link</button>
+            <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.deleteTenant('${t.id}', '${(t.name||'').replace(/'/g, "\\'")}')" title="Hapus Akun Dokter">🗑️</button>
           </div>
         </td>
       `;
@@ -761,6 +763,10 @@ class SuperadminController {
 
         const targetPane = document.getElementById(`pane${tabKey.charAt(0).toUpperCase() + tabKey.slice(1)}`);
         if (targetPane) targetPane.classList.add('active');
+
+        if (tabKey === 'gateway') {
+          this.renderWaSessionsTable();
+        }
       });
     });
   }
@@ -842,6 +848,40 @@ class SuperadminController {
           alert('❌ Gagal mendaftarkan tenant: ' + err.message);
           this.logAudit('danger', `Gagal mendaftarkan tenant: ${err.message}`);
         }
+      });
+    }
+
+    // Purge Sample Demo Tenants Button
+    const purgeBtn = document.getElementById('btnPurgeSamples');
+    if (purgeBtn) {
+      purgeBtn.addEventListener('click', () => this.purgeSampleTenants());
+    }
+
+    // Refresh WhatsApp Sessions Button
+    const refreshWaBtn = document.getElementById('btnRefreshWaTable');
+    if (refreshWaBtn) {
+      refreshWaBtn.addEventListener('click', async () => {
+        await this.renderWaSessionsTable();
+        alert('Data sesi WhatsApp berhasil disegarkan.');
+      });
+    }
+
+    // Admin QR Scanner Modal Listeners
+    const modalAdminQr = document.getElementById('modalAdminQr');
+    const closeAdminQr = document.getElementById('btnCloseAdminQr');
+    const closeAdminQrBtn = document.getElementById('btnCloseAdminQrBtn');
+    const closeQr = () => {
+      if (modalAdminQr) modalAdminQr.classList.remove('active');
+      if (this.adminQrPoll) {
+        clearInterval(this.adminQrPoll);
+        this.adminQrPoll = null;
+      }
+    };
+    if (closeAdminQr) closeAdminQr.addEventListener('click', closeQr);
+    if (closeAdminQrBtn) closeAdminQrBtn.addEventListener('click', closeQr);
+    if (modalAdminQr) {
+      modalAdminQr.addEventListener('click', (e) => {
+        if (e.target === modalAdminQr) closeQr();
       });
     }
   }
@@ -1029,6 +1069,191 @@ class SuperadminController {
   testLink(slug) {
     const link = `https://wa.me/6281234567890?text=BOOK_${slug}`;
     window.open(link, '_blank');
+  }
+
+  async deleteTenant(tenantId, tenantName) {
+    if (!confirm(`⚠️ HAPUS AKUN DOKTER:\n\nApakah Anda yakin ingin menghapus akun "${tenantName}" (${tenantId})?\n\nSemua riwayat booking, layanan, invoice, dan sesi WhatsApp terkait akan dihapus secara permanen.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}`, {
+        method: 'DELETE',
+        headers: this.getAuthHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal menghapus tenant');
+      alert(`✅ ${data.message || 'Tenant berhasil dihapus.'}`);
+      this.logAudit('warning', `Tenant deleted: ${tenantName} (${tenantId})`);
+      await this.loadBackendData();
+    } catch (err) {
+      alert('❌ Error: ' + err.message);
+    }
+  }
+
+  async purgeSampleTenants() {
+    if (!confirm('⚠️ BERSIHKAN DATA SAMPLE DEMO:\n\nApakah Anda yakin ingin menghapus semua akun dokter sample bawaan demo (drg. Maya, dr. Rian, dll) untuk persiapan Go-Live / Production?')) {
+      return;
+    }
+    try {
+      const res = await fetch('/api/tenants/purge-samples', {
+        method: 'POST',
+        headers: this.getAuthHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal membersihkan data sample');
+      alert(`✅ ${data.message}`);
+      this.logAudit('success', `Cleaned ${data.deleted_count} sample tenants for production`);
+      await this.loadBackendData();
+    } catch (err) {
+      alert('❌ Error: ' + err.message);
+    }
+  }
+
+  async renderWaSessionsTable() {
+    const tbody = document.getElementById('waSessionsTableBody');
+    if (!tbody) return;
+
+    try {
+      const res = await fetch('/api/baileys/sessions', { headers: this.getAuthHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const sessions = data.sessions || [];
+
+      tbody.innerHTML = '';
+      if (sessions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:2rem; color:#64748b;">Belum ada tenant/dokter terdaftar.</td></tr>`;
+        return;
+      }
+
+      sessions.forEach(s => {
+        const tr = document.createElement('tr');
+
+        let statusBadge = '<span class="badge-mini" style="background:#334155; color:#94a3b8;">⚪ OFFLINE</span>';
+        if (s.status === 'CONNECTED') {
+          statusBadge = '<span class="badge-mini" style="background:#064e3b; color:#34d399;">🟢 ONLINE (AKTIF)</span>';
+        } else if (s.status === 'SCAN_QR') {
+          statusBadge = '<span class="badge-mini" style="background:#78350f; color:#fbbf24;">🟡 PERLU SCAN QR</span>';
+        } else if (s.status === 'CONNECTING' || s.status === 'INITIALIZING') {
+          statusBadge = '<span class="badge-mini" style="background:#1e3a8a; color:#38bdf8;">🔄 MENGHUBUNGKAN...</span>';
+        }
+
+        const phoneDisplay = s.phone ? `+${s.phone.replace(/\D/g, '')}` : '<span style="color:#64748b;">Belum tertaut</span>';
+        const connectUrl = window.location.origin + s.connect_url;
+
+        tr.innerHTML = `
+          <td>
+            <strong style="color:#fff; display:block;">${s.name}</strong>
+            <span style="font-size:0.75rem; color:#38bdf8; font-family:var(--font-mono);">${s.slug}</span>
+          </td>
+          <td>
+            <span style="font-size:0.8rem; color:#94a3b8;">${s.category || 'KLINIK'}</span>
+          </td>
+          <td>
+            <span style="font-family:var(--font-mono); color:#cbd5e1;">${phoneDisplay}</span>
+          </td>
+          <td>${statusBadge}</td>
+          <td>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button class="tbl-btn" onclick="window.adminCtrl.copyDoctorLink('${connectUrl}')" title="Salin Link Onboarding Dokter">
+                📋 Salin Link
+              </button>
+              <a href="${s.connect_url}" target="_blank" class="tbl-btn primary" style="text-decoration:none; display:inline-block;" title="Buka Halaman Onboarding">
+                ↗️ Buka
+              </a>
+            </div>
+          </td>
+          <td style="text-align: right;">
+            <div style="display:flex; gap:6px; justify-content:flex-end;">
+              <button class="tbl-btn" onclick="window.adminCtrl.openAdminQr('${s.id}', '${(s.name || '').replace(/'/g, "\\'")}')" title="Scan QR di Admin">
+                📱 QR
+              </button>
+              <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.disconnectWaSession('${s.id}')" title="Putus Sesi WhatsApp">
+                🔴 Putus
+              </button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (err) {
+      console.warn('WA Sessions sync error:', err);
+    }
+  }
+
+  copyDoctorLink(url) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        alert(`✅ Link onboarding dokter berhasil disalin ke clipboard:\n\n${url}\n\nKirimkan tautan ini ke dokter agar dapat scan QR melalui ponsel kliniknya.`);
+      }).catch(() => {
+        prompt('Salin link onboarding dokter ini:', url);
+      });
+    } else {
+      prompt('Salin link onboarding dokter ini:', url);
+    }
+  }
+
+  async openAdminQr(tenantId, tenantName) {
+    const modal = document.getElementById('modalAdminQr');
+    const title = document.getElementById('modalQrTitle');
+    const status = document.getElementById('modalQrStatus');
+    const img = document.getElementById('modalQrImage');
+    if (!modal) return;
+
+    title.textContent = `📱 Scan QR: ${tenantName}`;
+    status.textContent = 'Menghubungkan ke Baileys & meminta QR...';
+    img.src = '';
+    modal.classList.add('active');
+
+    // Trigger start session
+    try {
+      const res = await fetch(`/api/baileys/sessions/${tenantId}/start`, {
+        method: 'POST',
+        headers: this.getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.qr_image) {
+        img.src = data.qr_image;
+        status.textContent = 'Silakan scan dengan HP Klinik';
+      } else if (data.status === 'CONNECTED') {
+        status.textContent = `🟢 Sudah terhubung dengan nomor +${data.phone}`;
+      }
+    } catch (e) {
+      status.textContent = 'Error: ' + e.message;
+    }
+
+    // Start poll
+    if (this.adminQrPoll) clearInterval(this.adminQrPoll);
+    this.adminQrPoll = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/baileys/sessions/${tenantId}/status`, { headers: this.getAuthHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === 'CONNECTED') {
+          status.textContent = `🎉 Berhasil Terhubung! (+${data.phone})`;
+          img.src = '';
+          clearInterval(this.adminQrPoll);
+          this.adminQrPoll = null;
+          await this.renderWaSessionsTable();
+        } else if (data.qr_image && data.qr_image !== img.src) {
+          img.src = data.qr_image;
+        }
+      } catch (e) {}
+    }, 2500);
+  }
+
+  async disconnectWaSession(tenantId) {
+    if (!confirm('Apakah Anda yakin ingin memutus sesi WhatsApp ini?')) return;
+    try {
+      const res = await fetch(`/api/baileys/sessions/${tenantId}/disconnect`, {
+        method: 'POST',
+        headers: this.getAuthHeaders()
+      });
+      const data = await res.json();
+      alert(data.message || 'Sesi diputus');
+      await this.renderWaSessionsTable();
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
   }
 
   logAudit(type, message) {

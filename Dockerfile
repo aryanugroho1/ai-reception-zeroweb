@@ -10,13 +10,19 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0
 
 # Copy package definitions
-COPY package.json ./
+COPY package*.json ./
+
+# Install production dependencies (@whiskeysockets/baileys, qrcode, pino)
+RUN npm install --omit=dev
 
 # Copy all project source code & backend modules
 COPY . .
 
-# Adjust permissions for non-root node user
-RUN chown -R node:node /app
+# Ensure sessions directory exists and adjust permissions for non-root node user
+RUN mkdir -p /app/sessions && chown -R node:node /app
+
+# Persist WhatsApp session files across restarts
+VOLUME ["/app/sessions"]
 
 # Switch to non-root user for security
 USER node

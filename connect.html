@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aktivasi WhatsApp Klinik - AI Receptionist</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #070b12;
+      --bg-card: #0f172a;
+      --bg-elevated: #151f38;
+      --border: #1e293b;
+      --border-accent: rgba(16, 185, 129, 0.3);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-faint: #64748b;
+      --wa-green: #25D366;
+      --wa-dark: #128C7E;
+      --emerald-400: #34d399;
+      --blue-400: #38bdf8;
+      --rose-400: #f87171;
+      --amber-400: #fbbf24;
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+      line-height: 1.6;
+    }
+
+    .header-bar {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 32px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #10b981, #0284c7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: #fff;
+      font-size: 20px;
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .clinic-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .clinic-badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--wa-green);
+      box-shadow: 0 0 10px var(--wa-green);
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 32px;
+    }
+
+    @media (max-width: 768px) {
+      .container { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+
+    .intro-text {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      padding: 14px;
+      border-radius: 12px;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(37, 211, 102, 0.15);
+      color: var(--wa-green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .step-content strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 2px;
+      color: #fff;
+    }
+
+    .step-content p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* QR Code Panel */
+    .qr-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      position: relative;
+    }
+
+    .qr-frame {
+      width: 250px;
+      height: 250px;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 20px 0;
+      box-shadow: 0 0 30px rgba(37, 211, 102, 0.15);
+      border: 3px solid #1e293b;
+      position: relative;
+    }
+
+    .qr-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+
+    .qr-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text-faint);
+      font-size: 13px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .status-pill.waiting {
+      background: rgba(251, 191, 36, 0.15);
+      color: var(--amber-400);
+      border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+
+    .status-pill.connected {
+      background: rgba(37, 211, 102, 0.15);
+      color: var(--wa-green);
+      border: 1px solid rgba(37, 211, 102, 0.4);
+    }
+
+    .status-pill.disconnected {
+      background: rgba(248, 113, 113, 0.15);
+      color: var(--rose-400);
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+
+    .status-pill.initializing {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--blue-400);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 14px;
+      padding: 12px 22px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      width: 100%;
+    }
+
+    .btn-wa {
+      background: linear-gradient(135deg, #25D366, #128C7E);
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(37, 211, 102, 0.3);
+    }
+
+    .btn-wa:hover {
+      opacity: 0.95;
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      margin-top: 10px;
+    }
+
+    .btn-outline:hover {
+      background: var(--bg-elevated);
+      color: var(--text);
+    }
+
+    .btn-danger {
+      background: rgba(248, 113, 113, 0.15);
+      border: 1px solid rgba(248, 113, 113, 0.3);
+      color: var(--rose-400);
+      margin-top: 10px;
+    }
+
+    .btn-danger:hover {
+      background: rgba(248, 113, 113, 0.25);
+    }
+
+    .connected-box {
+      width: 100%;
+      background: rgba(37, 211, 102, 0.08);
+      border: 1px solid rgba(37, 211, 102, 0.3);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 16px 0;
+      text-align: center;
+    }
+
+    .connected-phone {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--wa-green);
+      margin: 6px 0;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: var(--wa-green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 12px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .footer-note {
+      font-size: 12px;
+      color: var(--text-faint);
+      margin-top: 16px;
+      text-align: center;
+    }
+
+    .error-card {
+      max-width: 500px;
+      text-align: center;
+      padding: 40px 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header-bar">
+    <div class="brand">
+      <div class="brand-icon">P</div>
+      <div>
+        <div class="brand-title">Praktika AI Receptionist</div>
+        <div class="brand-subtitle">Portal Tautan Perangkat WhatsApp Dokter</div>
+      </div>
+    </div>
+    <div class="clinic-badge" id="clinicBadge" style="display: none;">
+      <div class="clinic-badge-dot"></div>
+      <span id="clinicNameDisplay">Memuat Klinik...</span>
+    </div>
+  </header>
+
+  <!-- Error Container (Invalid token) -->
+  <main id="errorState" style="display: none;" class="error-card">
+    <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+    <h2 style="font-size: 20px; margin-bottom: 8px;">Tautan Tidak Valid atau Kedaluwarsa</h2>
+    <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 24px;">
+      Tautan aktivasi ini tidak ditemukan atau masa berlakunya telah berakhir. Silakan hubungi tim dukungan SaaS kami untuk mendapatkan tautan baru.
+    </p>
+    <a href="/" class="btn btn-outline" style="width: auto;">Kembali ke Beranda</a>
+  </main>
+
+  <!-- Main Onboarding Container -->
+  <main class="container" id="mainContainer" style="display: none;">
+    <!-- Left Column: Instructions -->
+    <section class="card">
+      <h1 id="welcomeTitle">Tautkan WhatsApp Praktek</h1>
+      <p class="intro-text">
+        Hubungkan nomor WhatsApp klinik Anda agar AI Receptionist dapat langsung melayani konsultasi pendaftaran, penjadwalan janji temu, dan triage pasien 24 jam nonstop.
+      </p>
+
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <strong>Buka WhatsApp di Ponsel Klinik</strong>
+            <p>Pastikan Anda membuka aplikasi WhatsApp resmi pada ponsel yang biasa digunakan untuk nomor praktek/klinik.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <strong>Buka Menu "Perangkat Tertaut"</strong>
+            <p>Ketuk ikon <strong>Titik 3 (⋮)</strong> di Android atau menu <strong>Pengaturan (⚙️)</strong> di iPhone, lalu pilih <strong>Perangkat Tertaut (Linked Devices)</strong>.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <strong>Ketuk "Tautkan Perangkat"</strong>
+            <p>Buka pemindai dengan menekan tombol hijau <em>Tautkan Perangkat</em> (konfirmasi sidik jari/PIN jika diminta).</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <strong>Arahkan Kamera ke Kode QR</strong>
+            <p>Arahkan kamera ponsel Anda ke Kode QR di sebelah kanan. Sistem akan otomatis terhubung dalam 5-10 detik.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Interactive QR & Status -->
+    <section class="qr-card">
+      <div id="statusBadge" class="status-pill initializing">
+        <div class="clinic-badge-dot" style="background-color: var(--blue-400); box-shadow: none;"></div>
+        <span id="statusText">Memeriksa Status Sesi...</span>
+      </div>
+
+      <!-- State: SCAN_QR -->
+      <div id="qrBox" style="display: none; width: 100%; display: flex; flex-direction: column; align-items: center;">
+        <div class="qr-frame">
+          <img id="qrImg" src="" alt="Scan QR WhatsApp">
+        </div>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+          ⏱️ QR otomatis diperbarui jika belum sempat dipindai.
+        </p>
+      </div>
+
+      <!-- State: CONNECTING / INITIALIZING -->
+      <div id="loadingBox" style="display: none; padding: 40px 20px;">
+        <div class="spinner"></div>
+        <p style="font-size: 14px; font-weight: 500;">Menyiapkan server WhatsApp & QR Code...</p>
+        <p style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">Membutuhkan waktu 3-6 detik</p>
+      </div>
+
+      <!-- State: CONNECTED -->
+      <div id="connectedBox" class="connected-box" style="display: none;">
+        <div style="font-size: 40px; margin-bottom: 8px;">🎉</div>
+        <h3 style="font-size: 18px; color: #fff; margin-bottom: 4px;">WhatsApp Telah Terhubung!</h3>
+        <p style="font-size: 13px; color: var(--text-muted);">Nomor Praktek Aktif:</p>
+        <div class="connected-phone" id="connectedPhoneDisplay">+62 812-xxxx-xxxx</div>
+        <div style="font-size: 12px; color: var(--wa-green); font-weight: 600; margin-top: 6px;">
+          🟢 Bot AI Receptionist Siap Menerima Chat Pasien
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div id="actionButtons" style="width: 100%; margin-top: 16px;">
+        <button id="btnStart" class="btn btn-wa" style="display: none;">
+          📱 Tampilkan QR Code Baru
+        </button>
+        <button id="btnDisconnect" class="btn btn-danger" style="display: none;">
+          🔴 Putus Sesi WhatsApp
+        </button>
+        <button id="btnTestChat" class="btn btn-outline" style="display: none;">
+          💬 Uji Coba Chat Resepsionis
+        </button>
+      </div>
+
+      <div class="footer-note">
+        🔒 Koneksi WhatsApp diamankan dengan enkripsi End-to-End standar Meta/WhatsApp.
+      </div>
+    </section>
+  </main>
+
+  <script src="/connect.js"></script>
+</body>
+</html>

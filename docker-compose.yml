@@ -11,3 +11,9 @@ services:
       - PORT=3000
       - HOST=0.0.0.0
       - NODE_ENV=production
+    volumes:
+      - baileys_sessions:/app/sessions
+
+volumes:
+  baileys_sessions:
+    name: ai_reception_baileys_sessions

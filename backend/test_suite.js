@@ -652,7 +652,41 @@ async function runTestSuite() {
     const quotaRes = await makeRequest('GET', '/api/reports/quotas', null, { 'Authorization': `Bearer ${adminToken}` });
     assert(quotaRes.statusCode === 200 && Array.isArray(quotaRes.body.quota_monitoring), 'HTTP GET /api/reports/quotas (Authenticated) returned quota summary');
 
-    // 8. Logout
+    // 8. Baileys Multi-Session Gateway Endpoint (With Auth)
+    const sessionsRes = await makeRequest('GET', '/api/baileys/sessions', null, { 'Authorization': `Bearer ${adminToken}` });
+    assert(sessionsRes.statusCode === 200 && Array.isArray(sessionsRes.body.sessions), 'HTTP GET /api/baileys/sessions returned multi-session list');
+    const firstSession = sessionsRes.body.sessions[0];
+    assert(firstSession && typeof firstSession.connect_token === 'string', 'Baileys session contains valid onboarding connect_token');
+
+    // 9. Doctor Public Onboarding Token Verification: GET /api/connect/verify?token=...
+    const verifyRes = await makeRequest('GET', `/api/connect/verify?token=${firstSession.connect_token}`);
+    assert(verifyRes.statusCode === 200 && verifyRes.body.valid === true, 'Doctor Onboarding: Token verified successfully');
+
+    // 10. Delete Single Tenant: DELETE /api/tenants/:id
+    // Create a temporary tenant first
+    const createRes = await makeRequest('POST', '/api/tenants', {
+      name: 'dr. Test Delete Sp.THT',
+      slug: 'dr_test_delete',
+      owner_phone: '6281987654321',
+      subscription_plan: 'STARTER',
+      timezone: 'Asia/Jakarta'
+    }, { 'Authorization': `Bearer ${adminToken}` });
+    assert(createRes.statusCode === 201, 'Created temporary tenant for deletion test');
+    const tempId = createRes.body.tenant.id;
+
+    // Delete it
+    const delRes = await makeRequest('DELETE', `/api/tenants/${tempId}`, null, { 'Authorization': `Bearer ${adminToken}` });
+    assert(delRes.statusCode === 200 && delRes.body.success === true, 'HTTP DELETE /api/tenants/:id removed tenant successfully');
+
+    // Verify it no longer exists
+    const checkDeleted = await makeRequest('GET', '/api/tenants/dr_test_delete');
+    assert(checkDeleted.statusCode === 404, 'Deleted tenant returned 404 Not Found as expected');
+
+    // 11. Purge Sample Demo Tenants: POST /api/tenants/purge-samples
+    const purgeRes = await makeRequest('POST', '/api/tenants/purge-samples', null, { 'Authorization': `Bearer ${adminToken}` });
+    assert(purgeRes.statusCode === 200 && purgeRes.body.success === true && purgeRes.body.deleted_count >= 1, 'HTTP POST /api/tenants/purge-samples purged demo accounts');
+
+    // 12. Logout
     const logoutRes = await makeRequest('POST', '/api/auth/logout', null, { 'Authorization': `Bearer ${adminToken}` });
     assert(logoutRes.statusCode === 200 && logoutRes.body.success === true, 'Super Admin Logout successful');
 

@@ -32,6 +32,8 @@ const server = http.createServer((req, res) => {
     reqPath = '/index.html';
   } else if (reqPath === '/admin') {
     reqPath = '/admin.html';
+  } else if (reqPath === '/connect') {
+    reqPath = '/connect.html';
   }
 
   const filePath = path.join(__dirname, reqPath);

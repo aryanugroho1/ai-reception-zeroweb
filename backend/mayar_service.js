@@ -13,8 +13,10 @@ const { PLAN_LIMITS } = require('./tier_gating');
 class MayarPaymentService {
   constructor(db, options = {}) {
     this.db = db;
+    this.baileys = options.baileys || null;
     this.webhookSecret = options.webhookSecret || process.env.MAYAR_WEBHOOK_SECRET || 'test_mayar_secret_key_zeroweb_2026';
     this.apiKey = options.apiKey || process.env.MAYAR_API_KEY || 'test_mayar_api_key';
+    this.appUrl = options.appUrl || process.env.APP_URL || 'https://aryamaulserver.tail560165.ts.net:8443';
   }
 
   /**
@@ -146,19 +148,34 @@ class MayarPaymentService {
     tenant.subscription_until = baseDate.toISOString();
     tenant.updated_at = new Date().toISOString();
 
-    // Generate WhatsApp Receipt
+    // Generate onboarding connect token & URL
+    let connectToken = null;
+    let connectUrl = `${this.appUrl}/connect`;
+    if (this.baileys && typeof this.baileys.generateConnectToken === 'function') {
+      connectToken = this.baileys.generateConnectToken(tenantId);
+      connectUrl = `${this.appUrl}/connect?token=${connectToken}`;
+    }
+
+    // Generate WhatsApp Receipt & Onboarding Instruction
     const formattedAmount = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(amount);
     const receiptMessage = [
       `🎉 *PEMBAYARAN DITERIMA - RESI RESMI SAAS*`,
       `---------------------------------------`,
-      `Praktek : *${tenant.name}*`,
-      `Paket   : *${planKey}*`,
-      `Nominal : *${formattedAmount}*`,
-      `Status  : *LUNAS (PAID)*`,
+      `Praktek   : *${tenant.name}*`,
+      `Paket     : *${planKey}*`,
+      `Nominal   : *${formattedAmount}*`,
+      `Status    : *LUNAS (PAID)*`,
       `Aktif s/d : *${baseDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}*`,
-      `Ref ID  : \`${invoiceId}\``,
+      `Ref ID    : \`${invoiceId}\``,
       `---------------------------------------`,
-      `Terima kasih telah mempercayai ZeroWeb AI Receptionist untuk memajukan praktek dokter Anda! 🚀`
+      `📲 *LANGKAH KONEKSI WHATSAPP KLINIK:*`,
+      `Silakan buka tautan berikut melalui browser laptop/tablet Anda:`,
+      `👉 ${connectUrl}`,
+      ``,
+      `Buka WhatsApp di HP Klinik Anda ➔ Ketuk menu Titik 3 / Pengaturan ➔ Pilih *Perangkat Tertaut (Linked Devices)* ➔ Scan QR Code yang tampil di layar.`,
+      `Bot AI Receptionist akan langsung aktif melayani pasien Anda secara otomatis! 🚀`,
+      `---------------------------------------`,
+      `Terima kasih telah mempercayai ZeroWeb AI Receptionist!`
     ].join('\n');
 
     return {
@@ -167,6 +184,8 @@ class MayarPaymentService {
       plan: planKey,
       subscription_until: tenant.subscription_until,
       invoice_id: invoiceId,
+      connect_url: connectUrl,
+      connect_token: connectToken,
       receipt_message: receiptMessage,
       doctor_phone: tenant.owner_phone
     };

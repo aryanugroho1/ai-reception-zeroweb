@@ -11,3 +11,5 @@ token.json
 .tmp
 .vscode
 .idea
+sessions/
+.claude/
