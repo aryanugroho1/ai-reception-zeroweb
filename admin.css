@@ -6,24 +6,24 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
-  --bg-admin-dark: #070b12;
-  --bg-admin-card: #0f172a;
-  --bg-admin-elevated: #151f38;
-  --border-admin: #1e293b;
-  --border-highlight: rgba(56, 189, 248, 0.3);
+  --bg-admin-dark: #0a0e11;
+  --bg-admin-card: #13191e;
+  --bg-admin-elevated: #1a232a;
+  --border-admin: #222d36;
+  --border-highlight: rgba(73, 197, 182, 0.35);
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
   --text-faint: #64748b;
   
-  --emerald-500: #10b981;
-  --emerald-400: #34d399;
-  --blue-500: #0284c7;
-  --blue-400: #38bdf8;
-  --purple-400: #c084fc;
-  --amber-400: #fbbf24;
-  --rose-400: #f87171;
+  --emerald-500: #36bfa8;
+  --emerald-400: #49c5b6;
+  --blue-500: #ff6b4a; /* Swab Coral */
+  --blue-400: #ff856b;
+  --purple-400: #9b8afb; /* Swab Lilac */
+  --amber-400: #ffc83b; /* Swab Sunshine */
+  --rose-400: #ff5252;
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
 
@@ -96,7 +96,7 @@ body {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #34d399, #38bdf8);
+  background: linear-gradient(135deg, #49c5b6 0%, #ff6b4a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -187,15 +187,17 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: #022c22;
+  background: linear-gradient(135deg, #ff6b4a 0%, #ff5238 100%);
+  color: #ffffff;
   font-weight: 700;
-  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 14px rgba(255, 107, 74, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  background: linear-gradient(135deg, #ff856b 0%, #ff5a36 100%);
   transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(255, 107, 74, 0.5);
 }
 
 .btn-secondary {
@@ -365,9 +367,9 @@ body {
 }
 
 .tab-btn.active {
-  color: #38bdf8;
-  border-bottom-color: #38bdf8;
-  background: rgba(56, 189, 248, 0.05);
+  color: #49c5b6;
+  border-bottom-color: #49c5b6;
+  background: rgba(73, 197, 182, 0.08);
 }
 
 .admin-tab-pane {

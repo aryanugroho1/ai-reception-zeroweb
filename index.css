@@ -6,36 +6,41 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Outfit:wght@500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* Brand Medical Theme */
-  --bg-dark: #070b12;
-  --bg-surface: #0e1524;
-  --bg-card: rgba(18, 26, 43, 0.75);
-  --bg-card-hover: rgba(26, 38, 62, 0.85);
+  /* Brand Theme: Swab The World Inspired (Locomotive Award Palette) */
+  --bg-dark: #0a0e11;
+  --bg-surface: #10161a;
+  --bg-card: rgba(20, 27, 32, 0.82);
+  --bg-card-hover: rgba(28, 38, 45, 0.92);
   --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-glow: rgba(16, 185, 129, 0.35);
+  --border-glow: rgba(73, 197, 182, 0.38);
 
-  --emerald-500: #10b981;
-  --emerald-400: #34d399;
-  --emerald-600: #059669;
-  --teal-400: #2dd4bf;
-  --cyan-400: #22d3ee;
-  --blue-500: #3b82f6;
-  --amber-400: #fbbf24;
-  --rose-400: #fb7185;
+  /* Swab signature Mint Teal, Coral Tangerine & Lilac */
+  --emerald-500: #36bfa8;
+  --emerald-400: #49c5b6;
+  --emerald-600: #23a895;
+  --teal-400: #49c5b6;
+  --cyan-400: #5fe0d2;
+  --blue-500: #ff6b4a; /* High-energy Coral */
+  --blue-400: #ff856b;
+  --coral-500: #ff6b4a;
+  --tangerine-500: #ff5a36;
+  --amber-400: #ffc83b; /* Sunshine amber */
+  --rose-400: #ff5252;
+  --purple-400: #9b8afb; /* Lilac / Periwinkle AI */
 
   /* WhatsApp Native Dark Theme */
   --wa-bg: #0b141a;
-  --wa-header: #202c33;
-  --wa-input-bar: #202c33;
-  --wa-input-field: #2a3942;
+  --wa-header: #1b242a;
+  --wa-input-bar: #1b242a;
+  --wa-input-field: #253139;
   --wa-chat-bg: #0d171d;
-  --wa-bubble-in: #202c33;
+  --wa-bubble-in: #1f2b33;
   --wa-bubble-out: #005c4b;
   --wa-bubble-doc: #1e3a5f;
   --wa-text-primary: #e9edef;
   --wa-text-secondary: #8696a0;
-  --wa-accent: #00a884;
-  --wa-check-blue: #53bdeb;
+  --wa-accent: #49c5b6;
+  --wa-check-blue: #5fe0d2;
 
   /* Typography */
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -43,9 +48,10 @@
   --font-mono: 'JetBrains Mono', monospace;
 
   /* Shadows & Glass */
-  --glass-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 30px -10px rgba(16, 185, 129, 0.15);
-  --phone-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 50px rgba(16, 185, 129, 0.12);
-  --glow-emerald: 0 0 25px rgba(16, 185, 129, 0.4);
+  --glass-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 30px -10px rgba(73, 197, 182, 0.2);
+  --phone-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 50px rgba(73, 197, 182, 0.18);
+  --glow-emerald: 0 0 25px rgba(73, 197, 182, 0.45);
+  --glow-coral: 0 0 25px rgba(255, 107, 74, 0.45);
 }
 
 /* Base Reset */
@@ -208,16 +214,18 @@ input, select, textarea {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: #022c22;
+  background: linear-gradient(135deg, #ff6b4a 0%, #ff5238 100%);
+  color: #ffffff;
   font-weight: 700;
-  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 18px rgba(255, 107, 74, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  background: linear-gradient(135deg, #ff856b 0%, #ff5a36 100%);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.45);
+  box-shadow: 0 8px 26px rgba(255, 107, 74, 0.5);
+  color: #ffffff;
 }
 
 .btn-pulse {
@@ -335,7 +343,7 @@ input, select, textarea {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #34d399 0%, #2dd4bf 50%, #38bdf8 100%);
+  background: linear-gradient(135deg, #49c5b6 0%, #36bfa8 45%, #ff6b4a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
