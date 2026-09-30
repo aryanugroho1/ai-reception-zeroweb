@@ -626,13 +626,35 @@ async function runTestSuite() {
     });
     assert(waRes.statusCode === 200 && waRes.body.recipient_type === 'DOCTOR', 'HTTP POST /api/whatsapp/inbound routed to doctor');
 
-    // 5. SaaS Financial MRR View
-    const mrrRes = await makeRequest('GET', '/api/reports/mrr');
-    assert(mrrRes.statusCode === 200 && Array.isArray(mrrRes.body.mrr_reports), 'HTTP GET /api/reports/mrr returned financial summary');
+    // 5. Auth Security Tests
+    // 5A. Unauthenticated request to protected endpoint must return 401
+    const unauthMrr = await makeRequest('GET', '/api/reports/mrr');
+    assert(unauthMrr.statusCode === 401 && unauthMrr.body.code === 'AUTH_REQUIRED', 'Security Guard: Unauthenticated access to /api/reports/mrr rejected with 401');
 
-    // 6. SaaS Quota Monitoring View
-    const quotaRes = await makeRequest('GET', '/api/reports/quotas');
-    assert(quotaRes.statusCode === 200 && Array.isArray(quotaRes.body.quota_monitoring), 'HTTP GET /api/reports/quotas returned quota summary');
+    // 5B. Invalid login credentials must return 401
+    const invalidLogin = await makeRequest('POST', '/api/auth/login', { username: 'admin', password: 'WrongPassword999!' });
+    assert(invalidLogin.statusCode === 401 && invalidLogin.body.code === 'INVALID_CREDENTIALS', 'Auth Guard: Invalid login credentials rejected with 401');
+
+    // 5C. Valid Super Admin Login
+    const validLogin = await makeRequest('POST', '/api/auth/login', { username: 'admin', password: 'AdminPraktika2026!' });
+    assert(validLogin.statusCode === 200 && validLogin.body.success === true && typeof validLogin.body.token === 'string', 'Super Admin Login successful and token issued');
+    const adminToken = validLogin.body.token;
+
+    // 5D. Session validation /api/auth/me
+    const meRes = await makeRequest('GET', '/api/auth/me', null, { 'Authorization': `Bearer ${adminToken}` });
+    assert(meRes.statusCode === 200 && meRes.body.authenticated === true, 'Session /api/auth/me validated token');
+
+    // 6. SaaS Financial MRR View (With Auth)
+    const mrrRes = await makeRequest('GET', '/api/reports/mrr', null, { 'Authorization': `Bearer ${adminToken}` });
+    assert(mrrRes.statusCode === 200 && Array.isArray(mrrRes.body.mrr_reports), 'HTTP GET /api/reports/mrr (Authenticated) returned financial summary');
+
+    // 7. SaaS Quota Monitoring View (With Auth)
+    const quotaRes = await makeRequest('GET', '/api/reports/quotas', null, { 'Authorization': `Bearer ${adminToken}` });
+    assert(quotaRes.statusCode === 200 && Array.isArray(quotaRes.body.quota_monitoring), 'HTTP GET /api/reports/quotas (Authenticated) returned quota summary');
+
+    // 8. Logout
+    const logoutRes = await makeRequest('POST', '/api/auth/logout', null, { 'Authorization': `Bearer ${adminToken}` });
+    assert(logoutRes.statusCode === 200 && logoutRes.body.success === true, 'Super Admin Logout successful');
 
     await app.close();
     assert(true, 'HTTP REST server gracefully closed');

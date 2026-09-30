@@ -398,10 +398,54 @@ class SuperadminController {
   constructor() {
     this.currentFilter = 'ALL';
     this.searchQuery = '';
+    this.token = this.getAuthToken();
+  }
+
+  getAuthToken() {
+    return sessionStorage.getItem('praktika_admin_token') || localStorage.getItem('praktika_admin_token') || null;
+  }
+
+  setAuthToken(token, remember = false) {
+    this.token = token;
+    if (remember) {
+      localStorage.setItem('praktika_admin_token', token);
+    } else {
+      sessionStorage.setItem('praktika_admin_token', token);
+    }
+  }
+
+  clearAuthToken() {
+    this.token = null;
+    sessionStorage.removeItem('praktika_admin_token');
+    localStorage.removeItem('praktika_admin_token');
+  }
+
+  getAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = this.getAuthToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  }
+
+  showLoginGate() {
+    const gate = document.getElementById('adminLoginGate');
+    const app = document.getElementById('adminMainApp');
+    if (gate) gate.style.display = 'flex';
+    if (app) app.style.display = 'none';
+  }
+
+  showMainApp() {
+    const gate = document.getElementById('adminLoginGate');
+    const app = document.getElementById('adminMainApp');
+    if (gate) gate.style.display = 'none';
+    if (app) app.style.display = 'block';
   }
 
   async init() {
     this.initClock();
+    this.initAuth();
     this.initTabs();
     this.initFilters();
     this.initSearch();
@@ -409,39 +453,121 @@ class SuperadminController {
     this.initIdempotencyMatrix();
     this.initWebhookSimulator();
 
-    // Initial render with fallbacks
-    this.renderMetrics();
-    this.renderTenantsTable();
-    this.renderInvoicesTable();
-    this.populateWebhookTenantSelect();
+    // Check existing session
+    const token = this.getAuthToken();
+    if (token) {
+      try {
+        const checkRes = await fetch('/api/auth/me', { headers: this.getAuthHeaders() });
+        if (checkRes.ok) {
+          const authData = await checkRes.json();
+          this.showMainApp();
+          await this.loadBackendData();
+          this.logAudit('info', `Super Admin terotentikasi: ${authData.user.username} (${authData.user.role}).`);
+          return;
+        } else {
+          this.clearAuthToken();
+          this.showLoginGate();
+        }
+      } catch (e) {
+        this.showLoginGate();
+      }
+    } else {
+      this.showLoginGate();
+    }
+  }
 
-    // Fetch live backend database data
-    await this.loadBackendData();
+  initAuth() {
+    const form = document.getElementById('formAdminLogin');
+    const errAlert = document.getElementById('loginErrorAlert');
+    const errMsg = document.getElementById('loginErrorMsg');
+    const togglePwd = document.getElementById('btnTogglePwd');
+    const pwdInput = document.getElementById('adminPasswordInput');
+    const logoutBtn = document.getElementById('btnAdminLogout');
 
-    this.logAudit('info', 'SaaS Superadmin Platform loaded and connected to backend API engine.');
-    this.logAudit('success', 'Live PostgreSQL views and Baileys router synchronized.');
+    if (togglePwd && pwdInput) {
+      togglePwd.addEventListener('click', () => {
+        const isPwd = pwdInput.type === 'password';
+        pwdInput.type = isPwd ? 'text' : 'password';
+        togglePwd.textContent = isPwd ? '🙈' : '👁️';
+      });
+    }
+
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('adminUsernameInput').value.trim();
+        const password = document.getElementById('adminPasswordInput').value;
+        const remember = document.getElementById('rememberMeCheckbox').checked;
+
+        if (errAlert) errAlert.style.display = 'none';
+
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || 'Autentikasi gagal');
+          }
+
+          this.setAuthToken(data.token, remember);
+          this.showMainApp();
+          await this.loadBackendData();
+          this.logAudit('success', `Login berhasil sebagai Super Admin (${username}).`);
+        } catch (err) {
+          if (errAlert && errMsg) {
+            errMsg.textContent = err.message;
+            errAlert.style.display = 'flex';
+          }
+        }
+      });
+    }
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async () => {
+        if (confirm('Apakah Anda yakin ingin keluar dari sesi Super Admin?')) {
+          try {
+            await fetch('/api/auth/logout', {
+              method: 'POST',
+              headers: this.getAuthHeaders()
+            });
+          } catch (e) {}
+          this.clearAuthToken();
+          this.showLoginGate();
+          document.getElementById('formAdminLogin').reset();
+          if (errAlert) errAlert.style.display = 'none';
+        }
+      });
+    }
   }
 
   async loadBackendData() {
     try {
-      // 1. Telemetry Health
+      // 1. Telemetry Health (Public)
       const healthRes = await fetch('/api/health').catch(() => null);
       if (healthRes && healthRes.ok) {
         const health = await healthRes.json();
         this.logAudit('info', `Backend Telemetry: Status ${health.status}, Tenants: ${health.tenants_count}, Appointments: ${health.appointments_count}`);
       }
 
-      // 2. Tenants
-      const tenantsRes = await fetch('/api/tenants').catch(() => null);
+      // 2. Tenants (Protected)
+      const tenantsRes = await fetch('/api/tenants', { headers: this.getAuthHeaders() }).catch(() => null);
       if (tenantsRes && tenantsRes.ok) {
         const data = await tenantsRes.json();
         if (data.tenants && data.tenants.length > 0) {
           SAAS_TENANTS = data.tenants;
         }
+      } else if (tenantsRes && tenantsRes.status === 401) {
+        this.clearAuthToken();
+        this.showLoginGate();
+        return;
       }
 
-      // 3. Invoices
-      const invRes = await fetch('/api/invoices').catch(() => null);
+      // 3. Invoices (Protected)
+      const invRes = await fetch('/api/invoices', { headers: this.getAuthHeaders() }).catch(() => null);
       if (invRes && invRes.ok) {
         const data = await invRes.json();
         if (data.invoices && data.invoices.length > 0) {
@@ -693,7 +819,7 @@ class SuperadminController {
         try {
           const res = await fetch('/api/tenants', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getAuthHeaders(),
             body: JSON.stringify({
               name,
               slug,
@@ -865,7 +991,10 @@ class SuperadminController {
     if (!target) return;
 
     try {
-      const res = await fetch(`/api/tenants/${tenantId}/extend`, { method: 'POST' });
+      const res = await fetch(`/api/tenants/${tenantId}/extend`, {
+        method: 'POST',
+        headers: this.getAuthHeaders()
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gagal memperpanjang');
 
@@ -882,7 +1011,10 @@ class SuperadminController {
     if (!target) return;
 
     try {
-      const res = await fetch(`/api/tenants/${tenantId}/toggle`, { method: 'POST' });
+      const res = await fetch(`/api/tenants/${tenantId}/toggle`, {
+        method: 'POST',
+        headers: this.getAuthHeaders()
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gagal mengubah status');
 

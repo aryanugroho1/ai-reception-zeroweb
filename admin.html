@@ -10,47 +10,111 @@
 </head>
 <body>
 
-  <!-- Top Administrative Navigation -->
-  <header class="admin-topbar">
-    <div class="admin-topbar-inner">
-      <div class="admin-brand">
-        <a href="index.html" class="brand-link" title="Kembali ke Landing Page">
-          <div class="brand-badge-icon">🛡️</div>
-          <div>
-            <div class="brand-title">Praktika<span class="gradient-text">AI</span> <span class="admin-badge">SUPERADMIN</span></div>
-            <div class="brand-sub">Multi-Tenant Autonomous Engine (PRD v3.0-PROD)</div>
-          </div>
-        </a>
-      </div>
-
-      <div class="admin-telemetry-pill">
-        <div class="status-indicator">
+  <!-- ========================================================================
+       SUPER ADMIN LOGIN GATEWAY
+       ======================================================================== -->
+  <div id="adminLoginGate" class="admin-login-wrapper">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="brand-badge-icon" style="font-size: 2.5rem; margin-bottom: 0.5rem;">🛡️</div>
+        <h1 class="login-title">Praktika<span class="gradient-text">AI</span></h1>
+        <p class="login-subtitle">Super Admin SaaS Control Panel</p>
+        <div class="login-security-tag">
           <span class="pulse-dot green"></span>
-          <span>Baileys Gateway: <strong>ONLINE</strong></span>
-        </div>
-        <div class="divider-v"></div>
-        <div class="status-indicator">
-          <span>Redis Cluster: <strong>CONNECTED</strong></span>
-        </div>
-        <div class="divider-v"></div>
-        <div class="status-indicator" id="liveServerClock">
-          <span>WIB: <strong>--:--:--</strong></span>
+          <span>Restricted Access • Multi-Tenant Engine</span>
         </div>
       </div>
 
-      <div class="admin-actions">
-        <button class="btn btn-secondary btn-sm" id="btnTestWebhookTop">
-          ⚡ <span>Test Webhook Mayar</span>
-        </button>
-        <button class="btn btn-primary btn-sm btn-pulse" id="btnOpenAddTenant">
-          + <span>Daftarkan Tenant Baru</span>
-        </button>
-        <a href="index.html" class="btn btn-ghost btn-sm" title="Kembali ke Landing Page">
-          ← <span>Web Publik</span>
-        </a>
+      <div id="loginErrorAlert" class="login-alert danger" style="display: none;">
+        <span class="alert-icon">⚠️</span>
+        <span id="loginErrorMsg">Username atau password tidak valid</span>
       </div>
+
+      <form id="formAdminLogin" class="login-form">
+        <div class="form-group">
+          <label for="adminUsernameInput">Username Administrator</label>
+          <div class="input-with-icon">
+            <span class="input-icon">👤</span>
+            <input type="text" id="adminUsernameInput" class="admin-input" placeholder="Masukkan username admin" autocomplete="username" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label for="adminPasswordInput">Password</label>
+            <button type="button" class="btn-toggle-pwd" id="btnTogglePwd" title="Tampilkan password">👁️</button>
+          </div>
+          <div class="input-with-icon">
+            <span class="input-icon">🔑</span>
+            <input type="password" id="adminPasswordInput" class="admin-input" placeholder="Masukkan password" autocomplete="current-password" required>
+          </div>
+        </div>
+
+        <div class="form-group remember-row">
+          <label class="checkbox-label">
+            <input type="checkbox" id="rememberMeCheckbox" checked>
+            <span>Ingat sesi di perangkat ini</span>
+          </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-lg" id="btnLoginSubmit">
+          <span>Masuk ke Control Panel</span> ➔
+        </button>
+
+        <div class="login-footer-hint">
+          <small>Default initial login: <code>admin</code> / <code>AdminPraktika2026!</code><br>(Dapat diubah via env <code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code>)</small>
+        </div>
+      </form>
     </div>
-  </header>
+  </div>
+
+  <!-- Authenticated Super Admin Layout -->
+  <div id="adminMainApp" style="display: none;">
+
+    <!-- Top Administrative Navigation -->
+    <header class="admin-topbar">
+      <div class="admin-topbar-inner">
+        <div class="admin-brand">
+          <a href="index.html" class="brand-link" title="Kembali ke Landing Page">
+            <div class="brand-badge-icon">🛡️</div>
+            <div>
+              <div class="brand-title">Praktika<span class="gradient-text">AI</span> <span class="admin-badge">SUPERADMIN</span></div>
+              <div class="brand-sub">Multi-Tenant Autonomous Engine (PRD v3.0-PROD)</div>
+            </div>
+          </a>
+        </div>
+
+        <div class="admin-telemetry-pill">
+          <div class="status-indicator">
+            <span class="pulse-dot green"></span>
+            <span>Baileys Gateway: <strong>ONLINE</strong></span>
+          </div>
+          <div class="divider-v"></div>
+          <div class="status-indicator">
+            <span>Redis Cluster: <strong>CONNECTED</strong></span>
+          </div>
+          <div class="divider-v"></div>
+          <div class="status-indicator" id="liveServerClock">
+            <span>WIB: <strong>--:--:--</strong></span>
+          </div>
+        </div>
+
+        <div class="admin-actions">
+          <button class="btn btn-secondary btn-sm" id="btnTestWebhookTop">
+            ⚡ <span>Test Webhook Mayar</span>
+          </button>
+          <button class="btn btn-primary btn-sm btn-pulse" id="btnOpenAddTenant">
+            + <span>Daftarkan Tenant Baru</span>
+          </button>
+          <a href="index.html" class="btn btn-ghost btn-sm" title="Kembali ke Landing Page">
+            ← <span>Web Publik</span>
+          </a>
+          <button class="btn btn-outline-danger btn-sm" id="btnAdminLogout" title="Keluar dari sesi Super Admin">
+            🚪 <span>Logout</span>
+          </button>
+        </div>
+      </div>
+    </header>
 
   <!-- Main Admin Layout -->
   <div class="admin-wrapper">
@@ -583,6 +647,8 @@ GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code>
       </form>
     </div>
   </div>
+
+  </div> <!-- /#adminMainApp -->
 
   <script src="admin.js"></script>
 </body>

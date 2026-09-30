@@ -30,7 +30,25 @@ class AppServer {
       rescheduleService: this.reschedule
     });
 
+    this.adminSessions = new Map();
+    this.adminUsername = process.env.ADMIN_USERNAME || 'admin';
+    this.adminPassword = process.env.ADMIN_PASSWORD || 'AdminPraktika2026!';
+
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
+  }
+
+  validateAdminSession(req) {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) return null;
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!token) return null;
+    const session = this.adminSessions.get(token);
+    if (!session) return null;
+    if (Date.now() > session.expiresAt) {
+      this.adminSessions.delete(token);
+      return null;
+    }
+    return session;
   }
 
   // Helper to read JSON request body
@@ -79,7 +97,59 @@ class AppServer {
     }
 
     try {
-      // 1. Health check
+      // 0. Super Admin Authentication Endpoints
+      // 0A. Login: POST /api/auth/login
+      if (pathname === '/api/auth/login' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const { username, password } = body;
+        if (username === this.adminUsername && password === this.adminPassword) {
+          const crypto = require('crypto');
+          const token = crypto.randomBytes(32).toString('hex');
+          const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days session
+          const session = {
+            username,
+            role: 'SUPER_ADMIN',
+            createdAt: Date.now(),
+            expiresAt
+          };
+          this.adminSessions.set(token, session);
+          return this.sendJson(res, 200, {
+            success: true,
+            token,
+            user: { username, role: 'SUPER_ADMIN' },
+            expires_at: new Date(expiresAt).toISOString()
+          });
+        } else {
+          return this.sendJson(res, 401, {
+            error: 'Username atau password Super Admin tidak valid',
+            code: 'INVALID_CREDENTIALS'
+          });
+        }
+      }
+
+      // 0B. Logout: POST /api/auth/logout
+      if (pathname === '/api/auth/logout' && method === 'POST') {
+        const authHeader = req.headers['authorization'];
+        if (authHeader) {
+          const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+          this.adminSessions.delete(token);
+        }
+        return this.sendJson(res, 200, { success: true, message: 'Berhasil logout' });
+      }
+
+      // 0C. Session Check: GET /api/auth/me
+      if (pathname === '/api/auth/me' && method === 'GET') {
+        const session = this.validateAdminSession(req);
+        if (!session) {
+          return this.sendJson(res, 401, { authenticated: false, error: 'Sesi tidak valid atau telah kedaluwarsa' });
+        }
+        return this.sendJson(res, 200, {
+          authenticated: true,
+          user: { username: session.username, role: session.role }
+        });
+      }
+
+      // 1. Health check (Public telemetry)
       if (pathname === '/api/health' && method === 'GET') {
         return this.sendJson(res, 200, {
           status: 'UP',
@@ -91,8 +161,12 @@ class AppServer {
       }
 
       // 2. Tenant Management & Public Catalog
-      // 2A. List All Tenants (Super Admin): GET /api/tenants
+      // 2A. List All Tenants (Super Admin Protected): GET /api/tenants
       if (pathname === '/api/tenants' && method === 'GET') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+
         const quotas = this.db.getViewTenantQuotaMonitoring();
         const mrrMap = { STARTER: 149000, PRO: 299000, CLINIC: 599000, LIFETIME_PARTNER: 0 };
         const maxQuotaMap = { STARTER: 150, PRO: 400, CLINIC: 1200, LIFETIME_PARTNER: 999999 };
@@ -120,8 +194,12 @@ class AppServer {
         return this.sendJson(res, 200, { tenants: tenantsList });
       }
 
-      // 2B. Create New Tenant (Super Admin): POST /api/tenants
+      // 2B. Create New Tenant (Super Admin Protected): POST /api/tenants
       if (pathname === '/api/tenants' && method === 'POST') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+
         const body = await this.readRequestBody(req);
         if (!body.name || !body.slug || !body.owner_phone) {
           return this.sendJson(res, 400, { error: 'name, slug, and owner_phone are required' });
@@ -142,9 +220,13 @@ class AppServer {
         });
       }
 
-      // 2C. Toggle Tenant Practice Status (Buka / Tutup): POST /api/tenants/:id/toggle
+      // 2C. Toggle Tenant Practice Status (Super Admin Protected): POST /api/tenants/:id/toggle
       const toggleMatch = pathname.match(/^\/api\/tenants\/([a-zA-Z0-9_-]+)\/toggle$/);
       if (toggleMatch && method === 'POST') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+
         const tId = toggleMatch[1];
         const tenant = this.db.tenants.get(tId) || this.db.getTenantBySlug(tId);
         if (!tenant) {
@@ -159,9 +241,13 @@ class AppServer {
         });
       }
 
-      // 2D. Extend Tenant Subscription (+30 days): POST /api/tenants/:id/extend
+      // 2D. Extend Tenant Subscription (Super Admin Protected): POST /api/tenants/:id/extend
       const extendMatch = pathname.match(/^\/api\/tenants\/([a-zA-Z0-9_-]+)\/extend$/);
       if (extendMatch && method === 'POST') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+
         const tId = extendMatch[1];
         const tenant = this.db.tenants.get(tId) || this.db.getTenantBySlug(tId);
         if (!tenant) {
@@ -331,12 +417,18 @@ class AppServer {
 
       // 8. Financial MRR View: GET /api/reports/mrr
       if (pathname === '/api/reports/mrr' && method === 'GET') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
         const mrr = this.db.getViewMonthlySaasRevenue();
         return this.sendJson(res, 200, { mrr_reports: mrr });
       }
 
       // 9. Quota Monitoring View: GET /api/reports/quotas
       if (pathname === '/api/reports/quotas' && method === 'GET') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
         const quotas = this.db.getViewTenantQuotaMonitoring();
         return this.sendJson(res, 200, { quota_monitoring: quotas });
       }
@@ -351,6 +443,9 @@ class AppServer {
 
       // 11. List Invoices: GET /api/invoices
       if (pathname === '/api/invoices' && method === 'GET') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
         const invoices = Array.from(this.db.subscriptionInvoices.values()).map(inv => {
           const tenant = this.db.tenants.get(inv.tenant_id);
           return {
