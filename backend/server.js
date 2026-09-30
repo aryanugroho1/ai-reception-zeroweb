@@ -220,6 +220,24 @@ class AppServer {
           timezone: body.timezone || 'Asia/Jakarta'
         });
 
+        // Seed default starter services so bot immediately has booking catalog
+        try {
+          this.db.createService({
+            tenant_id: newTenant.id,
+            name: 'Reservasi Layanan Utama',
+            duration_minutes: 40,
+            price: 150000,
+            is_active: true
+          });
+          this.db.createService({
+            tenant_id: newTenant.id,
+            name: 'Treatment / Layanan Tambahan',
+            duration_minutes: 60,
+            price: 250000,
+            is_active: true
+          });
+        } catch (e) {}
+
         return this.sendJson(res, 201, {
           success: true,
           message: `Tenant ${newTenant.name} successfully registered`,
