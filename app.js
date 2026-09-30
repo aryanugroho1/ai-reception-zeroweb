@@ -1172,6 +1172,14 @@ class FreeTrialModal {
     this.modal = document.getElementById('trialModal');
     this.closeBtn = document.getElementById('closeTrialModal');
     this.form = document.getElementById('trialForm');
+    this.formContainer = document.getElementById('trialFormContainer');
+    this.successView = document.getElementById('trialSuccessView');
+    this.submitBtn = document.getElementById('trialSubmitBtn');
+    this.couponInput = document.getElementById('trialCouponCode');
+    this.couponAlert = document.getElementById('trialCouponAlert');
+    this.connectActionBtn = document.getElementById('trialConnectActionBtn');
+    this.copyLinkBtn = document.getElementById('trialCopyLinkBtn');
+    this.currentWaLink = '';
   }
 
   init() {
@@ -1189,64 +1197,141 @@ class FreeTrialModal {
       });
     }
 
+    // Live interactive coupon feedback
+    if (this.couponInput) {
+      this.couponInput.addEventListener('input', () => {
+        const val = this.couponInput.value.trim().toUpperCase();
+        if (val === 'PILOTPRO' || val === 'FREEPRO') {
+          if (this.couponAlert) {
+            this.couponAlert.style.display = 'block';
+            this.couponAlert.style.color = '#15803d';
+            this.couponAlert.style.background = '#dcfce7';
+            this.couponAlert.style.borderColor = '#86efac';
+            this.couponAlert.innerHTML = '🎉 Kupon Pilot Valid: Free Upgrade ke Paket PRO (1 Tahun Penuh) Tanpa Bayar!';
+          }
+          if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
+        } else if (val === 'PILOTLIFETIME') {
+          if (this.couponAlert) {
+            this.couponAlert.style.display = 'block';
+            this.couponAlert.style.color = '#15803d';
+            this.couponAlert.style.background = '#dcfce7';
+            this.couponAlert.style.borderColor = '#86efac';
+            this.couponAlert.innerHTML = '👑 Kupon Pilot Valid: Free Akses Lifetime Partner Selamanya (Unlimited Booking)!';
+          }
+          if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
+        } else if (val.length > 3) {
+          if (this.couponAlert) {
+            this.couponAlert.style.display = 'block';
+            this.couponAlert.style.color = '#b91c1c';
+            this.couponAlert.style.background = '#fee2e2';
+            this.couponAlert.style.borderColor = '#fca5a5';
+            this.couponAlert.innerHTML = 'ℹ️ Kode kupon belum terdaftar. Tetap lanjut untuk uji coba 30 hari gratis standar.';
+          }
+        } else {
+          if (this.couponAlert) this.couponAlert.style.display = 'none';
+        }
+      });
+    }
+
+    // Copy deep-link button handler
+    if (this.copyLinkBtn) {
+      this.copyLinkBtn.addEventListener('click', () => {
+        if (!this.currentWaLink) return;
+        navigator.clipboard.writeText(this.currentWaLink).then(() => {
+          this.copyLinkBtn.textContent = '✅ Link Reservasi Berhasil Disalin!';
+          setTimeout(() => {
+            this.copyLinkBtn.textContent = '📋 Salin Link WhatsApp Reservasi Pasien';
+          }, 2500);
+        }).catch(() => {
+          alert(`Link reservasi: ${this.currentWaLink}`);
+        });
+      });
+    }
+
     if (this.form) {
       this.form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const docName = document.getElementById('trialDocName').value;
-        const clinicName = document.getElementById('trialClinicName').value;
-        const phone = document.getElementById('trialPhone').value;
-        const couponEl = document.getElementById('trialCouponCode');
-        const coupon = couponEl ? couponEl.value.trim().toUpperCase() : '';
+        const docName = (document.getElementById('trialDocName')?.value || '').trim();
+        const clinicName = (document.getElementById('trialClinicName')?.value || '').trim();
+        const category = document.getElementById('trialCategory')?.value || 'GENERAL';
+        const phone = (document.getElementById('trialPhone')?.value || '').trim();
+        const coupon = (this.couponInput?.value || '').trim().toUpperCase();
 
-        // If coupon provided, redeem via API and skip to QR pairing
-        if (coupon) {
-          try {
-            const resp = await fetch('/api/subscriptions/redeem-coupon', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                coupon: coupon,
-                business_name: clinicName || docName,
-                name: docName,
-                phone: phone
-              })
-            });
-            const data = await resp.json();
-            if (resp.ok && data.success) {
-              if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
-              alert(
-                `🎉 KUPON PILOT AKTIF!\n\n` +
-                `Selamat ${docName}!\n` +
-                `Paket: ${data.label}\n` +
-                `Mayar.id dilewati. Langsung buka halaman scan QR WhatsApp!`
-              );
-              this.close();
-              window.location.href = data.connect_url;
-              return;
-            } else {
-              alert(`Peringatan Kupon: ${data.error || 'Kupon tidak valid'}. Melanjutkan uji coba standar...`);
-            }
-          } catch (err) {
-            console.warn('Coupon redeem error:', err);
-          }
+        const cleanPhone = phone.replace(/[^0-9]/g, '');
+        if (!cleanPhone || cleanPhone.length < 9) {
+          alert('Mohon masukkan nomor WhatsApp bisnis yang valid (minimal 9 digit).');
+          document.getElementById('trialPhone')?.focus();
+          return;
         }
 
-        const slug = clinicName.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
-        alert(
-          `🚀 SELAMAT, ${docName.toUpperCase()}!\n\n` +
-          `Akun bot uji coba 30 hari untuk "${clinicName}" telah disiapkan:\n` +
-          `• Deep-link Pasien Anda: https://wa.me/6281234567890?text=BOOK_${slug}\n` +
-          `• Nomor Terhubung: ${phone}\n` +
-          `• Kuota Gratis: 250 Booking\n\n` +
-          `Asisten Anda langsung online di WhatsApp sekarang juga!`
-        );
-        this.close();
+        if (this.submitBtn) {
+          this.submitBtn.disabled = true;
+          this.submitBtn.innerHTML = '⏳ Menyiapkan Akun & Membuat QR WhatsApp...';
+        }
+
+        try {
+          const resp = await fetch('/api/trial/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              business_name: clinicName,
+              owner_name: docName,
+              category: category,
+              phone: cleanPhone,
+              coupon: coupon
+            })
+          });
+
+          const data = await resp.json();
+          if (!resp.ok || !data.success) {
+            throw new Error(data.error || 'Gagal mendaftarkan uji coba.');
+          }
+
+          if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
+
+          // Smoothly reveal Celebration Screen
+          if (this.formContainer) this.formContainer.style.display = 'none';
+          if (this.successView) this.successView.style.display = 'block';
+
+          const titleEl = document.getElementById('trialSuccessTitle');
+          if (titleEl) {
+            titleEl.textContent = `Selamat, ${docName || 'Partner'}! Bot ${clinicName} Aktif`;
+          }
+
+          const bizNameEl = document.getElementById('trialSummaryBizName');
+          if (bizNameEl) bizNameEl.textContent = data.tenant.name;
+
+          const phoneEl = document.getElementById('trialSummaryPhone');
+          if (phoneEl) phoneEl.textContent = data.tenant.owner_phone;
+
+          const planEl = document.getElementById('trialSummaryPlan');
+          if (planEl) planEl.textContent = data.label;
+
+          this.currentWaLink = data.wa_deeplink || `https://wa.me/${cleanPhone}`;
+
+          if (this.connectActionBtn) {
+            this.connectActionBtn.href = data.connect_url;
+          }
+        } catch (err) {
+          alert(`⚠️ Pendaftaran gagal: ${err.message}`);
+          if (this.submitBtn) {
+            this.submitBtn.disabled = false;
+            this.submitBtn.innerHTML = '<span>🚀 Aktifkan Uji Coba &amp; Scan WhatsApp Sekarang →</span>';
+          }
+        }
       });
     }
   }
 
   open() {
+    // Reset to initial screen
+    if (this.formContainer) this.formContainer.style.display = 'block';
+    if (this.successView) this.successView.style.display = 'none';
+    if (this.couponAlert) this.couponAlert.style.display = 'none';
+    if (this.submitBtn) {
+      this.submitBtn.disabled = false;
+      this.submitBtn.innerHTML = '<span>🚀 Aktifkan Uji Coba &amp; Scan WhatsApp Sekarang →</span>';
+    }
     if (this.modal) this.modal.classList.add('active');
   }
 

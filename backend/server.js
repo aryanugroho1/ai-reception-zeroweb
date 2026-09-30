@@ -441,6 +441,133 @@ class AppServer {
         });
       }
 
+      // 2I. 30-Day Free Trial Onboarding: POST /api/trial/register
+      if (pathname === '/api/trial/register' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const bizName = (body.business_name || body.clinic_name || body.name || 'Bisnis Anda').trim();
+        const contactName = (body.contact_name || body.owner_name || body.name || '').trim();
+        const rawPhone = (body.phone || '').replace(/[^0-9]/g, '');
+
+        if (!rawPhone || rawPhone.length < 9) {
+          return this.sendJson(res, 400, {
+            error: 'Nomor WhatsApp bisnis tidak valid (minimal 9 digit angka)',
+            code: 'INVALID_PHONE'
+          });
+        }
+
+        const category = (body.category || 'GENERAL').toUpperCase();
+        const rawCoupon = (body.coupon || '').toUpperCase().trim();
+
+        // Check if user submitted a valid pilot coupon
+        const validCoupons = {
+          'PILOTPRO': { plan: 'PRO', durationDays: 365, label: 'Free Pro Tier 1 Tahun (Pilot Project)' },
+          'PILOTLIFETIME': { plan: 'LIFETIME_PARTNER', durationDays: 36500, label: 'Free Lifetime Partner Selamanya (Pilot Project)' },
+          'FREEPRO': { plan: 'PRO', durationDays: 365, label: 'Free Pro Tier 1 Tahun' }
+        };
+
+        let plan = 'STARTER';
+        let durationDays = 30;
+        let planLabel = 'Uji Coba 30 Hari Gratis (250 Kuota Booking)';
+
+        if (rawCoupon && validCoupons[rawCoupon]) {
+          plan = validCoupons[rawCoupon].plan;
+          durationDays = validCoupons[rawCoupon].durationDays;
+          planLabel = validCoupons[rawCoupon].label;
+        }
+
+        const subUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+        // Check if tenant already exists for this phone
+        let tenant = this.db.getTenantByPhone(rawPhone);
+        if (tenant) {
+          tenant.name = bizName || tenant.name;
+          tenant.subscription_plan = plan;
+          tenant.subscription_until = subUntil;
+          tenant.updated_at = new Date().toISOString();
+        } else {
+          const rawSlug = bizName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
+          const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
+          tenant = this.db.createTenant({
+            name: bizName,
+            slug: uniqueSlug,
+            owner_phone: rawPhone,
+            category: category,
+            subscription_plan: plan,
+            subscription_until: subUntil,
+            timezone: 'Asia/Jakarta'
+          });
+
+          // Seed default starter services by category
+          const starterServicesByCategory = {
+            'BARBER': [
+              { name: 'Gentleman Haircut & Styling', duration_minutes: 45, price: 75000 },
+              { name: 'Beard Trim & Hot Towel', duration_minutes: 30, price: 50000 },
+              { name: 'Hair Wash & Scalp Massage', duration_minutes: 20, price: 35000 }
+            ],
+            'SALON': [
+              { name: 'Hair Treatment & Styling', duration_minutes: 60, price: 150000 },
+              { name: 'Manicure & Nail Art', duration_minutes: 45, price: 120000 },
+              { name: 'Wash & Blow Signature', duration_minutes: 30, price: 60000 }
+            ],
+            'SPA': [
+              { name: 'Full Body Relaxation Massage (60m)', duration_minutes: 60, price: 180000 },
+              { name: 'Refleksi Kaki & Relaksasi (45m)', duration_minutes: 45, price: 100000 },
+              { name: 'Aromatherapy Herbal Spa (90m)', duration_minutes: 90, price: 220000 }
+            ],
+            'DENTAL': [
+              { name: 'Pembersihan Karang Gigi (Scaling)', duration_minutes: 40, price: 250000 },
+              { name: 'Tambal Gigi Estetik', duration_minutes: 45, price: 200000 },
+              { name: 'Konsultasi & Pemeriksaan Gigi', duration_minutes: 30, price: 100000 }
+            ],
+            'GENERAL': [
+              { name: 'Konsultasi Dokter Umum', duration_minutes: 20, price: 100000 },
+              { name: 'Pemeriksaan Kesehatan Rutin', duration_minutes: 30, price: 150000 }
+            ]
+          };
+
+          const servicesToCreate = starterServicesByCategory[category] || [
+            { name: 'Layanan Utama / Reservasi Slot', duration_minutes: 45, price: 150000 },
+            { name: 'Konsultasi / Treatment Tambahan', duration_minutes: 30, price: 100000 }
+          ];
+
+          try {
+            for (const s of servicesToCreate) {
+              this.db.createService({
+                tenant_id: tenant.id,
+                name: s.name,
+                duration_minutes: s.duration_minutes,
+                price: s.price,
+                is_active: true
+              });
+            }
+          } catch (e) {}
+        }
+
+        // Generate Baileys onboarding connect token
+        const token = this.baileys.generateConnectToken(tenant.id);
+        const connectUrl = `/connect?token=${token}`;
+        const waDeeplink = `https://wa.me/${rawPhone}?text=Halo%20${encodeURIComponent(tenant.name)}%2C%20saya%20ingin%20reservasi`;
+
+        return this.sendJson(res, 200, {
+          success: true,
+          message: 'Pendaftaran uji coba 30 hari berhasil disiapkan!',
+          plan: plan,
+          label: planLabel,
+          coupon_applied: !!(rawCoupon && validCoupons[rawCoupon]),
+          tenant: {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            owner_phone: tenant.owner_phone,
+            category: tenant.category,
+            plan: tenant.subscription_plan,
+            subscription_until: tenant.subscription_until.slice(0, 10)
+          },
+          connect_url: connectUrl,
+          wa_deeplink: waDeeplink
+        });
+      }
+
       // 3. Create Booking: POST /api/bookings
       if (pathname === '/api/bookings' && method === 'POST') {
         const body = await this.readRequestBody(req);
