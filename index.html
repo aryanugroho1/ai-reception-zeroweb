@@ -693,132 +693,180 @@
   </footer>
 
   <!-- ========================================================================
-       MODAL 1: Mayar.id Dynamic QRIS Instant Payment Simulator (PRD Section 5 & 6)
+       MODAL 1: Paket Langganan & Onboarding WhatsApp Bot (PRD Section 5 & 6)
        ======================================================================== -->
   <div class="modal-overlay" id="mayarModal">
     <div class="modal-card">
-      <button class="modal-close-btn" id="closeMayarModal">&times;</button>
+      <button class="modal-close-btn" id="closeMayarModal" aria-label="Tutup">&times;</button>
       
-      <div class="qris-header">
-        <div class="qris-badge">🛡️ Pembayaran Resmi Mayar.id</div>
-        <h3 class="qris-title">Tagihan Aktivasi Paket Bot</h3>
-        <p style="font-size:0.85rem; color:#94a3b8;">Scan kode QRIS di bawah menggunakan BCA, Mandiri, GoPay, OVO, atau ShopeePay</p>
-      </div>
-
-      <div class="qris-invoice-summary">
-        <div class="invoice-row">
-          <span>No. Tagihan:</span>
-          <span style="font-family:var(--font-mono); color:#cbd5e1;" id="modalInvoiceNo">INV-MYR-849201</span>
-        </div>
-        <div class="invoice-row">
-          <span>Paket Dipilih:</span>
-          <span id="modalPlanName">Pro Monthly (Rekomendasi)</span>
-        </div>
-        <div class="invoice-row">
-          <span>Masa Aktif:</span>
-          <span>30 Hari (Perpanjangan Otomatis)</span>
-        </div>
-        <div class="invoice-row total">
-          <span>Total Pembayaran:</span>
-          <span class="price-tag" id="modalPlanAmount">Rp 199.000</span>
-        </div>
-      </div>
-
-      <!-- Coupon & Pilot Promo Code Box (Skip Mayar.id) -->
-      <div class="qris-coupon-box" id="qrisCouponBox" style="margin: 1rem 0; padding: 14px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 14px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <span style="font-size:0.84rem; font-weight:700; color:#0a0f1d;">🎟️ Punya Kupon Akses Pilot?</span>
-          <span style="font-size:0.72rem; color:#008767; font-weight:800; background:rgba(0,210,158,0.15); padding:2px 8px; border-radius:6px;">SKIP MAYAR.ID</span>
-        </div>
-        <div style="display:flex; gap:8px;">
-          <input type="text" id="couponCodeInput" placeholder="Masukkan kode: PILOTPRO / PILOTLIFETIME" style="flex:1; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:10px; font-size:0.84rem; font-family:var(--font-mono); text-transform:uppercase; background:#fff; color:#0a0f1d; outline:none;">
-          <button type="button" class="btn btn-secondary" id="btnApplyCoupon" style="padding:9px 16px; font-size:0.84rem; font-weight:700;">Terapkan</button>
-        </div>
-        <div id="couponStatusMsg" style="font-size:0.78rem; margin-top:8px; display:none; line-height:1.4;"></div>
-      </div>
-
-      <!-- Free Pilot WhatsApp Onboarding Box (Shown when Coupon Valid) -->
-      <div id="pilotCouponFormBox" style="display:none; margin: 1rem 0; padding: 16px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 16px; text-align: left;">
-        <div style="font-weight: 800; color: #166534; font-size: 0.94rem; margin-bottom: 4px;">
-          🎉 Kupon Pilot Valid! Pembayaran Mayar.id Dilewati (Gratis Rp 0)
-        </div>
-        <div style="font-size: 0.8rem; color: #15803d; margin-bottom: 14px;" id="pilotCouponDesc">
-          Paket PRO gratis aktif untuk nomor WhatsApp bisnis Anda.
-        </div>
-        
-        <div style="margin-bottom: 10px;">
-          <label style="display:block; font-size:0.8rem; font-weight:700; color:#1e293b; margin-bottom:4px;">Nama Bisnis / Salon / Barber / Dokter: <span style="color:#ef4444;">*</span></label>
-          <input type="text" id="pilotBizName" placeholder="Contoh: The Heritage Barbershop / Ayra Salon / drg. Maya" required style="width:100%; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; background:#fff; color:#0a0f1d; outline:none;">
+      <!-- STEP 1: Paket & Kupon (Tanpa QR Awal) -->
+      <div id="mayarStep1Package">
+        <div class="qris-header">
+          <div class="qris-badge">⭐ Rincian Langganan Bot WhatsApp</div>
+          <h3 class="qris-title">Aktivasi Paket Layanan</h3>
+          <p style="font-size:0.85rem; color:#475569;">Pilih paket dan terapkan kode kupon promo jika Anda memiliki akses gratis pilot.</p>
         </div>
 
-        <div style="margin-bottom: 14px;">
-          <label style="display:block; font-size:0.8rem; font-weight:700; color:#1e293b; margin-bottom:4px;">Nomor WhatsApp Bisnis yang akan dihubungkan: <span style="color:#ef4444;">*</span></label>
-          <input type="tel" id="pilotBizPhone" placeholder="Contoh: 081234567890" required style="width:100%; padding:9px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; background:#fff; color:#0a0f1d; outline:none;">
-          <span style="font-size:0.72rem; color:#64748b;">Nomor ini akan langsung dibuatkan QR Code untuk di-scan dengan WhatsApp.</span>
+        <div class="qris-invoice-summary">
+          <div class="invoice-row">
+            <span>No. Tagihan:</span>
+            <span style="font-family:var(--font-mono); color:#1e293b; font-weight:700;" id="modalInvoiceNo">INV-MYR-849201</span>
+          </div>
+          <div class="invoice-row">
+            <span>Paket Dipilih:</span>
+            <span id="modalPlanName" style="font-weight:700;">Pro Monthly (Rekomendasi)</span>
+          </div>
+          <div class="invoice-row">
+            <span>Masa Aktif:</span>
+            <span id="modalPlanDuration">30 Hari (Perpanjangan Otomatis)</span>
+          </div>
+          <div class="invoice-row total">
+            <span>Total Pembayaran:</span>
+            <span class="price-tag" id="modalPlanAmount">Rp 199.000</span>
+          </div>
         </div>
 
-        <button type="button" class="btn btn-primary btn-pulse" id="btnSubmitPilotCoupon" style="width:100%; padding:12px; font-size:0.95rem;">
-          🚀 Lanjut Scan WhatsApp (Gratis) →
+        <!-- Coupon & Promo Code Box -->
+        <div class="qris-coupon-box" id="qrisCouponBox" style="margin: 1.2rem 0; padding: 14px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:0.84rem; font-weight:700; color:#0a0f1d;">🎟️ Punya Kupon Akses Promo?</span>
+            <span style="font-size:0.72rem; color:#008767; font-weight:800; background:rgba(0,210,158,0.15); padding:2px 8px; border-radius:6px;">LIFETIME / FREE PRO</span>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="couponCodeInput" placeholder="Kupon: lifetimefree / freepro" style="flex:1; padding:10px 12px; border:1.5px solid #cbd5e1; border-radius:10px; font-size:0.86rem; font-family:var(--font-mono); text-transform:uppercase; background:#fff; color:#0a0f1d; outline:none;">
+            <button type="button" class="btn btn-secondary" id="btnApplyCoupon" style="padding:10px 16px; font-size:0.84rem; font-weight:700;">Terapkan</button>
+          </div>
+          <div id="couponStatusMsg" style="font-size:0.8rem; margin-top:8px; display:none; line-height:1.4; padding:6px 10px; border-radius:8px;"></div>
+        </div>
+
+        <button type="button" class="trial-submit-btn" id="btnMayarNext">
+          <span>Lanjut / Next →</span>
+        </button>
+
+        <button type="button" class="btn btn-secondary" style="width:100%; margin-top:8px;" onclick="document.getElementById('mayarModal').classList.remove('active')">
+          Batalkan
         </button>
       </div>
 
-      <!-- Realistic Dynamic QR Code -->
-      <div class="qris-box" id="qrisBoxContainer">
-        <div class="qris-logo-row">
-          <span>QRIS NASIONAL</span>
-          <span style="color:#0284c7;">MAYAR.ID INSTANT</span>
-        </div>
-        
-        <div class="qris-qr-code">
-          <svg viewBox="0 0 100 100" width="180" height="180">
-            <!-- Corners -->
-            <rect x="5" y="5" width="28" height="28" fill="#000" rx="3"/>
-            <rect x="9" y="9" width="20" height="20" fill="#fff" rx="2"/>
-            <rect x="13" y="13" width="12" height="12" fill="#000" rx="1"/>
-
-            <rect x="67" y="5" width="28" height="28" fill="#000" rx="3"/>
-            <rect x="71" y="9" width="20" height="20" fill="#fff" rx="2"/>
-            <rect x="75" y="13" width="12" height="12" fill="#000" rx="1"/>
-
-            <rect x="5" y="67" width="28" height="28" fill="#000" rx="3"/>
-            <rect x="9" y="71" width="20" height="20" fill="#fff" rx="2"/>
-            <rect x="13" y="75" width="12" height="12" fill="#000" rx="1"/>
-
-            <!-- Data Blocks Simulation -->
-            <rect x="37" y="7" width="6" height="6" fill="#000"/>
-            <rect x="47" y="7" width="12" height="6" fill="#000"/>
-            <rect x="37" y="17" width="6" height="14" fill="#000"/>
-            <rect x="47" y="21" width="12" height="6" fill="#000"/>
-            <rect x="7" y="37" width="12" height="6" fill="#000"/>
-            <rect x="7" y="47" width="6" height="14" fill="#000"/>
-            <rect x="23" y="37" width="10" height="10" fill="#000"/>
-            <rect x="37" y="37" width="26" height="26" fill="#000" rx="2"/>
-            <circle cx="50" cy="50" r="5" fill="#10b981"/>
-            <rect x="67" y="37" width="12" height="8" fill="#000"/>
-            <rect x="83" y="41" width="10" height="18" fill="#000"/>
-            <rect x="37" y="67" width="8" height="12" fill="#000"/>
-            <rect x="49" y="71" width="12" height="8" fill="#000"/>
-            <rect x="41" y="83" width="20" height="10" fill="#000"/>
-            <rect x="67" y="67" width="12" height="6" fill="#000"/>
-            <rect x="83" y="67" width="10" height="26" fill="#000"/>
-            <rect x="67" y="77" width="12" height="16" fill="#000"/>
-          </svg>
+      <!-- STEP 2: Input Info Lengkap Sesuai Kebutuhan Database -->
+      <div id="mayarStep2Info" style="display:none;">
+        <div class="trial-header">
+          <div class="trial-badge">📋 Langkah 2 dari 3 • Data Akun</div>
+          <h3 class="trial-title">Informasi Bisnis &amp; WhatsApp</h3>
+          <p class="trial-subtitle">Lengkapi data di bawah untuk pencatatan database dan sinkronisasi bot WhatsApp bisnis Anda.</p>
         </div>
 
-        <div class="qris-timer-row">
-          <span>Berlaku hingga:</span>
-          <span class="timer-countdown" id="qrisTimer">30:00</span>
-        </div>
+        <form id="mayarInfoForm">
+          <div class="trial-field-group">
+            <label class="trial-field-label" for="mayarBizName">
+              <span>Nama Bisnis / Salon / Barber / Dokter / Klinik <span style="color:#ef4444;">*</span></span>
+            </label>
+            <div class="trial-field-wrapper">
+              <span class="trial-field-icon">🏪</span>
+              <input type="text" id="mayarBizName" class="trial-input" required placeholder="Contoh: The Heritage Barbershop / Ayra Salon / Maya Dental Clinic">
+            </div>
+          </div>
+
+          <div class="trial-form-grid">
+            <div class="trial-field-group">
+              <label class="trial-field-label" for="mayarBizCategory">
+                <span>Kategori Layanan <span style="color:#ef4444;">*</span></span>
+              </label>
+              <div class="trial-field-wrapper">
+                <span class="trial-field-icon">🏷️</span>
+                <select id="mayarBizCategory" class="trial-select">
+                  <option value="SALON">💇 Salon &amp; Studio Kecantikan</option>
+                  <option value="BARBER">💈 Barbershop &amp; Men's Grooming</option>
+                  <option value="SPA">💆 Spa, Pijat &amp; Refleksi</option>
+                  <option value="DENTAL">🦷 Dokter Gigi &amp; Dental Care</option>
+                  <option value="GENERAL">🩺 Dokter Umum &amp; Klinik Pratama</option>
+                  <option value="OTHER">💼 Bisnis Reservasi Waktu Lainnya</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="trial-field-group">
+              <label class="trial-field-label" for="mayarOwnerName">
+                <span>Nama Pemilik / PIC <span style="color:#ef4444;">*</span></span>
+              </label>
+              <div class="trial-field-wrapper">
+                <span class="trial-field-icon">👤</span>
+                <input type="text" id="mayarOwnerName" class="trial-input" required placeholder="Contoh: Kevin / drg. Maya">
+              </div>
+            </div>
+          </div>
+
+          <div class="trial-field-group">
+            <label class="trial-field-label" for="mayarBizPhone">
+              <span>Nomor WhatsApp Bisnis yang Dihubungkan <span style="color:#ef4444;">*</span></span>
+              <span style="font-size:0.72rem; color:#008767; font-weight:700;">1 QR untuk 1 Nomor</span>
+            </label>
+            <div class="trial-field-wrapper">
+              <span class="trial-field-icon">📱</span>
+              <input type="tel" id="mayarBizPhone" class="trial-input" required placeholder="Contoh: 081234567890">
+            </div>
+            <span style="font-size:0.72rem; color:#64748b; margin-top:3px; display:block;">
+              Nomor WhatsApp ini yang akan membalas chat pelanggan secara otomatis.
+            </span>
+          </div>
+
+          <div class="trial-field-group">
+            <label class="trial-field-label" for="mayarBizEmail">
+              <span>Alamat Email Pemilik <span style="color:#ef4444;">*</span></span>
+              <span style="font-size:0.72rem; color:#64748b; font-weight:500;">Untuk Kirim QR Code</span>
+            </label>
+            <div class="trial-field-wrapper">
+              <span class="trial-field-icon">✉️</span>
+              <input type="email" id="mayarBizEmail" class="trial-input" required placeholder="Contoh: owner@bisnis.com">
+            </div>
+          </div>
+
+          <button type="submit" class="trial-submit-btn" id="btnSubmitMayarInfo">
+            <span>Lanjut / Next (Generate QR WhatsApp) →</span>
+          </button>
+
+          <button type="button" class="btn btn-secondary" id="btnBackToStep1" style="width:100%; margin-top:8px;">
+            ← Kembali ke Pilihan Paket
+          </button>
+        </form>
       </div>
 
-      <div class="qris-action-btns" id="qrisActionBtns">
-        <button class="btn btn-primary btn-pulse" id="simulatePaymentBtn">
-          ⚡ Simulasikan Scan QRIS & Webhook Mayar.id
-        </button>
-        <button class="btn btn-secondary" onclick="document.getElementById('mayarModal').classList.remove('active')">
-          Batalkan / Pilih Metode Lain
-        </button>
+      <!-- STEP 3: Generate QR & Sinkronisasi Baileys (1 QR untuk 1 Nomor) -->
+      <div id="mayarStep3Qr" style="display:none; text-align:center;">
+        <div class="trial-badge" style="background:rgba(0,210,158,0.18); color:#008767; border-color:#00d29e;">
+          🟢 1 QR Code untuk 1 Nomor WhatsApp
+        </div>
+        <h3 class="trial-title" id="mayarQrTitle">Scan QR WhatsApp Bisnis Anda</h3>
+        <p class="trial-subtitle" id="mayarQrSubtitle">Pindai kode QR di bawah menggunakan WhatsApp di ponsel bisnis Anda untuk menghubungkan bot ke sistem Baileys.</p>
+
+        <!-- QR Display Box -->
+        <div style="background:#fff; border:2px solid #e2e8f0; border-radius:20px; padding:1.4rem; display:flex; flex-direction:column; align-items:center; margin:1.2rem auto; max-width:320px; box-shadow:0 10px 25px rgba(15,23,42,0.06);">
+          <div style="width:100%; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:0.75rem; font-weight:800; color:#1e293b; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">
+            <span>WHATSAPP BAILEYS</span>
+            <span style="color:#008767;">1 NOMOR : 1 QR</span>
+          </div>
+
+          <img id="baileysModalQrImg" src="" alt="WhatsApp QR Code" style="width:230px; height:230px; border-radius:10px; display:block; object-fit:contain;">
+
+          <div id="baileysModalQrStatus" style="margin-top:12px; font-size:0.82rem; font-weight:700; color:#d97706; display:flex; align-items:center; gap:6px;">
+            <span>🟡 Menunggu Scan WhatsApp dari HP Anda...</span>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <button type="button" class="trial-submit-btn" id="btnCloseAndSendEmailBtn" style="background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:#fff; box-shadow:0 8px 20px rgba(2,132,199,0.35);">
+            ✉️ Tutup dan Kirim QR ke Email
+          </button>
+          <a id="btnOpenConnectTab" href="#" target="_blank" class="btn btn-secondary" style="width:100%; text-align:center; padding:10px; font-size:0.86rem; font-weight:700; text-decoration:none;">
+            📲 Buka Halaman Scan di Tab Penuh
+          </a>
+        </div>
+
+        <p style="font-size:0.75rem; color:#64748b; margin-top:14px; line-height:1.5;">
+          💡 <strong>Cara Scan:</strong> Buka WhatsApp di HP Anda &gt; Menu Titik Tiga / Pengaturan &gt; Perangkat Tertaut &gt; Tautkan Perangkat &gt; Arahkan kamera ke layar ini.
+        </p>
       </div>
+
     </div>
   </div>
 

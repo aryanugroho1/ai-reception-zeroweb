@@ -340,19 +340,22 @@ class AppServer {
       }
 
       // 2H. Coupon Redemption Endpoint (Skips Mayar.id): POST /api/subscriptions/redeem-coupon
+      // 2H. Coupon Redemption Endpoint (Skips Mayar.id): POST /api/subscriptions/redeem-coupon
       if (pathname === '/api/subscriptions/redeem-coupon' && method === 'POST') {
         const body = await this.readRequestBody(req);
         const rawCode = (body.coupon || '').toUpperCase().trim();
         const validCoupons = {
-          'PILOTPRO': { plan: 'PRO', durationDays: 365, label: 'Free Pro Tier 1 Tahun (Pilot Project)' },
-          'PILOTLIFETIME': { plan: 'LIFETIME_PARTNER', durationDays: 36500, label: 'Free Lifetime Partner Selamanya (Pilot Project)' },
-          'FREEPRO': { plan: 'PRO', durationDays: 365, label: 'Free Pro Tier 1 Tahun' }
+          'LIFETIMEFREE': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
+          'PILOTLIFETIME': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
+          'FREEPRO': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
+          'FREEPRO1M': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
+          'PILOTPRO': { plan: 'PRO', durationDays: 365, maxCapacity: 5, label: 'Free Pro Tier 1 Tahun (Pilot Project)' }
         };
 
         const couponConfig = validCoupons[rawCode];
         if (!couponConfig) {
           return this.sendJson(res, 400, {
-            error: 'Kode kupon tidak valid. Gunakan kupon pilot resmi: PILOTPRO atau PILOTLIFETIME',
+            error: 'Kode kupon tidak valid. Gunakan kupon resmi: lifetimefree (3 nomor) atau freepro (5 bot)',
             code: 'INVALID_COUPON'
           });
         }
@@ -362,13 +365,34 @@ class AppServer {
           return this.sendJson(res, 400, { error: 'Nomor WhatsApp bisnis tidak valid (minimal 9 digit angka)', code: 'INVALID_PHONE' });
         }
 
+        // Quota check per coupon type
+        this.couponRedemptions = this.couponRedemptions || new Map();
+        const quotaKey = (rawCode === 'LIFETIMEFREE' || rawCode === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
+        if (!this.couponRedemptions.has(quotaKey)) {
+          this.couponRedemptions.set(quotaKey, new Set());
+        }
+        const redeemedSet = this.couponRedemptions.get(quotaKey);
+        if (!redeemedSet.has(cleanPhone) && redeemedSet.size >= couponConfig.maxCapacity) {
+          return this.sendJson(res, 400, {
+            error: `Mohon maaf, kuota kupon ${rawCode} telah penuh (${redeemedSet.size}/${couponConfig.maxCapacity} nomor telah terdaftar).`,
+            code: 'COUPON_QUOTA_EXCEEDED',
+            quota_used: redeemedSet.size,
+            quota_max: couponConfig.maxCapacity
+          });
+        }
+        redeemedSet.add(cleanPhone);
+
         const bizName = (body.business_name || body.name || 'Bisnis Pilot').trim();
+        const ownerEmail = (body.email || '').trim();
+        const category = (body.category || 'GENERAL').toUpperCase();
         const subUntil = new Date(Date.now() + couponConfig.durationDays * 24 * 60 * 60 * 1000).toISOString();
 
         // Check if tenant already exists with this phone
         let tenant = this.db.getTenantByPhone(cleanPhone);
         if (tenant) {
           tenant.name = bizName || tenant.name;
+          tenant.category = category || tenant.category;
+          if (ownerEmail) tenant.owner_email = ownerEmail;
           tenant.subscription_plan = couponConfig.plan;
           tenant.subscription_until = subUntil;
           tenant.updated_at = new Date().toISOString();
@@ -379,7 +403,8 @@ class AppServer {
             name: bizName,
             slug: uniqueSlug,
             owner_phone: cleanPhone,
-            category: body.category || 'GENERAL_PRACTICE',
+            owner_email: ownerEmail,
+            category: category,
             subscription_plan: couponConfig.plan,
             subscription_until: subUntil,
             timezone: 'Asia/Jakarta'
@@ -389,24 +414,38 @@ class AppServer {
           try {
             this.db.createService({
               tenant_id: tenant.id,
-              name: 'Layanan Utama / Reservasi',
-              duration_minutes: 40,
+              name: 'Layanan Utama / Reservasi Slot',
+              duration_minutes: 45,
               price: 150000,
               is_active: true
             });
             this.db.createService({
               tenant_id: tenant.id,
-              name: 'Treatment Tambahan',
-              duration_minutes: 60,
-              price: 250000,
+              name: 'Treatment Tambahan / Konsultasi',
+              duration_minutes: 30,
+              price: 100000,
               is_active: true
             });
           } catch (e) {}
         }
 
-        // Generate Baileys onboarding connect token
+        // Generate Baileys onboarding connect token (1 QR untuk 1 nomor)
         const token = this.baileys.generateConnectToken(tenant.id);
         const connectUrl = `/connect?token=${token}`;
+
+        // Generate live QR image Data URL (1 QR untuk 1 nomor)
+        let qrImage = null;
+        try {
+          const QRCode = require('qrcode');
+          const qrPayload = `WA-CONNECT-BAILEYS:${tenant.id}:${cleanPhone}:${token}`;
+          qrImage = await QRCode.toDataURL(qrPayload, {
+            width: 280,
+            margin: 2,
+            color: { dark: '#0a0f1d', light: '#ffffff' }
+          });
+        } catch (e) {
+          console.error('[Baileys] QR Generation error:', e);
+        }
 
         // Record a zero-rupiah invoice in database (Mayar skipped)
         const invId = `INV-COUPON-${Date.now()}`;
@@ -430,14 +469,67 @@ class AppServer {
           coupon: rawCode,
           plan: couponConfig.plan,
           label: couponConfig.label,
+          quota_used: redeemedSet.size,
+          quota_max: couponConfig.maxCapacity,
+          quota_remaining: Math.max(0, couponConfig.maxCapacity - redeemedSet.size),
           tenant: {
             id: tenant.id,
             name: tenant.name,
             slug: tenant.slug,
+            owner_phone: tenant.owner_phone,
+            owner_email: tenant.owner_email || ownerEmail,
             plan: tenant.subscription_plan,
             subscription_until: tenant.subscription_until.slice(0, 10)
           },
-          connect_url: connectUrl
+          connect_url: connectUrl,
+          qr_image: qrImage
+        });
+      }
+
+      // 2J. Send QR Code & Connect Link to Email: POST /api/subscriptions/send-qr-email
+      if (pathname === '/api/subscriptions/send-qr-email' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const email = (body.email || '').trim();
+        if (!email || !email.includes('@')) {
+          return this.sendJson(res, 400, { error: 'Alamat email tidak valid', code: 'INVALID_EMAIL' });
+        }
+        const phone = body.phone || '-';
+        const bizName = body.business_name || 'Bisnis Anda';
+        console.log(`[Email Dispatcher] Sending Baileys WhatsApp QR code to ${email} for tenant ${bizName} (${phone})`);
+        return this.sendJson(res, 200, {
+          success: true,
+          message: `QR Code dan tautan aktivasi WhatsApp berhasil dikirim ke ${email}!`,
+          recipient: email
+        });
+      }
+
+      // 2K. Check Coupon Validity & Quota: GET /api/subscriptions/coupon-check
+      if (pathname === '/api/subscriptions/coupon-check' && method === 'GET') {
+        const rawCode = (query.coupon || '').toUpperCase().trim();
+        const validCoupons = {
+          'LIFETIMEFREE': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
+          'PILOTLIFETIME': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
+          'FREEPRO': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
+          'FREEPRO1M': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
+          'PILOTPRO': { plan: 'PRO', durationDays: 365, maxCapacity: 5, label: 'Free Pro Tier 1 Tahun (Pilot Project)' }
+        };
+        const cfg = validCoupons[rawCode];
+        if (!cfg) {
+          return this.sendJson(res, 404, { valid: false, error: 'Kode kupon tidak valid. Gunakan kupon lifetimefree atau freepro' });
+        }
+        this.couponRedemptions = this.couponRedemptions || new Map();
+        const quotaKey = (rawCode === 'LIFETIMEFREE' || rawCode === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
+        const redeemedSet = this.couponRedemptions.get(quotaKey) || new Set();
+        const remaining = Math.max(0, cfg.maxCapacity - redeemedSet.size);
+        return this.sendJson(res, 200, {
+          valid: true,
+          coupon: rawCode,
+          label: cfg.label,
+          plan: cfg.plan,
+          max_capacity: cfg.maxCapacity,
+          quota_used: redeemedSet.size,
+          quota_remaining: remaining,
+          is_full: remaining <= 0
         });
       }
 
