@@ -6,22 +6,22 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
-  --bg-admin-dark: #0a0e11;
-  --bg-admin-card: #13191e;
-  --bg-admin-elevated: #1a232a;
-  --border-admin: #222d36;
-  --border-highlight: rgba(73, 197, 182, 0.35);
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-faint: #64748b;
+  --bg-admin-dark: #ebedf0;
+  --bg-admin-card: #ffffff;
+  --bg-admin-elevated: #f4f6f8;
+  --border-admin: #dce1e7;
+  --border-highlight: rgba(35, 168, 149, 0.35);
+  --text-main: #111827;
+  --text-muted: #4b5563;
+  --text-faint: #6b7280;
   
-  --emerald-500: #36bfa8;
-  --emerald-400: #49c5b6;
+  --emerald-500: #23a895;
+  --emerald-400: #36bfa8;
   --blue-500: #ff6b4a; /* Swab Coral */
   --blue-400: #ff856b;
-  --purple-400: #9b8afb; /* Swab Lilac */
-  --amber-400: #ffc83b; /* Swab Sunshine */
-  --rose-400: #ff5252;
+  --purple-400: #7c3aed; /* Swab Lilac */
+  --amber-400: #d97706; /* Swab Sunshine */
+  --rose-400: #e11d48;
 
   --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
@@ -46,7 +46,7 @@ body {
    TOPBAR
    ========================================================================== */
 .admin-topbar {
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(235, 237, 240, 0.9);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-admin);
   position: sticky;

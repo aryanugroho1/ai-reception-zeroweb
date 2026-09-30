@@ -105,15 +105,15 @@
           
           <div class="dual-sync-header-badge">
             <span class="pulse-dot"></span>
-            <strong>⚡ SIMULASI DUAL SYNC LANGSUNG (PASIEN &amp; DOKTER BERDAMPINGAN)</strong>
-            <span class="dual-sync-subtext">— Cobalah alur pendaftaran di HP Pasien (kiri), lalu kendalikan antrean &amp; dashboard di HP Dokter (kanan).</span>
+            <strong>⚡ SIMULASI BOOKING KE NOMOR ASLI DOKTER / SALON</strong>
+            <span class="dual-sync-subtext">— Customer chat langsung ke nomor WhatsApp bisnis Anda (kiri), dan bot otomatis menjadwalkan serta mengirim notifikasi ke HP Anda (kanan).</span>
           </div>
 
           <div class="dual-phone-grid" id="dualPhoneGrid">
             
-            <!-- PHONE 1: PERSPEKTIF PASIEN -->
+            <!-- PHONE 1: PERSPEKTIF CUSTOMER / PASIEN -->
             <div class="phone-device" id="phonePatientWrap">
-              <span class="phone-role-badge patient">📱 HP Pasien (drg. Maya)</span>
+              <span class="phone-role-badge patient">📱 Chat Customer / Pasien</span>
               <div class="phone-screen">
                 
                 <!-- Status Bar -->
@@ -126,15 +126,15 @@
                   </div>
                 </div>
 
-                <!-- WhatsApp Chat Header -->
+                <!-- WhatsApp Chat Header (Langsung ke Nomor Bisnis Dokter/Salon) -->
                 <div class="wa-chat-header">
                   <span class="wa-header-back">‹</span>
-                  <div class="wa-avatar">🦷</div>
+                  <div class="wa-avatar" id="waHeaderAvatar">🦷</div>
                   <div class="wa-header-info">
                     <div class="wa-header-title" id="waHeaderTitle">
-                      Asisten drg. Maya 🦷 <span class="wa-verified-badge">✓</span>
+                      drg. Maya Dental Care 🦷 <span class="wa-verified-badge">✓</span>
                     </div>
-                    <div class="wa-header-status" id="waHeaderStatus">Online • Auto Slot Booking</div>
+                    <div class="wa-header-status" id="waHeaderStatus">+62 812-9988-7766 • Bisnis Terverifikasi • Online</div>
                   </div>
                   <div class="wa-header-actions">
                     <span>📹</span>
@@ -144,9 +144,9 @@
 
                 <!-- Simulator Scenario Selector Bar -->
                 <div class="wa-mode-bar" id="waModeBar">
-                  <button class="mode-btn active" data-mode="dental">🦷 Gigi (Slot)</button>
-                  <button class="mode-btn" data-mode="general">🩺 Umum (Antrean)</button>
-                  <button class="mode-btn" data-mode="reschedule">🔄 Reschedule</button>
+                  <button class="mode-btn active" data-mode="dental">🦷 Dokter Gigi (drg. Maya)</button>
+                  <button class="mode-btn" data-mode="salon">💇‍♀️ Salon &amp; Spa (Ayra Studio)</button>
+                  <button class="mode-btn" data-mode="general">🩺 Dokter Umum (dr. Rian)</button>
                 </div>
 
                 <!-- Chat Stream Body Canvas -->
@@ -576,13 +576,13 @@
     <!-- ====================================================================
          SECTION 8: FAQ ACCORDION
          ==================================================================== -->
-    <section id="faq" style="background: rgba(14, 21, 36, 0.4);">
+    <section id="faq">
       <div class="container">
         <div class="section-header">
           <div class="section-tag">Tanya Jawab (FAQ)</div>
-          <h2 class="section-title">Pertanyaan yang Sering Diajukan Dokter</h2>
+          <h2 class="section-title">Pertanyaan yang Sering Diajukan Pemilik Usaha</h2>
           <p class="section-desc">
-            Segala hal yang perlu Anda ketahui mengenai integrasi sistem dan keamanan data.
+            Segala hal yang perlu Anda ketahui mengenai integrasi sistem dan kemudahan setup.
           </p>
         </div>
 
@@ -590,11 +590,11 @@
           
           <div class="faq-item active">
             <div class="faq-question">
-              <span>Apakah saya harus membeli nomor WhatsApp baru?</span>
+              <span>Apakah pasien atau customer langsung menghubungi nomor WhatsApp saya?</span>
               <span class="faq-icon">+</span>
             </div>
             <div class="faq-answer" style="max-height: 200px;">
-              Tidak wajib. Sistem kami berjalan di atas gateway Baileys multi-tenant yang dapat menggunakan nomor bot pusat bersama (dengan slug pengenal praktek Anda), atau Anda dapat menghubungkan nomor khusus klinik Anda sendiri jika diinginkan.
+              <strong>Ya, 100% langsung ke nomor Anda!</strong> Begitu Anda berlangganan atau memulai trial, sistem kami mengirimkan link aktivasi instan untuk menautkan nomor WhatsApp praktek atau salon Anda (cukup scan QR sekali dari fitur Perangkat Tertaut di WhatsApp HP Anda). Customer tidak perlu simpan nomor baru atau ketik kode rumit.
             </div>
           </div>
 

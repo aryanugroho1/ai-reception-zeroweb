@@ -97,32 +97,22 @@ let APPOINTMENTS_DATA = [
 
 let IS_PRACTICE_OPEN = true;
 
-// --- Scenarios Data for Patient Perspective Simulator ---
+// --- Scenarios Data for Customer-to-Business Booking Simulator ---
 const SCENARIOS = {
   dental: {
-    title: 'Asisten drg. Maya 🦷',
-    status: 'Online • Auto Slot Booking',
-    chips: ['BOOK_DRG_MAYA', '1', 'A - Dimas Arya', 'Batal'],
+    title: 'drg. Maya Dental Care 🦷',
+    status: '+62 812-9988-7766 • Bisnis Terverifikasi • Online',
+    chips: ['Halo dok, mau scaling gigi hari ini', 'A - Dimas Arya', 'Batal'],
     messages: [
       {
         sender: 'user',
-        text: 'BOOK_DRG_MAYA',
+        text: 'Halo dok, mau tanya ada jadwal kosong untuk scaling karang gigi sore ini?',
         time: '10:14'
       },
       {
         sender: 'bot',
-        text: 'Halo! Selamat datang di *Praktek Mandiri drg. Maya* 🦷\n\nSilakan pilih tindakan medis:\n1️⃣ Scaling Karang Gigi (40 mnt)\n2️⃣ Tambal Estetik (45 mnt)\n3️⃣ Ekstraksi/Cabut Gigi (60 mnt)',
+        text: 'Halo Kak! Selamat datang di *drg. Maya Dental Care* 🦷\n\nUntuk tindakan *Scaling Karang Gigi (±45 menit)*, berikut slot terdekat yang masih tersedia hari ini:\n*A.* 16:00 WIB (Tersedia)\n*B.* 17:30 WIB (Tersedia)\n\nSilakan balas dengan pilihan huruf & nama lengkap ya Kak. Contoh: `A - Dimas Arya`',
         time: '10:14'
-      },
-      {
-        sender: 'user',
-        text: '1',
-        time: '10:15'
-      },
-      {
-        sender: 'bot',
-        text: 'Pilihan Anda: *Scaling Karang Gigi*.\n\nBerikut pilihan slot kosong hari ini:\n*A.* 16:00 WIB (Tersedia)\n*B.* 17:30 WIB (Tersedia)\n\nBalas dengan *[Huruf Opsi] - [Nama Anda]*, contoh: `A - Budi`',
-        time: '10:15'
       },
       {
         sender: 'user',
@@ -131,64 +121,88 @@ const SCENARIOS = {
       },
       {
         sender: 'bot',
-        text: '✅ *Pendaftaran Berhasil Terkonfirmasi!*\n━━━━━━━━━━━━━━━━━━━━\n🏷️ No. Tiket: *#DNT-104*\n👤 Pasien: *Dimas Arya*\n🩺 Layanan: *Scaling Gigi (40m)*\n🗓️ Jadwal: *Hari ini, 16:00 WIB*\n📍 Lokasi: Jl. Anggrek No. 14, Bandung\n━━━━━━━━━━━━━━━━━━━━\n_Mohon hadir 10 menit sebelum jam temu untuk sterilisasi. Ketik RESCHEDULE jika ingin ubah jam (maks H-2 jam)._',
-        time: '10:15'
+        text: '✅ *Booking Berhasil Dikonfirmasi!*\n━━━━━━━━━━━━━━━━━━━━\n🏷️ No. Booking: *#DNT-104*\n👤 Pasien: *Dimas Arya*\n🩺 Tindakan: *Scaling Karang Gigi*\n🗓️ Waktu: *Hari ini, 16:00 WIB*\n📍 Lokasi: *Jl. Anggrek No. 14, Bandung*\n━━━━━━━━━━━━━━━━━━━━\n_Mohon hadir 10 menit sebelum jam temu untuk sterilisasi. Notifikasi pengingat otomatis akan dikirimkan H-1 jam ke WhatsApp ini._',
+        time: '10:15',
+        isConfirmed: true,
+        bookingDetails: {
+          clientName: 'Dimas Arya',
+          service: 'Scaling Karang Gigi (45m)',
+          time: 'Hari ini, 16:00 WIB',
+          ticket: '#DNT-104',
+          practice: 'drg. Maya Dental Care'
+        }
+      }
+    ]
+  },
+
+  salon: {
+    title: 'Ayra Beauty Salon & Studio 💇‍♀️',
+    status: '+62 813-1122-3344 • Bisnis Terverifikasi • Online',
+    chips: ['Halo min, mau reservasi creambath & haircut', 'Nadia Putri', 'Lihat Treatment Lain'],
+    messages: [
+      {
+        sender: 'user',
+        text: 'Halo min, mau reservasi creambath & haircut untuk nanti sore jam 4 bisa?',
+        time: '14:20'
+      },
+      {
+        sender: 'bot',
+        text: 'Halo Kak! Selamat datang di *Ayra Beauty Salon & Studio* 💇‍♀️✨\n\nJam 16:00 WIB sore ini masih tersedia kursi dengan Stylist senior kami.\n\nDetail Treatment:\n• Haircut & Blow Styling (±40 mnt)\n• Creambath Spa Treatment (±50 mnt)\n\nBoleh info atas nama siapa reservasinya Kak?',
+        time: '14:20'
+      },
+      {
+        sender: 'user',
+        text: 'Nadia Putri',
+        time: '14:21'
+      },
+      {
+        sender: 'bot',
+        text: '✨ *Reservasi Berhasil Terjadwal!*\n━━━━━━━━━━━━━━━━━━━━\n🏷️ Booking ID: *#SLN-208*\n👤 Customer: *Kak Nadia Putri*\n💇‍♀️ Treatment: *Haircut + Creambath Spa*\n⏰ Waktu: *Hari ini, 16:00 WIB*\n💅 Stylist: *Senior Stylist Maya*\n📍 Lokasi: *Ayra Studio, Ruko Boulevard No. 8*\n━━━━━━━━━━━━━━━━━━━━\n_Sampai jumpa nanti sore Kak Nadia! Kursi & ruangan treatment sudah disiapkan._',
+        time: '14:21',
+        isConfirmed: true,
+        bookingDetails: {
+          clientName: 'Kak Nadia Putri',
+          service: 'Haircut + Creambath Spa',
+          time: 'Hari ini, 16:00 WIB',
+          ticket: '#SLN-208',
+          practice: 'Ayra Beauty Salon & Studio'
+        }
       }
     ]
   },
 
   general: {
-    title: 'Klinik dr. Rian Sp.PD 🩺',
-    status: 'Online • Antrean Berjalan Real-time',
-    chips: ['DAFTAR_ANTREAN', 'Siti Rahma - Flu & Batuk', 'STATUS_ANTREAN'],
+    title: 'dr. Rian Sp.PD Praktek Mandiri 🩺',
+    status: '+62 812-7788-9900 • Bisnis Terverifikasi • Online',
+    chips: ['Sore dok, mau daftar periksa antrean', 'Ibu Siti Rahma - Demam Flu', 'Cek Status Antrean'],
     messages: [
       {
         sender: 'user',
-        text: 'DAFTAR_ANTREAN',
+        text: 'Sore dok, mau daftar periksa antrean sore ini keluhan demam dan flu.',
         time: '16:02'
       },
       {
         sender: 'bot',
-        text: 'Selamat sore! Selamat datang di *Praktek Mandiri dr. Rian*.\n\nSistem antrean berjalan aktif:\n• Kuota Terisi: 7 / 25 Pasien\n• Saat Ini Memeriksa: *Antrean #04*\n\nSilakan ketik *Nama Lengkap - Keluhan Singkat* untuk mengambil nomor antrean:',
+        text: 'Selamat sore! Selamat datang di *Praktek Mandiri dr. Rian Sp.PD* 🩺\n\nSistem antrean berjalan sore ini:\n• Kuota Terisi: 7 / 25 Pasien\n• Saat Ini Melayani: *Antrean #04*\n\nSilakan ketik nama lengkap pasien yang akan diperiksa:',
         time: '16:02'
       },
       {
         sender: 'user',
-        text: 'Siti Rahma - Demam dan Flu 3 Hari',
+        text: 'Ibu Siti Rahma - Demam Flu 3 Hari',
         time: '16:03'
       },
       {
         sender: 'bot',
-        text: '🎟️ *TIKET ANTREAN ANDA: #08*\n━━━━━━━━━━━━━━━━━━━━\n👤 Pasien: *Ibu Siti Rahma*\n🔢 Sisa antrean di depan: *3 pasien*\n⏳ Estimasi Pelayanan: *± 16:45 WIB*\n(Perhitungan real-time: 15 menit/pasien)\n━━━━━━━━━━━━━━━━━━━━\n_Kami akan mengirim pesan WhatsApp saat nomor #07 masuk periksa, agar Anda bisa bersiap tanpa perlu menunggu lama di ruang praktek._',
-        time: '16:03'
-      }
-    ]
-  },
-
-  reschedule: {
-    title: 'Self-Service Reschedule 🔄',
-    status: 'Atomic Database Swap (H-2 Jam)',
-    chips: ['RESCHEDULE #DNT-104', 'B - Besok 18:00 WIB'],
-    messages: [
-      {
-        sender: 'user',
-        text: 'RESCHEDULE #DNT-104',
-        time: '11:20'
-      },
-      {
-        sender: 'bot',
-        text: '🔍 *Validasi Reschedule Tiket #DNT-104:*\n• Waktu Sekarang: 11:20 WIB\n• Jadwal Semula: Hari ini, 16:00 WIB\n• Sisa Waktu: 4 jam 40 mnt (> batas cutoff H-2 jam ✅)\n• Kuota Reschedule: 1 dari 2 kali tersisa.\n\nPilih slot pengganti yang masih kosong:\n*A.* Hari ini, 19:00 WIB\n*B.* Besok, 18:00 WIB\n\nBalas dengan *[Huruf Pilihan]* untuk tukar jadwal secara instan:',
-        time: '11:20'
-      },
-      {
-        sender: 'user',
-        text: 'B',
-        time: '11:21'
-      },
-      {
-        sender: 'bot',
-        text: '🔄 *Reschedule Berhasil! (Atomic Swap)*\n━━━━━━━━━━━━━━━━━━━━\nJadwal lama (16:00 WIB) telah dibebaskan untuk pasien lain.\n\n🗓️ *JADWAL BARU ANDA:*\n• Hari: *Besok (Rabu)*\n• Jam: *18:00 WIB*\n• No Tiket Tetap: *#DNT-104*\n\nTiket kalender telah diperbarui otomatis. Sampai jumpa besok!',
-        time: '11:21'
+        text: '🎟️ *TIKET ANTREAN RESMI: #08*\n━━━━━━━━━━━━━━━━━━━━\n👤 Pasien: *Ibu Siti Rahma*\n🩺 Dokter: *dr. Rian Sp.PD*\n🔢 Sisa antrean di depan: *3 pasien*\n⏳ Estimasi Masuk Periksa: *± 16:45 WIB*\n━━━━━━━━━━━━━━━━━━━━\n_WhatsApp akan mengirim notifikasi saat nomor #07 masuk periksa, jadi Ibu tidak perlu menunggu lama di ruang praktek._',
+        time: '16:03',
+        isConfirmed: true,
+        bookingDetails: {
+          clientName: 'Ibu Siti Rahma',
+          service: 'Pemeriksaan Umum (Demam Flu)',
+          time: 'Est. 16:45 WIB',
+          ticket: '#08',
+          practice: 'dr. Rian Sp.PD'
+        }
       }
     ]
   }
@@ -198,7 +212,7 @@ const SCENARIOS = {
 const DOCTOR_INITIAL_MESSAGES = [
   {
     sender: 'system',
-    text: '🔒 Sesi Asisten Dokter Mandiri Aktif (Zero-Web) • drg. Maya\nNomor Terverifikasi: +62 812-9988-7766 • WhatsApp Autonomous Engine Online',
+    text: '🔒 Sesi Asisten Dokter Mandiri Aktif (Zero-Web) • Multi-Tenant WhatsApp\nNomor Terverifikasi Bisnis • Baileys Multi-Session Engine Online',
     time: '16:00'
   },
   {
@@ -225,6 +239,11 @@ class PatientSimulator {
     this.inputField = document.getElementById('waInputField');
     this.sendBtn = document.getElementById('waSendBtn');
     this.timeouts = [];
+    this.doctorSim = null;
+  }
+
+  setDoctorSim(doctorSim) {
+    this.doctorSim = doctorSim;
   }
 
   init() {
@@ -302,6 +321,10 @@ class PatientSimulator {
         this.appendMessage(msg);
         if (msg.sender === 'bot') sfx.playPop();
         else sfx.playSent();
+
+        if (msg.isConfirmed && this.doctorSim) {
+          this.doctorSim.notifyNewBooking(msg.bookingDetails);
+        }
       }, delay);
       this.timeouts.push(t2);
 
@@ -735,6 +758,24 @@ class DoctorCopilotSimulator {
     this.container.appendChild(alertEl);
     this.container.scrollTop = this.container.scrollHeight;
   }
+
+  notifyNewBooking(details) {
+    if (!details) return;
+    const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    setTimeout(() => {
+      this.appendMessage({
+        sender: 'system',
+        text: `⚡ SYNC NOTIFIKASI REAL-TIME DARI NOMOR RESMI ${details.practice.toUpperCase()}`,
+        time: now
+      });
+      this.appendMessage({
+        sender: 'bot',
+        text: `🔔 *BOOKING BARU DITERIMA!*\n━━━━━━━━━━━━━━━━━━━━\n👤 Pasien/Klien: *${details.clientName}*\n📋 Layanan: *${details.service}*\n⏰ Waktu: *${details.time}*\n🏷️ No. Tiket: *${details.ticket}*\n━━━━━━━━━━━━━━━━━━━━\n✅ _Jadwal otomatis tersimpan di kalender & database tanpa perlu input manual._`,
+        time: now
+      });
+      sfx.playPop();
+    }, 1200);
+  }
 }
 
 // --- Dual Sync Simulator Floating Controls (Sound & Replay) ---
@@ -1098,6 +1139,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const doctorSim = new DoctorCopilotSimulator(patientSim);
   doctorSim.init();
+  patientSim.setDoctorSim(doctorSim);
 
   initSimulatorControls(patientSim, doctorSim);
 
