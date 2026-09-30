@@ -614,32 +614,32 @@ GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code>
   <div class="admin-modal" id="modalAddTenant">
     <div class="modal-dialog">
       <div class="modal-header">
-        <h3>+ Daftarkan Tenant / Akun Bisnis Baru</h3>
+        <h3>+ Daftarkan Tenant Dokter Baru</h3>
         <button class="btn-close-modal" id="btnCloseAddTenant">&times;</button>
       </div>
       <form id="formAddTenant">
         <div class="modal-body">
           <div class="form-group">
-            <label>Nama Bisnis / Salon / Barber / Dokter: <span style="color:#f87171;">*</span></label>
-            <input type="text" class="admin-input" id="newTenantName" placeholder="Contoh: The Heritage Barbershop / Ayra Salon / dr. Maya" required>
+            <label>Nama Dokter / Klinik: <span style="color:#f87171;">*</span></label>
+            <input type="text" class="admin-input" id="newTenantName" placeholder="Contoh: dr. Anton Sp.A (Spesialis Anak)" required>
           </div>
           <div class="form-group">
             <label>Slug Deep-Link (Huruf kecil &amp; underscore): <span style="color:#f87171;">*</span></label>
-            <input type="text" class="admin-input" id="newTenantSlug" placeholder="heritage_barber" required>
-            <span class="field-hint">Link Booking Customer: https://wa.me/6281234567890?text=BOOK_[slug]</span>
+            <input type="text" class="admin-input" id="newTenantSlug" placeholder="dr_anton_anak" required>
+            <span class="field-hint">Link Pasien: https://wa.me/6281234567890?text=BOOK_[slug]</span>
           </div>
           <div class="form-group">
-            <label>Nomor WhatsApp Bisnis / Owner (JID Whitelist): <span style="color:#f87171;">*</span></label>
+            <label>Nomor WhatsApp Dokter (JID Whitelist): <span style="color:#f87171;">*</span></label>
             <input type="text" class="admin-input" id="newTenantPhone" placeholder="6281234567890" required>
           </div>
           <div class="form-row-2">
             <div class="form-group">
               <label>Paket Langganan:</label>
               <select class="admin-select" id="newTenantPlan">
-                <option value="PRO" selected>⭐ Pro Tier (400 Booking/bln • Pilot Free)</option>
-                <option value="LIFETIME_PARTNER">👑 Lifetime Partner (Unlimited Selamanya)</option>
                 <option value="STARTER">Starter Tier (100 Booking/bln)</option>
-                <option value="CLINIC">Clinic / Multi-Seat (Unlimited)</option>
+                <option value="PRO" selected>Pro Tier (400 Booking/bln)</option>
+                <option value="CLINIC">Clinic Tier (Unlimited)</option>
+                <option value="LIFETIME_PARTNER">Lifetime Partner (Fase 1)</option>
               </select>
             </div>
             <div class="form-group">
