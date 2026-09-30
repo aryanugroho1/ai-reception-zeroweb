@@ -444,6 +444,7 @@ class SuperadminController {
   }
 
   async init() {
+    this.initTheme();
     this.initClock();
     this.initAuth();
     this.initTabs();
@@ -596,6 +597,54 @@ class SuperadminController {
     };
     update();
     setInterval(update, 1000);
+  }
+
+  initTheme() {
+    const savedTheme = localStorage.getItem('praktika_admin_theme');
+    let theme = savedTheme;
+    if (!theme) {
+      theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day';
+    }
+    this.applyTheme(theme, false);
+
+    const handleToggle = () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'day';
+      const nextTheme = (current === 'night' || current === 'dark') ? 'day' : 'night';
+      this.applyTheme(nextTheme, true);
+    };
+
+    const btnTop = document.getElementById('btnThemeToggle');
+    const btnGate = document.getElementById('btnThemeToggleGate');
+    if (btnTop) btnTop.addEventListener('click', handleToggle);
+    if (btnGate) btnGate.addEventListener('click', handleToggle);
+  }
+
+  applyTheme(theme, log = false) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('praktika_admin_theme', theme);
+
+    const isNight = (theme === 'night' || theme === 'dark');
+    const icon = isNight ? '🌙' : '☀️';
+    const label = isNight ? 'Night' : 'Day';
+    const tooltip = isNight ? 'Beralih ke Day Mode (Terang)' : 'Beralih ke Night Mode (Gelap)';
+
+    const iconEl = document.getElementById('themeIcon');
+    const labelEl = document.getElementById('themeLabel');
+    const btnTop = document.getElementById('btnThemeToggle');
+    if (iconEl) iconEl.textContent = icon;
+    if (labelEl) labelEl.textContent = label;
+    if (btnTop) btnTop.title = tooltip;
+
+    const iconGate = document.getElementById('themeIconGate');
+    const labelGate = document.getElementById('themeLabelGate');
+    const btnGate = document.getElementById('btnThemeToggleGate');
+    if (iconGate) iconGate.textContent = icon;
+    if (labelGate) labelGate.textContent = label;
+    if (btnGate) btnGate.title = tooltip;
+
+    if (log) {
+      this.logAudit('info', `Tampilan diubah ke ${label} Mode (${isNight ? 'Gelap' : 'Terang'}).`);
+    }
   }
 
   renderMetrics() {

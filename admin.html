@@ -7,6 +7,15 @@
   <meta name="description" content="Super Admin Platform untuk manajemen multi-tenant dokter mandiri, monitoring kuota, penagihan Mayar.id, dan kesehatan Baileys Gateway.">
   <link rel="stylesheet" href="admin.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('praktika_admin_theme');
+        var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
 
@@ -14,6 +23,12 @@
        SUPER ADMIN LOGIN GATEWAY
        ======================================================================== -->
   <div id="adminLoginGate" class="admin-login-wrapper">
+    <div class="login-gate-topbar">
+      <button type="button" class="btn-theme-toggle" id="btnThemeToggleGate" title="Ganti Mode Tampilan (Day / Night)">
+        <span class="theme-toggle-icon" id="themeIconGate">☀️</span>
+        <span class="theme-toggle-text" id="themeLabelGate">Day</span>
+      </button>
+    </div>
     <div class="login-card">
       <div class="login-brand">
         <div class="brand-badge-icon" style="font-size: 2.5rem; margin-bottom: 0.5rem;">🛡️</div>
@@ -100,6 +115,10 @@
         </div>
 
         <div class="admin-actions">
+          <button type="button" class="btn-theme-toggle" id="btnThemeToggle" title="Ganti Mode Tampilan (Day / Night)">
+            <span class="theme-toggle-icon" id="themeIcon">☀️</span>
+            <span class="theme-toggle-text" id="themeLabel">Day</span>
+          </button>
           <button class="btn btn-secondary btn-sm" id="btnTestWebhookTop">
             ⚡ <span>Test Webhook Mayar</span>
           </button>
