@@ -4,15 +4,33 @@
  */
 
 const PLAN_LIMITS = {
-  STARTER: {
-    name: 'Starter Solo Practice',
-    price_idr: 149000,
-    monthly_booking_quota: 150,
+  FREE: {
+    name: 'Free',
+    price_idr: 0,
+    monthly_booking_quota: 25,
     max_doctors: 1,
     features: {
       SLOT_BOOKING: true,
       QUEUE_SYSTEM: true,
       BASIC_WHATSAPP_BOT: true,
+      AI_COPILOT: true,
+      GOOGLE_CALENDAR_SYNC: false,
+      ANALYTICS_PRO: false,
+      MULTI_DOCTOR: false,
+      CUSTOM_BRANDING: false,
+      PRIORITY_SLA: false
+    }
+  },
+  STARTER: {
+    name: 'Starter Solo Practice',
+    price_idr: 99000,
+    monthly_booking_quota: 80,
+    max_doctors: 1,
+    features: {
+      SLOT_BOOKING: true,
+      QUEUE_SYSTEM: true,
+      BASIC_WHATSAPP_BOT: true,
+      AI_COPILOT: true,
       GOOGLE_CALENDAR_SYNC: false,
       ANALYTICS_PRO: false,
       MULTI_DOCTOR: false,
@@ -22,13 +40,14 @@ const PLAN_LIMITS = {
   },
   PRO: {
     name: 'Professional Clinic Suite',
-    price_idr: 299000,
+    price_idr: 199000,
     monthly_booking_quota: 400,
     max_doctors: 1,
     features: {
       SLOT_BOOKING: true,
       QUEUE_SYSTEM: true,
       BASIC_WHATSAPP_BOT: true,
+      AI_COPILOT: true,
       GOOGLE_CALENDAR_SYNC: true,
       ANALYTICS_PRO: true,
       MULTI_DOCTOR: false,
@@ -39,13 +58,14 @@ const PLAN_LIMITS = {
   },
   CLINIC: {
     name: 'Multi-Doctor Group Practice',
-    price_idr: 599000,
+    price_idr: 349000,
     monthly_booking_quota: 1200,
     max_doctors: 3,
     features: {
       SLOT_BOOKING: true,
       QUEUE_SYSTEM: true,
       BASIC_WHATSAPP_BOT: true,
+      AI_COPILOT: true,
       GOOGLE_CALENDAR_SYNC: true,
       ANALYTICS_PRO: true,
       MULTI_DOCTOR: true,
@@ -63,6 +83,7 @@ const PLAN_LIMITS = {
       SLOT_BOOKING: true,
       QUEUE_SYSTEM: true,
       BASIC_WHATSAPP_BOT: true,
+      AI_COPILOT: true,
       GOOGLE_CALENDAR_SYNC: true,
       ANALYTICS_PRO: true,
       MULTI_DOCTOR: true,
