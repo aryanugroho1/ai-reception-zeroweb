@@ -760,7 +760,7 @@ class DoctorCopilotSimulator {
           nextWaiting.status = 'IN_CONSULTATION';
           this.appendMessage({
             sender: 'bot',
-            text: `🔔 *Panggilan Terkirim via Baileys!*\n\n• Pasien Sekarang: *#${nextWaiting.id} (${nextWaiting.name})* dipanggil masuk ke Ruang Periksa.\n• Status Database: Diperbarui ke \`IN_CONSULTATION\`.\n• Standby Alert: Pasien antrean selanjutnya telah dikirimi pengingat untuk bersiap.`,
+            text: `🔔 *Panggilan Berhasil Terkirim!*\n\n• Pasien Sekarang: *#${nextWaiting.id} (${nextWaiting.name})* dipanggil masuk ke Ruang Periksa.\n• Status: Diperbarui ke \`DALAM LAYANAN\`.\n• Standby Alert: Pasien antrean selanjutnya telah dikirimi pengingat untuk bersiap.`,
             time: now
           });
           // Live sync: Notify patient phone!
@@ -1143,7 +1143,7 @@ class MayarPaymentModal {
 
     if (this.btnSubmitMayarInfo) {
       this.btnSubmitMayarInfo.disabled = true;
-      this.btnSubmitMayarInfo.innerHTML = '⏳ Menyiapkan 1 QR Baileys WhatsApp...';
+      this.btnSubmitMayarInfo.innerHTML = '⏳ Menyiapkan 1 QR WhatsApp...';
     }
 
     try {
