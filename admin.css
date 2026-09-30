@@ -1261,3 +1261,207 @@ body {
   border-color: #ef4444;
   color: #fff;
 }
+
+/* ==========================================================================
+   TAB: COUPON QUOTA MANAGEMENT (LIFETIMEFREE & FREEPRO)
+   ========================================================================== */
+.coupons-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.coupon-card {
+  background: var(--bg-admin-card);
+  border: 1.5px solid var(--border-admin);
+  border-radius: 16px;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.coupon-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.08);
+  border-color: rgba(73, 197, 182, 0.4);
+}
+
+.coupon-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.coupon-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.coupon-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+  margin-top: 4px;
+}
+
+.coupon-aliases {
+  font-size: 0.76rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+.coupon-metric-box {
+  background: var(--bg-admin-elevated);
+  border: 1px solid var(--border-admin);
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.coupon-metric-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.coupon-metric-big {
+  font-size: 2rem;
+  font-weight: 800;
+  font-family: var(--font-sans);
+  color: var(--text-main);
+  line-height: 1;
+}
+
+.coupon-metric-sub {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.coupon-progress-track {
+  width: 100%;
+  height: 10px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.coupon-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #00b894, #00d29e);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.coupon-progress-fill.warning {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.coupon-progress-fill.full {
+  background: linear-gradient(90deg, #ff385c, #ef4444);
+}
+
+.coupon-phones-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.coupon-phones-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.redeemed-phones-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 36px;
+  align-items: center;
+}
+
+.phone-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  background: rgba(73, 197, 182, 0.1);
+  color: #0d9488;
+  border: 1px solid rgba(13, 148, 136, 0.2);
+}
+
+.phone-tag-empty {
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.coupon-quota-control {
+  border-top: 1px dashed var(--border-admin);
+  padding-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.control-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-buttons-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-quick-quota {
+  background: var(--bg-admin-elevated);
+  border: 1px solid var(--border-admin);
+  color: var(--text-main);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-quick-quota:hover {
+  background: rgba(73, 197, 182, 0.12);
+  border-color: #00b894;
+  color: #00b894;
+  transform: translateY(-1px);
+}
+
+.custom-quota-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+

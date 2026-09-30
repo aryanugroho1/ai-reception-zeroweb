@@ -581,6 +581,7 @@ class SuperadminController {
       this.renderInvoicesTable();
       this.populateWebhookTenantSelect();
       this.renderWaSessionsTable();
+      this.renderCouponsManagement();
     } catch (err) {
       console.warn('Backend API sync fallback:', err);
     }
@@ -766,6 +767,9 @@ class SuperadminController {
 
         if (tabKey === 'gateway') {
           this.renderWaSessionsTable();
+        }
+        if (tabKey === 'coupons') {
+          this.renderCouponsManagement();
         }
       });
     });
@@ -1265,6 +1269,226 @@ class SuperadminController {
     entry.className = `log-entry ${type}`;
     entry.textContent = `[${now} UTC+7] ${message}`;
     consoleEl.prepend(entry);
+  }
+
+  async renderCouponsManagement() {
+    try {
+      const res = await fetch('/api/admin/coupons', { headers: this.getAuthHeaders() });
+      if (!res.ok) {
+        if (res.status === 401) {
+          this.clearAuthToken();
+          this.showLoginGate();
+        }
+        return;
+      }
+      const data = await res.json();
+      if (!data.coupons || !Array.isArray(data.coupons)) return;
+
+      const lt = data.coupons.find(c => c.code === 'LIFETIMEFREE');
+      const fp = data.coupons.find(c => c.code === 'FREEPRO');
+
+      // 1. Render Lifetime Free Coupon
+      if (lt) {
+        const used = lt.quota_used || 0;
+        const max = lt.max_capacity || 3;
+        const remaining = lt.quota_remaining !== undefined ? lt.quota_remaining : Math.max(0, max - used);
+        const percent = Math.min(100, Math.round((used / max) * 100));
+
+        const ltUsedDisplay = document.getElementById('ltUsedDisplay');
+        const ltMaxDisplay = document.getElementById('ltMaxDisplay');
+        const ltRemainingText = document.getElementById('ltRemainingText');
+        const ltProgressBar = document.getElementById('ltProgressBar');
+        const ltPercentText = document.getElementById('ltPercentText');
+        const ltStatusBadge = document.getElementById('ltStatusBadge');
+        const ltCapacityInput = document.getElementById('ltNewCapacityInput');
+        const ltRedeemedList = document.getElementById('ltRedeemedPhonesList');
+
+        if (ltUsedDisplay) ltUsedDisplay.textContent = used;
+        if (ltMaxDisplay) ltMaxDisplay.textContent = max;
+        if (ltRemainingText) {
+          ltRemainingText.textContent = remaining > 0 ? `Sisa ${remaining} Kuota` : 'Kuota Penuh';
+          ltRemainingText.style.color = remaining > 0 ? '#00b894' : '#ef4444';
+        }
+
+        if (ltProgressBar) {
+          ltProgressBar.style.width = `${percent}%`;
+          ltProgressBar.className = 'coupon-progress-fill' + (percent >= 100 ? ' full' : percent >= 75 ? ' warning' : '');
+        }
+        if (ltPercentText) ltPercentText.textContent = `${percent}% Kuota Terpakai`;
+
+        if (ltStatusBadge) {
+          ltStatusBadge.textContent = lt.is_full ? 'PENUH' : 'TERSEDIA';
+          ltStatusBadge.className = 'badge-mini ' + (lt.is_full ? 'expired' : 'partner');
+        }
+
+        if (ltCapacityInput && !ltCapacityInput.matches(':focus')) {
+          ltCapacityInput.value = max;
+        }
+
+        if (ltRedeemedList) {
+          ltRedeemedList.innerHTML = '';
+          if (lt.redeemed_phones && lt.redeemed_phones.length > 0) {
+            lt.redeemed_phones.forEach(phone => {
+              const tag = document.createElement('span');
+              tag.className = 'phone-tag';
+              tag.innerHTML = `📱 <span>+${phone}</span>`;
+              ltRedeemedList.appendChild(tag);
+            });
+          } else {
+            ltRedeemedList.innerHTML = '<span class="phone-tag-empty">Belum ada nomor yang redeem kupon ini</span>';
+          }
+        }
+      }
+
+      // 2. Render Free Pro Coupon
+      if (fp) {
+        const used = fp.quota_used || 0;
+        const max = fp.max_capacity || 5;
+        const remaining = fp.quota_remaining !== undefined ? fp.quota_remaining : Math.max(0, max - used);
+        const percent = Math.min(100, Math.round((used / max) * 100));
+
+        const fpUsedDisplay = document.getElementById('fpUsedDisplay');
+        const fpMaxDisplay = document.getElementById('fpMaxDisplay');
+        const fpRemainingText = document.getElementById('fpRemainingText');
+        const fpProgressBar = document.getElementById('fpProgressBar');
+        const fpPercentText = document.getElementById('fpPercentText');
+        const fpStatusBadge = document.getElementById('fpStatusBadge');
+        const fpCapacityInput = document.getElementById('fpNewCapacityInput');
+        const fpRedeemedList = document.getElementById('fpRedeemedPhonesList');
+
+        if (fpUsedDisplay) fpUsedDisplay.textContent = used;
+        if (fpMaxDisplay) fpMaxDisplay.textContent = max;
+        if (fpRemainingText) {
+          fpRemainingText.textContent = remaining > 0 ? `Sisa ${remaining} Kuota` : 'Kuota Penuh';
+          fpRemainingText.style.color = remaining > 0 ? '#38bdf8' : '#ef4444';
+        }
+
+        if (fpProgressBar) {
+          fpProgressBar.style.width = `${percent}%`;
+          fpProgressBar.className = 'coupon-progress-fill' + (percent >= 100 ? ' full' : percent >= 75 ? ' warning' : '');
+        }
+        if (fpPercentText) fpPercentText.textContent = `${percent}% Kuota Terpakai`;
+
+        if (fpStatusBadge) {
+          fpStatusBadge.textContent = fp.is_full ? 'PENUH' : 'TERSEDIA';
+          fpStatusBadge.className = 'badge-mini ' + (fp.is_full ? 'expired' : 'pro');
+        }
+
+        if (fpCapacityInput && !fpCapacityInput.matches(':focus')) {
+          fpCapacityInput.value = max;
+        }
+
+        if (fpRedeemedList) {
+          fpRedeemedList.innerHTML = '';
+          if (fp.redeemed_phones && fp.redeemed_phones.length > 0) {
+            fp.redeemed_phones.forEach(phone => {
+              const tag = document.createElement('span');
+              tag.className = 'phone-tag';
+              tag.innerHTML = `🤖 <span>+${phone}</span>`;
+              fpRedeemedList.appendChild(tag);
+            });
+          } else {
+            fpRedeemedList.innerHTML = '<span class="phone-tag-empty">Belum ada nomor yang redeem kupon ini</span>';
+          }
+        }
+      }
+
+      this.initCouponControlsOnce();
+    } catch (err) {
+      console.warn('Error fetching coupon status:', err);
+    }
+  }
+
+  initCouponControlsOnce() {
+    if (this._couponsControlBound) return;
+    this._couponsControlBound = true;
+
+    // Refresh button
+    const btnRefresh = document.getElementById('btnRefreshCoupons');
+    if (btnRefresh) {
+      btnRefresh.addEventListener('click', () => {
+        this.renderCouponsManagement();
+        this.logAudit('info', 'Data kupon pilot berhasil diperbarui dari server.');
+      });
+    }
+
+    // Quick add buttons
+    document.querySelectorAll('.btn-quick-quota').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const coupon = e.currentTarget.dataset.coupon;
+        const addQuota = parseInt(e.currentTarget.dataset.add, 10);
+        await this.submitCouponQuotaUpdate(coupon, { add_quota: addQuota });
+      });
+    });
+
+    // Custom Save Lifetime Quota
+    const btnSaveLt = document.getElementById('btnSaveLtQuota');
+    const inputLt = document.getElementById('ltNewCapacityInput');
+    if (btnSaveLt && inputLt) {
+      btnSaveLt.addEventListener('click', async () => {
+        const val = parseInt(inputLt.value, 10);
+        if (isNaN(val) || val < 1) {
+          alert('Masukkan kapasitas kuota yang valid (angka minimal 1)');
+          return;
+        }
+        await this.submitCouponQuotaUpdate('LIFETIMEFREE', { max_capacity: val });
+      });
+    }
+
+    // Custom Save Free Pro Quota
+    const btnSaveFp = document.getElementById('btnSaveFpQuota');
+    const inputFp = document.getElementById('fpNewCapacityInput');
+    if (btnSaveFp && inputFp) {
+      btnSaveFp.addEventListener('click', async () => {
+        const val = parseInt(inputFp.value, 10);
+        if (isNaN(val) || val < 1) {
+          alert('Masukkan kapasitas kuota yang valid (angka minimal 1)');
+          return;
+        }
+        await this.submitCouponQuotaUpdate('FREEPRO', { max_capacity: val });
+      });
+    }
+  }
+
+  async submitCouponQuotaUpdate(couponCode, payload) {
+    const feedbackEl = couponCode === 'LIFETIMEFREE' ? document.getElementById('ltQuotaMsg') : document.getElementById('fpQuotaMsg');
+    try {
+      const res = await fetch('/api/admin/coupons/update-quota', {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({
+          coupon: couponCode,
+          ...payload
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal mengubah kapasitas kupon');
+      }
+
+      if (feedbackEl) {
+        feedbackEl.style.display = 'block';
+        feedbackEl.style.background = 'rgba(0, 184, 148, 0.15)';
+        feedbackEl.style.color = '#00b894';
+        feedbackEl.style.border = '1px solid rgba(0, 184, 148, 0.3)';
+        feedbackEl.textContent = `✅ Berhasil! Kuota ${couponCode} kini: ${data.max_capacity} nomor (Sisa: ${data.quota_remaining}).`;
+        setTimeout(() => { feedbackEl.style.display = 'none'; }, 4000);
+      }
+
+      this.logAudit('success', `Super Admin mengubah kuota kupon ${couponCode}: Kapasitas baru = ${data.max_capacity}, Terpakai = ${data.quota_used}`);
+      await this.renderCouponsManagement();
+    } catch (err) {
+      if (feedbackEl) {
+        feedbackEl.style.display = 'block';
+        feedbackEl.style.background = 'rgba(239, 68, 68, 0.15)';
+        feedbackEl.style.color = '#ef4444';
+        feedbackEl.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+        feedbackEl.textContent = `❌ ${err.message}`;
+        setTimeout(() => { feedbackEl.style.display = 'none'; }, 5000);
+      }
+      this.logAudit('danger', `Gagal mengubah kuota kupon ${couponCode}: ${err.message}`);
+    }
   }
 }
 

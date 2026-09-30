@@ -191,6 +191,9 @@
         <button class="tab-btn" data-tab="schema">
           📜 <span>PostgreSQL Views &amp; DDL</span>
         </button>
+        <button class="tab-btn" data-tab="coupons">
+          🎟️ <span>Kupon Pilot (Lifetime &amp; Free Pro)</span>
+        </button>
       </nav>
 
       <!-- ==================================================================
@@ -590,6 +593,197 @@ LEFT JOIN appointments a ON t.id = a.tenant_id
     AND a.status NOT IN ('CANCELLED')
 GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code></pre>
           </div>
+        </div>
+
+      </section>
+
+      <!-- ==================================================================
+           TAB 6: PILOT COUPON QUOTA MANAGEMENT (lifetimefree & freepro)
+           ================================================================== -->
+      <section class="admin-tab-pane" id="paneCoupons">
+        
+        <!-- Header & Explanation Bar -->
+        <div class="admin-card" style="margin-bottom: 1.5rem; background: linear-gradient(135deg, rgba(73, 197, 182, 0.08) 0%, rgba(255, 107, 74, 0.05) 100%); border-color: rgba(73, 197, 182, 0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                <span style="font-size: 1.5rem;">🎟️</span>
+                <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--text-main); margin: 0;">Kontrol Kuota Kupon Pilot (Lifetime Free &amp; Free Pro)</h2>
+                <span class="badge-mini partner">SUPERADMIN OVERRIDE</span>
+              </div>
+              <p style="font-size: 0.86rem; color: var(--text-muted); margin: 0; max-width: 850px; line-height: 1.5;">
+                Kelola kapasitas dan pantau utilisasi kupon promosi pilot project. Pengguna yang menukarkan kode kupon ini dapat langsung onboarding mandiri dan melewati gateway pembayaran Mayar.id. Anda dapat menambahkan atau memodifikasi kuota secara real-time.
+              </p>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btnRefreshCoupons" style="display: inline-flex; align-items: center; gap: 6px;">
+              🔄 <span>Refresh Data Kupon</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2 Column Responsive Grid for Coupons -->
+        <div class="coupons-grid">
+          
+          <!-- CARD 1: LIFETIMEFREE -->
+          <div class="coupon-card" id="couponCardLifetime">
+            <div class="coupon-card-header">
+              <div>
+                <div class="coupon-badge-group">
+                  <span class="badge-mini partner">🌟 LIFETIME PARTNER</span>
+                  <span class="badge-mini" id="ltStatusBadge">TERSEDIA</span>
+                </div>
+                <div class="coupon-title">lifetimefree</div>
+                <div class="coupon-aliases">Alias: <code>lifetimefree</code>, <code>pilotlifetime</code></div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 0.72rem; color: var(--text-faint); font-weight: 700; text-transform: uppercase;">Masa Aktif</div>
+                <div style="font-size: 0.85rem; font-weight: 700; color: #00b894;">Permanen (Selamanya)</div>
+              </div>
+            </div>
+
+            <!-- Metric Box -->
+            <div class="coupon-metric-box">
+              <div class="coupon-metric-row">
+                <div>
+                  <span class="coupon-metric-big" id="ltUsedDisplay">0</span>
+                  <span style="font-size: 1.25rem; color: var(--text-faint); font-weight: 700;"> / </span>
+                  <span style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);" id="ltMaxDisplay">3</span>
+                  <span style="font-size: 0.85rem; color: var(--text-muted); margin-left: 6px;">Nomor Terdaftar</span>
+                </div>
+                <div class="coupon-metric-sub" id="ltRemainingText" style="color: #00b894;">Sisa 3 Kuota</div>
+              </div>
+              
+              <!-- Progress Bar -->
+              <div class="coupon-progress-track">
+                <div class="coupon-progress-fill" id="ltProgressBar" style="width: 0%;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-faint);">
+                <span>0 Terpakai</span>
+                <span id="ltPercentText">0% Kuota Terpakai</span>
+              </div>
+            </div>
+
+            <!-- List of Redeemed Numbers -->
+            <div class="coupon-phones-section">
+              <div class="coupon-phones-title">📱 Nomor WhatsApp Terdaftar:</div>
+              <div class="redeemed-phones-list" id="ltRedeemedPhonesList">
+                <span class="phone-tag-empty">Belum ada nomor yang redeem kupon ini</span>
+              </div>
+            </div>
+
+            <!-- Quota Addition / Modification Control -->
+            <div class="coupon-quota-control">
+              <div class="control-title">
+                <span>⚡ Tambah / Modifikasi Kuota Super Admin:</span>
+              </div>
+              
+              <!-- Quick Add Buttons -->
+              <div class="quick-buttons-row">
+                <span style="font-size: 0.76rem; color: var(--text-faint); align-self: center;">Tambah Cepat:</span>
+                <button type="button" class="btn-quick-quota" data-coupon="LIFETIMEFREE" data-add="1">+1 Nomor</button>
+                <button type="button" class="btn-quick-quota" data-coupon="LIFETIMEFREE" data-add="2">+2 Nomor</button>
+                <button type="button" class="btn-quick-quota" data-coupon="LIFETIMEFREE" data-add="5">+5 Nomor</button>
+              </div>
+
+              <!-- Custom Quota Input & Save -->
+              <div class="custom-quota-row">
+                <div style="flex: 1;">
+                  <label style="font-size: 0.74rem; color: var(--text-faint); display: block; margin-bottom: 4px;">Set Total Kapasitas:</label>
+                  <input type="number" class="admin-input" id="ltNewCapacityInput" min="1" placeholder="Contoh: 5" style="width: 100%; height: 38px; font-weight: 700;">
+                </div>
+                <div style="align-self: flex-end;">
+                  <button type="button" class="btn btn-primary btn-sm" id="btnSaveLtQuota" style="height: 38px; padding: 0 16px;">
+                    💾 <span>Simpan Kuota</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Live Feedback Message -->
+              <div id="ltQuotaMsg" style="display: none; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem;"></div>
+            </div>
+
+          </div>
+
+          <!-- CARD 2: FREEPRO -->
+          <div class="coupon-card" id="couponCardFreepro">
+            <div class="coupon-card-header">
+              <div>
+                <div class="coupon-badge-group">
+                  <span class="badge-mini pro">⚡ PRO TIER</span>
+                  <span class="badge-mini" id="fpStatusBadge">TERSEDIA</span>
+                </div>
+                <div class="coupon-title">freepro</div>
+                <div class="coupon-aliases">Alias: <code>freepro</code>, <code>freepro1m</code>, <code>pilotpro</code></div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 0.72rem; color: var(--text-faint); font-weight: 700; text-transform: uppercase;">Masa Aktif</div>
+                <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;">30 Hari (1 Bulan)</div>
+              </div>
+            </div>
+
+            <!-- Metric Box -->
+            <div class="coupon-metric-box">
+              <div class="coupon-metric-row">
+                <div>
+                  <span class="coupon-metric-big" id="fpUsedDisplay">0</span>
+                  <span style="font-size: 1.25rem; color: var(--text-faint); font-weight: 700;"> / </span>
+                  <span style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);" id="fpMaxDisplay">5</span>
+                  <span style="font-size: 0.85rem; color: var(--text-muted); margin-left: 6px;">Bot Terdaftar</span>
+                </div>
+                <div class="coupon-metric-sub" id="fpRemainingText" style="color: #38bdf8;">Sisa 5 Kuota</div>
+              </div>
+              
+              <!-- Progress Bar -->
+              <div class="coupon-progress-track">
+                <div class="coupon-progress-fill" id="fpProgressBar" style="width: 0%;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-faint);">
+                <span>0 Terpakai</span>
+                <span id="fpPercentText">0% Kuota Terpakai</span>
+              </div>
+            </div>
+
+            <!-- List of Redeemed Numbers -->
+            <div class="coupon-phones-section">
+              <div class="coupon-phones-title">📱 Nomor WhatsApp Terdaftar:</div>
+              <div class="redeemed-phones-list" id="fpRedeemedPhonesList">
+                <span class="phone-tag-empty">Belum ada nomor yang redeem kupon ini</span>
+              </div>
+            </div>
+
+            <!-- Quota Addition / Modification Control -->
+            <div class="coupon-quota-control">
+              <div class="control-title">
+                <span>⚡ Tambah / Modifikasi Kuota Super Admin:</span>
+              </div>
+              
+              <!-- Quick Add Buttons -->
+              <div class="quick-buttons-row">
+                <span style="font-size: 0.76rem; color: var(--text-faint); align-self: center;">Tambah Cepat:</span>
+                <button type="button" class="btn-quick-quota" data-coupon="FREEPRO" data-add="1">+1 Bot</button>
+                <button type="button" class="btn-quick-quota" data-coupon="FREEPRO" data-add="3">+3 Bot</button>
+                <button type="button" class="btn-quick-quota" data-coupon="FREEPRO" data-add="5">+5 Bot</button>
+              </div>
+
+              <!-- Custom Quota Input & Save -->
+              <div class="custom-quota-row">
+                <div style="flex: 1;">
+                  <label style="font-size: 0.74rem; color: var(--text-faint); display: block; margin-bottom: 4px;">Set Total Kapasitas:</label>
+                  <input type="number" class="admin-input" id="fpNewCapacityInput" min="1" placeholder="Contoh: 10" style="width: 100%; height: 38px; font-weight: 700;">
+                </div>
+                <div style="align-self: flex-end;">
+                  <button type="button" class="btn btn-primary btn-sm" id="btnSaveFpQuota" style="height: 38px; padding: 0 16px;">
+                    💾 <span>Simpan Kuota</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Live Feedback Message -->
+              <div id="fpQuotaMsg" style="display: none; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem;"></div>
+            </div>
+
+          </div>
+
         </div>
 
       </section>

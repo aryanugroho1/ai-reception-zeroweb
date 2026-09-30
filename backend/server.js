@@ -40,6 +40,19 @@ class AppServer {
     this.adminUsername = process.env.ADMIN_USERNAME || 'admin';
     this.adminPassword = process.env.ADMIN_PASSWORD || 'AdminPraktika2026!';
 
+    // Global coupon configs & redemption tracking
+    this.couponConfigs = {
+      'LIFETIMEFREE': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
+      'PILOTLIFETIME': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
+      'FREEPRO': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
+      'FREEPRO1M': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
+      'PILOTPRO': { plan: 'PRO', durationDays: 365, maxCapacity: 5, label: 'Free Pro Tier 1 Tahun (Pilot Project)' }
+    };
+    this.couponRedemptions = new Map([
+      ['LIFETIMEFREE', new Set()],
+      ['FREEPRO', new Set()]
+    ]);
+
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
   }
 
@@ -344,15 +357,7 @@ class AppServer {
       if (pathname === '/api/subscriptions/redeem-coupon' && method === 'POST') {
         const body = await this.readRequestBody(req);
         const rawCode = (body.coupon || '').toUpperCase().trim();
-        const validCoupons = {
-          'LIFETIMEFREE': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
-          'PILOTLIFETIME': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
-          'FREEPRO': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
-          'FREEPRO1M': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
-          'PILOTPRO': { plan: 'PRO', durationDays: 365, maxCapacity: 5, label: 'Free Pro Tier 1 Tahun (Pilot Project)' }
-        };
-
-        const couponConfig = validCoupons[rawCode];
+        const couponConfig = this.couponConfigs[rawCode];
         if (!couponConfig) {
           return this.sendJson(res, 400, {
             error: 'Kode kupon tidak valid. Gunakan kupon resmi: lifetimefree (3 nomor) atau freepro (5 bot)',
@@ -506,14 +511,7 @@ class AppServer {
       // 2K. Check Coupon Validity & Quota: GET /api/subscriptions/coupon-check
       if (pathname === '/api/subscriptions/coupon-check' && method === 'GET') {
         const rawCode = (query.coupon || '').toUpperCase().trim();
-        const validCoupons = {
-          'LIFETIMEFREE': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
-          'PILOTLIFETIME': { plan: 'LIFETIME_PARTNER', durationDays: 36500, maxCapacity: 3, label: 'Free Lifetime Partner (Kapasitas: 3 nomor)' },
-          'FREEPRO': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
-          'FREEPRO1M': { plan: 'PRO', durationDays: 30, maxCapacity: 5, label: 'Free Pro 1 Bulan (Kapasitas: 5 bot)' },
-          'PILOTPRO': { plan: 'PRO', durationDays: 365, maxCapacity: 5, label: 'Free Pro Tier 1 Tahun (Pilot Project)' }
-        };
-        const cfg = validCoupons[rawCode];
+        const cfg = this.couponConfigs[rawCode];
         if (!cfg) {
           return this.sendJson(res, 404, { valid: false, error: 'Kode kupon tidak valid. Gunakan kupon lifetimefree atau freepro' });
         }
@@ -530,6 +528,87 @@ class AppServer {
           quota_used: redeemedSet.size,
           quota_remaining: remaining,
           is_full: remaining <= 0
+        });
+      }
+
+      // 2L. Super Admin Coupons Monitoring: GET /api/admin/coupons
+      if (pathname === '/api/admin/coupons' && method === 'GET') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const ltUsed = this.couponRedemptions.get('LIFETIMEFREE') || new Set();
+        const fpUsed = this.couponRedemptions.get('FREEPRO') || new Set();
+        const ltCfg = this.couponConfigs['LIFETIMEFREE'];
+        const fpCfg = this.couponConfigs['FREEPRO'];
+
+        return this.sendJson(res, 200, {
+          success: true,
+          coupons: [
+            {
+              code: 'LIFETIMEFREE',
+              alias: 'lifetimefree / pilotlifetime',
+              name: 'Lifetime Free Partner',
+              plan: 'LIFETIME_PARTNER',
+              duration: 'Selamanya (Hingga 2099+)',
+              max_capacity: ltCfg.maxCapacity,
+              quota_used: ltUsed.size,
+              quota_remaining: Math.max(0, ltCfg.maxCapacity - ltUsed.size),
+              is_full: ltUsed.size >= ltCfg.maxCapacity,
+              redeemed_phones: Array.from(ltUsed)
+            },
+            {
+              code: 'FREEPRO',
+              alias: 'freepro / freepro1m / pilotpro',
+              name: 'Free Pro 1 Bulan',
+              plan: 'PRO',
+              duration: '30 Hari (1 Bulan)',
+              max_capacity: fpCfg.maxCapacity,
+              quota_used: fpUsed.size,
+              quota_remaining: Math.max(0, fpCfg.maxCapacity - fpUsed.size),
+              is_full: fpUsed.size >= fpCfg.maxCapacity,
+              redeemed_phones: Array.from(fpUsed)
+            }
+          ]
+        });
+      }
+
+      // 2M. Super Admin Update Coupon Quota: POST /api/admin/coupons/update-quota
+      if (pathname === '/api/admin/coupons/update-quota' && method === 'POST') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const body = await this.readRequestBody(req);
+        const rawCode = (body.coupon || '').toUpperCase().trim();
+        const targetKey = (rawCode === 'LIFETIMEFREE' || rawCode === 'PILOTLIFETIME' || rawCode === 'LIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
+
+        let newCapacity = this.couponConfigs[targetKey].maxCapacity;
+        if (body.add_quota !== undefined && body.add_quota !== null) {
+          newCapacity += parseInt(body.add_quota, 10);
+        } else if (body.max_capacity !== undefined && body.max_capacity !== null) {
+          newCapacity = parseInt(body.max_capacity, 10);
+        }
+
+        if (isNaN(newCapacity) || newCapacity < 1) {
+          return this.sendJson(res, 400, { error: 'Kapasitas kuota harus berupa angka minimal 1', code: 'INVALID_CAPACITY' });
+        }
+
+        this.couponConfigs[targetKey].maxCapacity = newCapacity;
+        if (targetKey === 'LIFETIMEFREE') {
+          this.couponConfigs['PILOTLIFETIME'].maxCapacity = newCapacity;
+        } else {
+          this.couponConfigs['FREEPRO1M'].maxCapacity = newCapacity;
+          this.couponConfigs['PILOTPRO'].maxCapacity = newCapacity;
+        }
+
+        const usedSet = this.couponRedemptions.get(targetKey) || new Set();
+
+        return this.sendJson(res, 200, {
+          success: true,
+          message: `Kapasitas kuota ${targetKey} berhasil diubah menjadi ${newCapacity}.`,
+          coupon: targetKey,
+          max_capacity: newCapacity,
+          quota_used: usedSet.size,
+          quota_remaining: Math.max(0, newCapacity - usedSet.size)
         });
       }
 
