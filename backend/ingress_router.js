@@ -92,6 +92,16 @@ class IngressRouter {
       last_activity: new Date().toISOString()
     });
 
+    // Check if practice subscription has expired
+    if (targetTenant.subscription_until && new Date(targetTenant.subscription_until) < new Date()) {
+      return {
+        recipient_type: 'PATIENT',
+        tenant: targetTenant,
+        response_type: 'TEXT',
+        message: `Mohon maaf, layanan pendaftaran otomatis *${targetTenant.name}* sedang dalam masa tenggang (langganan berakhir). Silakan hubungi nomor klinik secara langsung.`
+      };
+    }
+
     // Check if practice is accepting patients
     if (!targetTenant.is_accepting_patients) {
       return {

@@ -29,6 +29,14 @@ class DoctorCopilotEngine {
 
     const normalizedCmd = (commandText || '').trim().toUpperCase();
 
+    // Check if practice subscription has expired
+    if (tenant.subscription_until && new Date(tenant.subscription_until) < new Date()) {
+      return {
+        action: 'SUBSCRIPTION_EXPIRED',
+        reply: `⚠️ *MASA LANGGANAN BERAKHIR*\n\nPaket langganan untuk *${tenant.name}* telah berakhir pada ${tenant.subscription_until.slice(0, 10)}.\n\nSilakan perpanjang langganan Anda melalui tagihan Mayar atau hubungi admin agar asisten AI kembali aktif melayani pasien.`
+      };
+    }
+
     // 1. Command: NEXT / BERIKUTNYA
     if (normalizedCmd === 'NEXT' || normalizedCmd === 'BERIKUTNYA' || normalizedCmd === 'PANGGIL') {
       return this.handleNextPatient(tenant);
