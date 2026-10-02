@@ -124,12 +124,26 @@ class BaileysManager {
       } catch (e) {}
     }
 
-    // Move session to committed tenant ID
+    // Move session to committed tenant ID & keep alias so immediate frontend poll doesn't fail
     const pendingSession = this.sessions.get(pendingId);
     if (pendingSession) {
       pendingSession.tenantId = tenant.id;
       this.sessions.set(tenant.id, pendingSession);
-      this.sessions.delete(pendingId);
+      this.sessions.set(pendingId, pendingSession);
+    }
+
+    // Mirror session auth files to committed tenant ID folder for future restarts
+    const pendingDir = this.getSessionDir(pendingId);
+    const tenantDir = this.getSessionDir(tenant.id);
+    if (fs.existsSync(pendingDir) && pendingDir !== tenantDir) {
+      try {
+        if (!fs.existsSync(tenantDir)) {
+          fs.mkdirSync(tenantDir, { recursive: true });
+        }
+        fs.cpSync(pendingDir, tenantDir, { recursive: true });
+      } catch (e) {
+        console.warn('[BaileysManager] Failed copying session files to tenant dir:', e.message);
+      }
     }
 
     // Update connect tokens referencing pendingId
@@ -200,7 +214,7 @@ class BaileysManager {
 
   // --- START OR GET SESSION FOR A TENANT ---
   async startSession(tenantIdentifier) {
-    const tenant = this.resolveTenant(tenantIdentifier);
+    let tenant = this.resolveTenant(tenantIdentifier);
     if (!tenant) {
       throw new Error(`Tenant '${tenantIdentifier}' not found`);
     }
@@ -295,7 +309,18 @@ class BaileysManager {
       session.sock = sock;
 
       // Handle Credentials Update
-      sock.ev.on('creds.update', saveCreds);
+      sock.ev.on('creds.update', async () => {
+        try {
+          await saveCreds();
+          if (tenant && tenant.id && tenant.id !== tenantId) {
+            const targetDir = this.getSessionDir(tenant.id);
+            const currentDir = this.getSessionDir(tenantId);
+            if (fs.existsSync(currentDir) && currentDir !== targetDir) {
+              fs.cpSync(currentDir, targetDir, { recursive: true });
+            }
+          }
+        } catch (e) {}
+      });
 
       // Handle Connection Lifecycle
       sock.ev.on('connection.update', async (update) => {
