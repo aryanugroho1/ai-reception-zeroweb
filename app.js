@@ -1222,12 +1222,21 @@ class MayarPaymentModal {
     }
 
     if (this.qrImg) {
-      // Use live QR image generated for 1 number
+      // Only display authentic Baileys WhatsApp pairing QR
       if (data.qr_image) {
         this.qrImg.src = data.qr_image;
+        this.qrImg.style.display = 'block';
+        if (this.qrStatus) {
+          this.qrStatus.innerHTML = '<span>🟡 Arahkan kamera WhatsApp ke QR Code di atas</span>';
+          this.qrStatus.style.color = '#d97706';
+        }
       } else {
-        // Fallback quick QR
-        this.qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.connect_url || 'https://praktika.id')}`;
+        // Do not generate a fake QR of a URL! Wait for Baileys live QR
+        this.qrImg.style.display = 'none';
+        if (this.qrStatus) {
+          this.qrStatus.innerHTML = '<span>Menyiapkan QR Code WhatsApp resmi... (3-5 detik)</span>';
+          this.qrStatus.style.color = '#0284c7';
+        }
       }
     }
 
@@ -1259,9 +1268,14 @@ class MayarPaymentModal {
           if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
         } else if (statusData.qr_image && this.qrImg) {
           this.qrImg.src = statusData.qr_image;
+          this.qrImg.style.display = 'block';
+          if (this.qrStatus && statusData.status === 'SCAN_QR') {
+            this.qrStatus.innerHTML = '<span>🟡 Arahkan kamera WhatsApp ke QR Code di atas</span>';
+            this.qrStatus.style.color = '#d97706';
+          }
         }
       } catch (e) {}
-    }, 3000);
+    }, 2500);
   }
 
   async sendQrToEmailAndClose() {

@@ -188,7 +188,14 @@ class BaileysManager {
 
   hasExistingCredentials(tenantId) {
     const dir = this.getSessionDir(tenantId);
-    return fs.existsSync(path.join(dir, 'creds.json'));
+    const credsPath = path.join(dir, 'creds.json');
+    if (!fs.existsSync(credsPath)) return false;
+    try {
+      const data = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+      return !!(data && data.me && (data.me.id || data.me.jid));
+    } catch (e) {
+      return false;
+    }
   }
 
   // --- START OR GET SESSION FOR A TENANT ---
@@ -241,6 +248,14 @@ class BaileysManager {
     } = baileys;
 
     const tenantSessionDir = this.getSessionDir(tenantId);
+    const hasAuth = this.hasExistingCredentials(tenantId);
+
+    // If session has no completed credentials, ensure directory is clean to prevent stale keypair handshake rejections
+    if (!hasAuth && fs.existsSync(tenantSessionDir)) {
+      try {
+        fs.rmSync(tenantSessionDir, { recursive: true, force: true });
+      } catch (e) {}
+    }
     if (!fs.existsSync(tenantSessionDir)) {
       fs.mkdirSync(tenantSessionDir, { recursive: true });
     }
@@ -252,20 +267,29 @@ class BaileysManager {
         const vInfo = await fetchLatestBaileysVersion();
         version = vInfo.version;
       } catch (e) {
-        version = [2, 3000, 1015901307];
+        version = [2, 3000, 1043857760];
       }
 
-      session.status = this.hasExistingCredentials(tenantId) ? 'CONNECTING' : 'SCAN_QR';
+      session.status = hasAuth ? 'CONNECTING' : 'SCAN_QR';
       session.updatedAt = new Date().toISOString();
+
+      // Official WhatsApp Web browser tuple
+      const browserTuple = (baileys.Browsers && typeof baileys.Browsers.ubuntu === 'function')
+        ? baileys.Browsers.ubuntu('Chrome')
+        : ['Ubuntu', 'Chrome', '22.04.4'];
 
       const sock = (makeWASocket.default || makeWASocket)({
         version,
         auth: state,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        browser: ['Praktika AI Receptionist', 'Chrome', '124.0.0'],
+        browser: browserTuple,
         syncFullHistory: false,
-        generateHighQualityLinkPreview: true
+        generateHighQualityLinkPreview: false,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 25000,
+        markOnlineOnConnect: true
       });
 
       session.sock = sock;
