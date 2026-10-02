@@ -1380,16 +1380,16 @@ class FreeTrialModal {
             this.couponAlert.style.color = '#15803d';
             this.couponAlert.style.background = '#dcfce7';
             this.couponAlert.style.borderColor = '#86efac';
-            this.couponAlert.innerHTML = '🎉 Kupon Pilot Valid: Free Upgrade ke Paket PRO (1 Tahun Penuh) Tanpa Bayar!';
+            this.couponAlert.innerHTML = 'Kupon Valid: Upgrade ke Paket PRO (1 Tahun Penuh) aktif.';
           }
           if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
-        } else if (val === 'PILOTLIFETIME') {
+        } else if (val === 'PILOTLIFETIME' || val === 'LIFETIMEFREE') {
           if (this.couponAlert) {
             this.couponAlert.style.display = 'block';
             this.couponAlert.style.color = '#15803d';
             this.couponAlert.style.background = '#dcfce7';
             this.couponAlert.style.borderColor = '#86efac';
-            this.couponAlert.innerHTML = '👑 Kupon Pilot Valid: Free Akses Lifetime Partner Selamanya (Unlimited Booking)!';
+            this.couponAlert.innerHTML = 'Kupon Valid: Akses Lifetime Partner (Unlimited Booking) aktif.';
           }
           if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
         } else if (val.length > 3) {
@@ -1398,7 +1398,7 @@ class FreeTrialModal {
             this.couponAlert.style.color = '#b91c1c';
             this.couponAlert.style.background = '#fee2e2';
             this.couponAlert.style.borderColor = '#fca5a5';
-            this.couponAlert.innerHTML = 'ℹ️ Kode kupon belum terdaftar. Tetap lanjut untuk uji coba 30 hari gratis standar.';
+            this.couponAlert.innerHTML = 'Kode kupon tidak valid. Pendaftaran tetap dapat dilanjutkan dengan paket Free 25 booking.';
           }
         } else {
           if (this.couponAlert) this.couponAlert.style.display = 'none';
