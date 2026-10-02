@@ -1439,7 +1439,7 @@ class FreeTrialModal {
 
         if (this.submitBtn) {
           this.submitBtn.disabled = true;
-          this.submitBtn.innerHTML = '⏳ Menyiapkan Akun & Membuat QR WhatsApp...';
+          this.submitBtn.innerHTML = 'Menyiapkan Akun &amp; QR WhatsApp...';
         }
 
         try {
@@ -1486,10 +1486,10 @@ class FreeTrialModal {
             this.connectActionBtn.href = data.connect_url;
           }
         } catch (err) {
-          alert(`⚠️ Pendaftaran gagal: ${err.message}`);
+          alert(`Pendaftaran gagal: ${err.message}`);
           if (this.submitBtn) {
             this.submitBtn.disabled = false;
-            this.submitBtn.innerHTML = '<span>🚀 Aktifkan Uji Coba &amp; Scan WhatsApp Sekarang →</span>';
+            this.submitBtn.innerHTML = '<span>Aktifkan Paket Free &amp; Scan WhatsApp Sekarang →</span>';
           }
         }
       });
@@ -1503,7 +1503,7 @@ class FreeTrialModal {
     if (this.couponAlert) this.couponAlert.style.display = 'none';
     if (this.submitBtn) {
       this.submitBtn.disabled = false;
-      this.submitBtn.innerHTML = '<span>🚀 Aktifkan Uji Coba &amp; Scan WhatsApp Sekarang →</span>';
+      this.submitBtn.innerHTML = '<span>Aktifkan Paket Free &amp; Scan WhatsApp Sekarang →</span>';
     }
     if (this.modal) this.modal.classList.add('active');
   }

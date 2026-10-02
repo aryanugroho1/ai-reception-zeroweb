@@ -823,70 +823,53 @@
         <form id="mayarInfoForm">
           <div class="trial-field-group">
             <label class="trial-field-label" for="mayarBizName">
-              <span>Nama Bisnis / Salon / Barber / Dokter / Klinik <span style="color:#ef4444;">*</span></span>
+              Nama Bisnis / Usaha <span class="required-star">*</span>
             </label>
-            <div class="trial-field-wrapper">
-              <span class="trial-field-icon">🏪</span>
-              <input type="text" id="mayarBizName" class="trial-input" required placeholder="Contoh: The Heritage Barbershop / Ayra Salon / Maya Dental Clinic">
-            </div>
+            <input type="text" id="mayarBizName" class="trial-input" required placeholder="Contoh: The Heritage Barbershop / Ayra Salon">
           </div>
 
           <div class="trial-form-grid">
             <div class="trial-field-group">
               <label class="trial-field-label" for="mayarBizCategory">
-                <span>Kategori Layanan <span style="color:#ef4444;">*</span></span>
+                Kategori Layanan <span class="required-star">*</span>
               </label>
-              <div class="trial-field-wrapper">
-                <span class="trial-field-icon">🏷️</span>
-                <select id="mayarBizCategory" class="trial-select">
-                  <option value="SALON">💇 Salon &amp; Studio Kecantikan</option>
-                  <option value="BARBER">💈 Barbershop &amp; Men's Grooming</option>
-                  <option value="SPA">💆 Spa, Pijat &amp; Refleksi</option>
-                  <option value="DENTAL">🦷 Dokter Gigi &amp; Dental Care</option>
-                  <option value="GENERAL">🩺 Dokter Umum &amp; Klinik Pratama</option>
-                  <option value="OTHER">💼 Bisnis Reservasi Waktu Lainnya</option>
-                </select>
-              </div>
+              <select id="mayarBizCategory" class="trial-select">
+                <option value="SALON">Salon &amp; Studio Kecantikan</option>
+                <option value="BARBER">Barbershop &amp; Men's Grooming</option>
+                <option value="SPA">Spa, Pijat &amp; Refleksi</option>
+                <option value="DENTAL">Dokter Gigi &amp; Dental Care</option>
+                <option value="GENERAL">Dokter Umum &amp; Klinik Pratama</option>
+                <option value="OTHER">Bisnis Reservasi Waktu Lainnya</option>
+              </select>
             </div>
 
             <div class="trial-field-group">
               <label class="trial-field-label" for="mayarOwnerName">
-                <span>Nama Pemilik / PIC <span style="color:#ef4444;">*</span></span>
+                Nama Pemilik / PIC <span class="required-star">*</span>
               </label>
-              <div class="trial-field-wrapper">
-                <span class="trial-field-icon">👤</span>
-                <input type="text" id="mayarOwnerName" class="trial-input" required placeholder="Contoh: Kevin / drg. Maya">
-              </div>
+              <input type="text" id="mayarOwnerName" class="trial-input" required placeholder="Contoh: Kevin / drg. Maya">
             </div>
           </div>
 
           <div class="trial-field-group">
             <label class="trial-field-label" for="mayarBizPhone">
-              <span>Nomor WhatsApp Bisnis yang Dihubungkan <span style="color:#ef4444;">*</span></span>
-              <span style="font-size:0.72rem; color:#008767; font-weight:700;">1 QR untuk 1 Nomor</span>
+              Nomor WhatsApp Bisnis <span class="required-star">*</span>
             </label>
-            <div class="trial-field-wrapper">
-              <span class="trial-field-icon">📱</span>
-              <input type="tel" id="mayarBizPhone" class="trial-input" required placeholder="Contoh: 081234567890">
-            </div>
-            <span style="font-size:0.72rem; color:#64748b; margin-top:3px; display:block;">
+            <input type="tel" id="mayarBizPhone" class="trial-input" required placeholder="Contoh: 081234567890">
+            <span class="trial-field-hint">
               Nomor WhatsApp ini yang akan membalas chat pelanggan secara otomatis.
             </span>
           </div>
 
           <div class="trial-field-group">
             <label class="trial-field-label" for="mayarBizEmail">
-              <span>Alamat Email Pemilik <span style="color:#ef4444;">*</span></span>
-              <span style="font-size:0.72rem; color:#64748b; font-weight:500;">Untuk Kirim QR Code</span>
+              Alamat Email Pemilik <span class="required-star">*</span>
             </label>
-            <div class="trial-field-wrapper">
-              <span class="trial-field-icon">✉️</span>
-              <input type="email" id="mayarBizEmail" class="trial-input" required placeholder="Contoh: owner@bisnis.com">
-            </div>
+            <input type="email" id="mayarBizEmail" class="trial-input" required placeholder="Contoh: owner@bisnis.com">
           </div>
 
           <button type="submit" class="trial-submit-btn" id="btnSubmitMayarInfo">
-            <span>Lanjut / Next (Generate QR WhatsApp) →</span>
+            <span>Lanjut ke Scan QR WhatsApp →</span>
           </button>
 
           <button type="button" class="btn btn-secondary" id="btnBackToStep1" style="width:100%; margin-top:8px;">
@@ -944,103 +927,70 @@
       <!-- Screen 1: Registration Form -->
       <div id="trialFormContainer">
         <div class="trial-header">
-          <div class="trial-badge">✨ Uji Coba 30 Hari Bebas Biaya • Tanpa Kartu Kredit</div>
+          <div class="trial-badge">Paket Free • 25 Booking/Bulan</div>
           <h3 class="trial-title">Mulai Asisten WhatsApp Bisnis Anda</h3>
-          <p class="trial-subtitle">Balas chat booking 24/7 otomatis, kurangi no-show, dan terima reservasi salon, barbershop, spa, atau klinik Anda instan.</p>
-        </div>
-
-        <div class="trial-perks-row">
-          <div class="trial-perk-card">
-            <span class="trial-perk-icon">⚡</span>
-            <span class="trial-perk-text">Siap 2 Menit (Scan QR)</span>
-          </div>
-          <div class="trial-perk-card">
-            <span class="trial-perk-icon">🎁</span>
-            <span class="trial-perk-text">250 Kuota Booking Gratis</span>
-          </div>
-          <div class="trial-perk-card">
-            <span class="trial-perk-icon">🛡️</span>
-            <span class="trial-perk-text">Nomor WhatsApp Sendiri</span>
-          </div>
+          <p class="trial-subtitle">Otomatisasi reservasi dan chat pelanggan 24/7. Tanpa kartu kredit, aktif dalam 2 menit.</p>
         </div>
 
         <form id="trialForm">
           <div class="trial-field-group">
             <label class="trial-field-label" for="trialClinicName">
-              <span>Nama Bisnis / Brand / Usaha <span style="color:#ef4444;">*</span></span>
-              <span style="font-size:0.72rem; color:#64748b; font-weight:500;">Ditampilkan ke pelanggan</span>
+              Nama Bisnis / Brand / Usaha <span class="required-star">*</span>
             </label>
-            <div class="trial-field-wrapper">
-              <span class="trial-field-icon">🏪</span>
-              <input type="text" id="trialClinicName" class="trial-input" required placeholder="Contoh: The Heritage Barbershop / Ayra Salon / Maya Dental Clinic">
-            </div>
+            <input type="text" id="trialClinicName" class="trial-input" required placeholder="Contoh: The Heritage Barbershop / Ayra Salon">
           </div>
 
           <div class="trial-form-grid">
             <div class="trial-field-group">
               <label class="trial-field-label" for="trialCategory">
-                <span>Kategori Layanan <span style="color:#ef4444;">*</span></span>
+                Kategori Layanan <span class="required-star">*</span>
               </label>
-              <div class="trial-field-wrapper">
-                <span class="trial-field-icon">🏷️</span>
-                <select id="trialCategory" class="trial-select">
-                  <option value="SALON">💇 Salon &amp; Studio Kecantikan</option>
-                  <option value="BARBER">💈 Barbershop &amp; Men's Grooming</option>
-                  <option value="SPA">💆 Spa, Pijat &amp; Refleksi</option>
-                  <option value="DENTAL">🦷 Dokter Gigi &amp; Dental Care</option>
-                  <option value="GENERAL">🩺 Dokter Umum &amp; Klinik Pratama</option>
-                  <option value="OTHER">💼 Bisnis Reservasi Waktu Lainnya</option>
-                </select>
-              </div>
+              <select id="trialCategory" class="trial-select">
+                <option value="SALON">Salon &amp; Studio Kecantikan</option>
+                <option value="BARBER">Barbershop &amp; Men's Grooming</option>
+                <option value="SPA">Spa, Pijat &amp; Refleksi</option>
+                <option value="DENTAL">Dokter Gigi &amp; Dental Care</option>
+                <option value="GENERAL">Dokter Umum &amp; Klinik Pratama</option>
+                <option value="OTHER">Bisnis Reservasi Waktu Lainnya</option>
+              </select>
             </div>
 
             <div class="trial-field-group">
               <label class="trial-field-label" for="trialDocName">
-                <span>Nama Pemilik / PIC <span style="color:#ef4444;">*</span></span>
+                Nama Pemilik / PIC <span class="required-star">*</span>
               </label>
-              <div class="trial-field-wrapper">
-                <span class="trial-field-icon">👤</span>
-                <input type="text" id="trialDocName" class="trial-input" required placeholder="Contoh: Kevin / drg. Maya">
-              </div>
+              <input type="text" id="trialDocName" class="trial-input" required placeholder="Contoh: Kevin / drg. Maya">
             </div>
           </div>
 
           <div class="trial-field-group">
             <label class="trial-field-label" for="trialPhone">
-              <span>Nomor WhatsApp Bisnis yang Dihubungkan <span style="color:#ef4444;">*</span></span>
-              <span style="font-size:0.72rem; color:#008767; font-weight:700;">Nomor Bot Anda</span>
+              Nomor WhatsApp Bisnis <span class="required-star">*</span>
             </label>
-            <div class="trial-field-wrapper">
-              <span class="trial-field-icon">📱</span>
-              <input type="tel" id="trialPhone" class="trial-input" required placeholder="Contoh: 081234567890">
-            </div>
-            <span style="display:block; font-size:0.72rem; color:#64748b; margin-top:4px;">
-              💡 Nomor WhatsApp ini yang akan merespons chat pelanggan &amp; mencatat booking secara otomatis.
+            <input type="tel" id="trialPhone" class="trial-input" required placeholder="Contoh: 081234567890">
+            <span class="trial-field-hint">
+              Nomor WhatsApp ini yang akan merespons chat pelanggan &amp; mencatat booking secara otomatis.
             </span>
           </div>
 
           <div class="trial-field-group" style="margin-bottom:1.2rem;">
-            <div class="trial-field-label">
-              <span>Kode Kupon Akses Pilot <span style="font-size:0.72rem; color:#64748b; font-weight:500;">(Opsional)</span></span>
-              <span class="trial-coupon-badge">PRO / LIFETIME FREE</span>
-            </div>
-            <div class="trial-field-wrapper">
-              <span class="trial-field-icon">🎟️</span>
-              <input type="text" id="trialCouponCode" class="trial-input" placeholder="Punya kode? Masukkan PILOTPRO atau PILOTLIFETIME" style="font-family:var(--font-mono); text-transform:uppercase;">
-            </div>
+            <label class="trial-field-label" for="trialCouponCode">
+              <span>Kode Kupon Akses <span class="optional-tag">(Opsional)</span></span>
+            </label>
+            <input type="text" id="trialCouponCode" class="trial-input" placeholder="Punya kode? Masukkan di sini (misal: PILOTPRO)" style="font-family:var(--font-mono); text-transform:uppercase;">
             <div id="trialCouponAlert" style="display:none; margin-top:6px; font-size:0.78rem; font-weight:700; color:#15803d; background:#dcfce7; padding:6px 12px; border-radius:8px; border:1px solid #86efac;"></div>
           </div>
 
           <button type="submit" class="trial-submit-btn" id="trialSubmitBtn">
-            <span>🚀 Aktifkan Uji Coba &amp; Scan WhatsApp Sekarang →</span>
+            <span>Aktifkan Paket Free &amp; Scan WhatsApp Sekarang →</span>
           </button>
 
           <div class="trial-trust-footer">
-            <span>🔒 100% Gratis</span>
+            <span>100% Gratis</span>
             <span>•</span>
-            <span>💳 Tanpa Kartu Kredit</span>
+            <span>Tanpa Kartu Kredit</span>
             <span>•</span>
-            <span>⚡ Batal Kapan Saja</span>
+            <span>Batal Kapan Saja</span>
           </div>
         </form>
       </div>
