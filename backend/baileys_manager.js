@@ -21,6 +21,7 @@ class BaileysManager {
     this.sessions = new Map(); // tenantId -> sessionData
     this.tokenSecret = process.env.CONNECT_TOKEN_SECRET || 'praktika-doctor-onboard-secret-2026';
     this.connectTokens = new Map(); // token -> { tenantId, expiresAt }
+    this.pendingRegistrations = new Map(); // pendingId -> pendingData
 
     // Ensure sessions root directory exists
     if (!fs.existsSync(this.sessionsDir)) {
@@ -30,6 +31,117 @@ class BaileysManager {
         console.error('[BaileysManager] Failed to create sessions dir:', err.message);
       }
     }
+  }
+
+  // --- PENDING REGISTRATION STAGING ---
+  registerPendingTenant(pendingData) {
+    const pendingId = `pending_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    this.pendingRegistrations.set(pendingId, pendingData);
+    const token = this.generateConnectToken(pendingId);
+    return { pendingId, token };
+  }
+
+  getPendingTenant(pendingId) {
+    return this.pendingRegistrations.get(pendingId);
+  }
+
+  cancelPendingTenant(pendingId) {
+    this.pendingRegistrations.delete(pendingId);
+    this.sessions.delete(pendingId);
+    return true;
+  }
+
+  commitPendingTenant(pendingId, actualConnectedPhone) {
+    if (!this.pendingRegistrations.has(pendingId)) return null;
+    const p = this.pendingRegistrations.get(pendingId);
+    const phone = actualConnectedPhone || p.rawPhone || p.phone;
+
+    // Check if tenant with this phone already exists in DB
+    let tenant = this.db.getTenantByPhone(phone);
+    if (tenant) {
+      tenant.name = p.business_name || tenant.name;
+      tenant.subscription_plan = p.plan || tenant.subscription_plan;
+      tenant.subscription_until = p.subUntil || tenant.subscription_until;
+      tenant.whatsapp_connected_phone = phone;
+      tenant.updated_at = new Date().toISOString();
+    } else {
+      const rawSlug = (p.business_name || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
+      const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
+      tenant = this.db.createTenant({
+        name: p.business_name,
+        slug: uniqueSlug,
+        owner_phone: phone,
+        category: p.category || 'GENERAL',
+        subscription_plan: p.plan || 'STARTER',
+        subscription_until: p.subUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        timezone: 'Asia/Jakarta'
+      });
+      tenant.whatsapp_connected_phone = phone;
+
+      // Seed default starter services by category
+      const starterServicesByCategory = {
+        'BARBER': [
+          { name: 'Gentleman Haircut & Styling', duration_minutes: 45, price: 75000 },
+          { name: 'Beard Trim & Hot Towel', duration_minutes: 30, price: 50000 },
+          { name: 'Hair Wash & Scalp Massage', duration_minutes: 20, price: 35000 }
+        ],
+        'SALON': [
+          { name: 'Hair Treatment & Styling', duration_minutes: 60, price: 150000 },
+          { name: 'Manicure & Nail Art', duration_minutes: 45, price: 120000 },
+          { name: 'Wash & Blow Signature', duration_minutes: 30, price: 60000 }
+        ],
+        'SPA': [
+          { name: 'Full Body Relaxation Massage (60m)', duration_minutes: 60, price: 180000 },
+          { name: 'Refleksi Kaki & Relaksasi (45m)', duration_minutes: 45, price: 100000 },
+          { name: 'Aromatherapy Herbal Spa (90m)', duration_minutes: 90, price: 220000 }
+        ],
+        'DENTAL': [
+          { name: 'Pembersihan Karang Gigi (Scaling)', duration_minutes: 40, price: 250000 },
+          { name: 'Tambal Gigi Estetik', duration_minutes: 45, price: 200000 },
+          { name: 'Konsultasi & Pemeriksaan Gigi', duration_minutes: 30, price: 100000 }
+        ],
+        'GENERAL': [
+          { name: 'Konsultasi Dokter Umum', duration_minutes: 20, price: 100000 },
+          { name: 'Pemeriksaan Kesehatan Rutin', duration_minutes: 30, price: 150000 }
+        ]
+      };
+
+      const servicesToCreate = starterServicesByCategory[p.category] || [
+        { name: 'Layanan Utama / Reservasi Slot', duration_minutes: 45, price: 150000 },
+        { name: 'Konsultasi / Treatment Tambahan', duration_minutes: 30, price: 100000 }
+      ];
+
+      try {
+        for (const s of servicesToCreate) {
+          this.db.createService({
+            tenant_id: tenant.id,
+            name: s.name,
+            duration_minutes: s.duration_minutes,
+            price: s.price,
+            is_active: true
+          });
+        }
+      } catch (e) {}
+    }
+
+    // Move session to committed tenant ID
+    const pendingSession = this.sessions.get(pendingId);
+    if (pendingSession) {
+      pendingSession.tenantId = tenant.id;
+      this.sessions.set(tenant.id, pendingSession);
+      this.sessions.delete(pendingId);
+    }
+
+    // Update connect tokens referencing pendingId
+    for (const [t, data] of this.connectTokens.entries()) {
+      if (data.tenantId === pendingId) {
+        data.tenantId = tenant.id;
+      }
+    }
+
+    this.pendingRegistrations.delete(pendingId);
+    console.log(`[BaileysManager] Tenant officially COMMITTED to database after QR connection: ${tenant.name} (${tenant.id}) - Phone: ${tenant.owner_phone}`);
+    return tenant;
   }
 
   // --- TOKEN GENERATOR FOR DOCTOR ONBOARDING PORTAL ---
@@ -51,9 +163,23 @@ class BaileysManager {
     return item.tenantId;
   }
 
-  // Helper to resolve tenant
+  // Helper to resolve tenant (supports both registered tenants and pending staging)
   resolveTenant(identifier) {
-    return this.db.tenants.get(identifier) || this.db.getTenantBySlug(identifier);
+    const registered = this.db.tenants.get(identifier) || this.db.getTenantBySlug(identifier);
+    if (registered) return registered;
+    if (this.pendingRegistrations && this.pendingRegistrations.has(identifier)) {
+      const p = this.pendingRegistrations.get(identifier);
+      return {
+        id: identifier,
+        name: p.business_name || 'Bisnis Anda',
+        slug: identifier,
+        owner_phone: p.rawPhone || p.phone,
+        category: p.category || 'GENERAL',
+        subscription_plan: p.plan || 'STARTER',
+        is_pending: true
+      };
+    }
+    return null;
   }
 
   getSessionDir(tenantId) {
@@ -172,6 +298,15 @@ class BaileysManager {
             tenant.whatsapp_connected_phone = phone;
           }
           session.updatedAt = new Date().toISOString();
+
+          // CRITICAL: Commit pending registration to Database ONLY after QR is scanned & connected!
+          if (this.pendingRegistrations && this.pendingRegistrations.has(tenantId)) {
+            const committed = this.commitPendingTenant(tenantId, session.phone);
+            if (committed) {
+              tenant = committed;
+            }
+          }
+
           console.log(`[BaileysManager] Sesi WhatsApp ${tenant.name} (${tenant.slug}) BERHASIL TERHUBUNG: +${session.phone}`);
         }
 
@@ -247,7 +382,7 @@ class BaileysManager {
 
   // --- GET SESSION STATUS ---
   getSessionStatus(tenantIdentifier) {
-    const tenant = this.resolveTenant(tenantIdentifier);
+    let tenant = this.resolveTenant(tenantIdentifier);
     if (!tenant) return null;
     const session = this.sessions.get(tenant.id) || {
       tenantId: tenant.id,
@@ -256,6 +391,15 @@ class BaileysManager {
       phone: tenant.whatsapp_connected_phone || tenant.owner_phone || null,
       updatedAt: tenant.updated_at
     };
+
+    // If connected and still pending, commit to DB
+    if (session.status === 'CONNECTED' && this.pendingRegistrations && this.pendingRegistrations.has(tenant.id)) {
+      const committed = this.commitPendingTenant(tenant.id, session.phone);
+      if (committed) {
+        tenant = committed;
+      }
+    }
+
     return this.formatSessionResponse(tenant, session);
   }
 

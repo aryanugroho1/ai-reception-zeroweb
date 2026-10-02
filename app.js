@@ -986,7 +986,7 @@ class MayarPaymentModal {
             const couponAlert = document.getElementById('trialCouponAlert');
             if (formContainer) formContainer.style.display = 'block';
             if (successView) successView.style.display = 'none';
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<span>🚀 Aktifkan Paket Free &amp; Scan WhatsApp Sekarang →</span>'; }
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<span>Aktifkan Paket Free &amp; Scan WhatsApp Sekarang →</span>'; }
             if (couponInput) couponInput.value = '';
             if (couponAlert) couponAlert.style.display = 'none';
             trialModalEl.classList.add('active');
@@ -1028,6 +1028,16 @@ class MayarPaymentModal {
     if (this.btnBackToStep1) {
       this.btnBackToStep1.addEventListener('click', () => {
         this.goToStep1();
+      });
+    }
+
+    // Step 3 -> Step 2 (Back from QR to change WhatsApp phone number)
+    const btnBackToStep2FromQr = document.getElementById('btnBackToStep2FromQr');
+    if (btnBackToStep2FromQr) {
+      btnBackToStep2FromQr.addEventListener('click', () => {
+        if (this.pollInterval) clearInterval(this.pollInterval);
+        this.goToStep2();
+        if (this.bizPhoneInput) this.bizPhoneInput.focus();
       });
     }
 
@@ -1352,6 +1362,7 @@ class FreeTrialModal {
     this.couponAlert = document.getElementById('trialCouponAlert');
     this.connectActionBtn = document.getElementById('trialConnectActionBtn');
     this.copyLinkBtn = document.getElementById('trialCopyLinkBtn');
+    this.backToEditBtn = document.getElementById('trialBackToEditBtn');
     this.currentWaLink = '';
   }
 
@@ -1368,6 +1379,33 @@ class FreeTrialModal {
       this.modal.addEventListener('click', (e) => {
         if (e.target === this.modal) this.close();
       });
+    }
+
+    if (this.backToEditBtn) {
+      this.backToEditBtn.addEventListener('click', () => {
+        if (this.formContainer) this.formContainer.style.display = 'block';
+        if (this.successView) this.successView.style.display = 'none';
+        document.getElementById('trialPhone')?.focus();
+      });
+    }
+
+    // Auto open & prefill if returning from connect page (edit_trial=1)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('edit_trial') === '1') {
+      const p = urlParams.get('phone') || '';
+      const b = urlParams.get('biz_name') || '';
+      const c = urlParams.get('category') || '';
+      const o = urlParams.get('owner') || '';
+      const cp = urlParams.get('coupon') || '';
+
+      if (b && document.getElementById('trialClinicName')) document.getElementById('trialClinicName').value = b;
+      if (c && document.getElementById('trialCategory')) document.getElementById('trialCategory').value = c;
+      if (o && document.getElementById('trialDocName')) document.getElementById('trialDocName').value = o;
+      if (p && document.getElementById('trialPhone')) document.getElementById('trialPhone').value = p;
+      if (cp && document.getElementById('trialCouponCode')) document.getElementById('trialCouponCode').value = cp;
+
+      this.open();
+      setTimeout(() => document.getElementById('trialPhone')?.focus(), 250);
     }
 
     // Live interactive coupon feedback
@@ -1436,6 +1474,17 @@ class FreeTrialModal {
           document.getElementById('trialPhone')?.focus();
           return;
         }
+
+        // Save form draft to localStorage for seamless editing
+        try {
+          localStorage.setItem('trial_form_draft', JSON.stringify({
+            business_name: clinicName,
+            owner_name: docName,
+            category: category,
+            phone: cleanPhone,
+            coupon: coupon
+          }));
+        } catch (e) {}
 
         if (this.submitBtn) {
           this.submitBtn.disabled = true;

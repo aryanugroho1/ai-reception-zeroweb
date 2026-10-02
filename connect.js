@@ -24,9 +24,39 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnStart = document.getElementById('btnStart');
   const btnDisconnect = document.getElementById('btnDisconnect');
   const btnTestChat = document.getElementById('btnTestChat');
+  const btnBackToForm = document.getElementById('btnBackToForm');
 
   let pollInterval = null;
   let currentStatus = null;
+  let currentTenant = null;
+
+  if (btnBackToForm) {
+    btnBackToForm.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Retrieve stored draft or tenant data
+      let draft = {};
+      try {
+        draft = JSON.parse(localStorage.getItem('trial_form_draft') || '{}');
+      } catch (e) {}
+
+      const phone = draft.phone || currentTenant?.owner_phone || '';
+      const name = draft.business_name || currentTenant?.name || '';
+      const category = draft.category || currentTenant?.category || '';
+      const owner = draft.owner_name || '';
+      const coupon = draft.coupon || '';
+
+      const queryParams = new URLSearchParams({
+        edit_trial: '1',
+        phone,
+        biz_name: name,
+        category,
+        owner,
+        coupon
+      });
+
+      window.location.href = `/?${queryParams.toString()}`;
+    });
+  }
 
   if (!token) {
     showError();
@@ -48,6 +78,8 @@ document.addEventListener('DOMContentLoaded', () => {
         showError();
         return;
       }
+
+      currentTenant = data.tenant;
 
       // Render clinic metadata
       clinicBadge.style.display = 'flex';
