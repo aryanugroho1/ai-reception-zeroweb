@@ -188,8 +188,8 @@ class AppServer {
         }
 
         const quotas = this.db.getViewTenantQuotaMonitoring();
-        const mrrMap = { STARTER: 149000, PRO: 299000, CLINIC: 599000, LIFETIME_PARTNER: 0 };
-        const maxQuotaMap = { STARTER: 150, PRO: 400, CLINIC: 1200, LIFETIME_PARTNER: 999999 };
+        const mrrMap = { FREE: 0, STARTER: 99000, PRO: 199000, CLINIC: 349000, LIFETIME_PARTNER: 0 };
+        const maxQuotaMap = { FREE: 25, STARTER: 100, PRO: 400, CLINIC: 1200, LIFETIME_PARTNER: 999999 };
 
         const tenantsList = Array.from(this.db.tenants.values()).map(t => {
           const quota = quotas.find(q => q.tenant_id === t.id);

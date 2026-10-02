@@ -613,7 +613,8 @@ class DatabaseEngine {
 
   getViewTenantQuotaMonitoring() {
     const PLAN_QUOTA_MAP = {
-      STARTER: 150,
+      FREE: 25,
+      STARTER: 100,
       PRO: 400,
       CLINIC: 1200,
       LIFETIME_PARTNER: 'UNLIMITED'

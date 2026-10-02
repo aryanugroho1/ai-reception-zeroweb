@@ -173,7 +173,7 @@ Bagi pengguna paket **Free, Starter, Pro, maupun Business**, sistem sudah dileng
 | **Pesan perintah tidak dibalas sama sekali** | Sesi WhatsApp di HP bisnis terputus atau ponsel mati. | Pastikan ponsel bisnis terhubung ke internet. Buka menu Perangkat Tertaut di WA, pastikan statusnya masih aktif. Jika terputus, cukup lakukan scan QR ulang. |
 | **Balasan: "Unauthorized doctor phone"** | Perintah dikirim dari nomor HP yang belum didaftarkan di whitelist dokter. | Kirimkan perintah hanya dari nomor WhatsApp dokter/owner yang didaftarkan saat pendaftaran awal. |
 | **Pasien mengeluh slot penuh padahal ruang tunggu sepi** | Status praktek masih dalam mode `TUTUP`. | Ketik `BUKA` di WhatsApp dokter untuk mengizinkan pasien baru melakukan reservasi. |
-| **Kuota booking habis di tengah bulan** | Jumlah booking telah mencapai batas paket bulanan (misal 25 di Free / 80 di Starter). | Buka halaman akun untuk melakukan *upgrade* ke paket yang lebih tinggi (Pro / Business) agar kuota langsung bertambah seketika. |
+| **Kuota booking habis di tengah bulan** | Jumlah booking telah mencapai batas paket bulanan (misal 25 di Free / 100 di Starter). | Buka halaman akun untuk melakukan *upgrade* ke paket yang lebih tinggi (Pro / Business) agar kuota langsung bertambah seketika. |
 
 ---
 
