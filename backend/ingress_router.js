@@ -86,8 +86,10 @@ class IngressRouter {
       };
     }
 
-    // Save/update session
+    // Save/update session preserving existing state
+    const priorSession = this.db.getSession(cleanPhone) || {};
     this.db.saveSession(cleanPhone, {
+      ...priorSession,
       tenant_id: targetTenant.id,
       last_activity: new Date().toISOString()
     });
@@ -128,18 +130,217 @@ class IngressRouter {
     const reschedMatch = cleanText.match(/^RESCHEDULE_([a-zA-Z0-9-]+)/i);
     if (reschedMatch) {
       const apptId = reschedMatch[1];
+      this.db.saveSession(cleanPhone, {
+        tenant_id: targetTenant.id,
+        step: 'AWAITING_RESCHEDULE_TIME',
+        target_reschedule_id: apptId,
+        last_activity: new Date().toISOString()
+      });
       return {
         recipient_type: 'PATIENT',
         tenant: targetTenant,
         action: 'PROMPT_RESCHEDULE_SLOT',
         appointment_id: apptId,
-        message: `Silakan pilih waktu pengganti baru untuk reservasi Anda. (Ketik tanggal & jam yang diinginkan, misal: YYYY-MM-DD HH:mm)`
+        message: `Silakan pilih waktu pengganti baru untuk reservasi Anda. (Ketik tanggal & jam yang diinginkan, misal: 2026-10-05 10:00 atau ketik BATAL untuk membatalkan).`
+      };
+    }
+
+    // Cancel / Reset intent
+    if (['BATAL', 'CANCEL', 'RESET'].includes(cleanText.toUpperCase())) {
+      this.db.saveSession(cleanPhone, {
+        tenant_id: targetTenant.id,
+        step: null,
+        selected_service_id: null,
+        last_activity: new Date().toISOString()
+      });
+      return {
+        recipient_type: 'PATIENT',
+        tenant: targetTenant,
+        response_type: 'TEXT',
+        message: `Sesi reservasi telah dibatalkan. Silakan kirim pesan kapan saja untuk melihat menu layanan kembali.`
+      };
+    }
+
+    const services = this.db.getServicesByTenant(targetTenant.id);
+    const existingSession = this.db.getSession(cleanPhone) || {};
+
+    // Handle in-progress Reschedule
+    if (existingSession.step === 'AWAITING_RESCHEDULE_TIME' && existingSession.target_reschedule_id) {
+      const parsedTime = this.parseDateString(cleanText);
+      if (parsedTime) {
+        try {
+          const reschedResult = await this.rescheduleService.rescheduleAppointment({
+            tenantId: targetTenant.id,
+            appointmentId: existingSession.target_reschedule_id,
+            newStartTime: parsedTime,
+            customerPhone: cleanPhone
+          });
+          this.db.saveSession(cleanPhone, { ...existingSession, step: null, target_reschedule_id: null });
+          return {
+            recipient_type: 'PATIENT',
+            tenant: targetTenant,
+            response_type: 'CONFIRMATION',
+            message: [
+              `✅ *JADWAL BERHASIL DIUBAH!*`,
+              `----------------------------------------`,
+              `🏥 *Klinik:* ${targetTenant.name}`,
+              `⏰ *Waktu Baru:* ${this.formatIndoDateTime(reschedResult.newAppointment.start_time)}`,
+              `📌 *Kode Booking:* #${reschedResult.newAppointment.id.slice(-8).toUpperCase()}`,
+              `----------------------------------------`,
+              `Terima kasih! Sampai jumpa di jadwal yang baru.`
+            ].join('\n')
+          };
+        } catch (reschedErr) {
+          return {
+            recipient_type: 'PATIENT',
+            tenant: targetTenant,
+            response_type: 'TEXT',
+            message: `⚠️ Gagal mengubah jadwal: ${reschedErr.message}. Silakan coba jam lain atau ketik BATAL.`
+          };
+        }
+      }
+    }
+
+    // --- CONVERSATIONAL BOOKING PARSER ---
+    let customerName = null;
+    let selectedService = null;
+
+    // Pattern 1: Step AWAITING_NAME (Patient already picked service, now sending their name)
+    if (existingSession.step === 'AWAITING_NAME' && existingSession.selected_service_id) {
+      if (cleanText.length >= 2 && !/^[0-9]+$/.test(cleanText)) {
+        customerName = cleanText.trim();
+        selectedService = services.find(s => s.id === existingSession.selected_service_id);
+      }
+    }
+
+    // Pattern 2: "Nama Lengkap <spasi> Nomor Index" (Contoh: "Budi Santoso 1" atau "Budi 2")
+    const matchNameNum = cleanText.match(/^([a-zA-Z\s'.]{2,})\s+([1-9])$/);
+    if (matchNameNum && !customerName) {
+      const idx = parseInt(matchNameNum[2], 10);
+      if (services[idx - 1]) {
+        customerName = matchNameNum[1].trim();
+        selectedService = services[idx - 1];
+      }
+    }
+
+    // Pattern 3: "Nomor Index <spasi> Nama Lengkap" (Contoh: "1 Budi Santoso")
+    const matchNumName = cleanText.match(/^([1-9])\s+([a-zA-Z\s'.]{2,})$/);
+    if (matchNumName && !customerName) {
+      const idx = parseInt(matchNumName[1], 10);
+      if (services[idx - 1]) {
+        customerName = matchNumName[2].trim();
+        selectedService = services[idx - 1];
+      }
+    }
+
+    // Pattern 4: "DAFTAR / BOOK / PESAN <Nama> <Nomor>"
+    const matchCmd = cleanText.match(/^(?:DAFTAR|BOOK|PESAN)\s+([a-zA-Z\s'.]{2,})\s+([1-9])/i);
+    if (matchCmd && !customerName) {
+      const idx = parseInt(matchCmd[2], 10);
+      if (services[idx - 1]) {
+        customerName = matchCmd[1].trim();
+        selectedService = services[idx - 1];
+      }
+    }
+
+    // Pattern 5: Hanya kirim Nomor Layanan saja (Contoh: "1")
+    const matchSingleNum = cleanText.match(/^([1-9])$/);
+    if (matchSingleNum && !customerName) {
+      const idx = parseInt(matchSingleNum[1], 10);
+      if (services[idx - 1]) {
+        const s = services[idx - 1];
+        this.db.saveSession(cleanPhone, {
+          ...existingSession,
+          tenant_id: targetTenant.id,
+          step: 'AWAITING_NAME',
+          selected_service_id: s.id,
+          last_activity: new Date().toISOString()
+        });
+        return {
+          recipient_type: 'PATIENT',
+          tenant: targetTenant,
+          response_type: 'TEXT',
+          message: [
+            `👍 Anda memilih layanan: *${s.name}*`,
+            `⏱️ Durasi: ${s.duration_minutes} menit | 💳 Rp ${s.price.toLocaleString('id-ID')}`,
+            `----------------------------------------`,
+            `Silakan balas pesan ini dengan *Nama Lengkap* Anda untuk konfirmasi jadwal.`
+          ].join('\n')
+        };
+      }
+    }
+
+    // IF CUSTOMER NAME & SERVICE ARE IDENTIFIED -> EXECUTE BOOKING
+    if (customerName && selectedService) {
+      // 1. Check if patient already has an active slot
+      const activeCheck = this.db.checkCustomerActiveSlot(targetTenant.id, cleanPhone);
+      if (activeCheck) {
+        const exist = activeCheck.appointment;
+        return {
+          recipient_type: 'PATIENT',
+          tenant: targetTenant,
+          response_type: 'TEXT',
+          message: [
+            `⚠️ *ANDA SUDAH MEMILIKI RESERVASI AKTIF*`,
+            `----------------------------------------`,
+            `📌 *Kode:* #${exist.id.slice(-8).toUpperCase()}`,
+            `👤 *Nama:* ${exist.customer_name}`,
+            `⏰ *Waktu:* ${this.formatIndoDateTime(exist.start_time)}`,
+            `----------------------------------------`,
+            `Untuk mengubah waktu, balas dengan:`,
+            `*RESCHEDULE_${exist.id}*`
+          ].join('\n')
+        };
+      }
+
+      // 2. Find next available slot
+      const slot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes);
+
+      // 3. Create appointment in database
+      const appt = this.db.createAppointment({
+        tenant_id: targetTenant.id,
+        service_id: selectedService.id,
+        customer_name: customerName,
+        customer_phone: cleanPhone,
+        start_time: slot.startTime,
+        end_time: slot.endTime,
+        status: 'CONFIRMED'
+      });
+
+      // Clear session step
+      this.db.saveSession(cleanPhone, {
+        tenant_id: targetTenant.id,
+        step: null,
+        selected_service_id: null,
+        last_appointment_id: appt.id,
+        last_activity: new Date().toISOString()
+      });
+
+      return {
+        recipient_type: 'PATIENT',
+        tenant: targetTenant,
+        response_type: 'CONFIRMATION',
+        appointment: appt,
+        message: [
+          `✅ *RESERVASI BERHASIL DIKONFIRMASI!*`,
+          `----------------------------------------`,
+          `🏥 *Tempat:* ${targetTenant.name}`,
+          `👤 *Nama Pasien:* ${customerName}`,
+          `📋 *Layanan:* ${selectedService.name}`,
+          `⏰ *Waktu:* ${this.formatIndoDateTime(appt.start_time)}`,
+          `⏱️ *Durasi:* ${selectedService.duration_minutes} menit`,
+          `💳 *Biaya:* Rp ${selectedService.price.toLocaleString('id-ID')} (Bayar di tempat)`,
+          `----------------------------------------`,
+          `📌 *Kode Reservasi:* #${appt.id.slice(-8).toUpperCase()}`,
+          `Mohon hadir 10 menit sebelum jadwal reservasi.`,
+          `Jika ingin membatalkan/ubah jadwal, ketik:`,
+          `*RESCHEDULE_${appt.id}*`
+        ].join('\n')
       };
     }
 
     // Default Patient Welcome & Service Catalog Menu
-    const services = this.db.getServicesByTenant(targetTenant.id);
-    const serviceList = services.map((s, i) => `${i + 1}. *${s.name}* (${s.duration_minutes} menit - Rp ${s.price.toLocaleString('id-ID')})`).join('\n');
+    const serviceList = services.map((s, i) => `${i + 1}. *${s.name}* (${s.duration_minutes}m - Rp ${s.price.toLocaleString('id-ID')})`).join('\n');
 
     return {
       recipient_type: 'PATIENT',
@@ -149,12 +350,83 @@ class IngressRouter {
         `🏥 *SELAMAT DATANG DI ${targetTenant.name.toUpperCase()}*`,
         `Resepsionis Otonom AI siap membantu reservasi Anda secara cepat & mudah.`,
         `----------------------------------------`,
-        `📋 *Layanan Tersedia:*`,
+        `📋 *Pilihan Layanan:*`,
         serviceList || 'Pemeriksaan Dokter',
         `----------------------------------------`,
-        `Silakan balas dengan nama lengkap dan pilihan layanan untuk memilih jam konsultasi yang tersedia.`
+        `💡 *Cara Booking Praktis:*`,
+        `• Cukup ketik: *Nama Lengkap <spasi> Nomor Layanan*`,
+        `  Contoh: *Budi Santoso 1*`,
+        `• Atau ketik *Nomor Layanan* saja (misal: *1*)`
       ].join('\n')
     };
+  }
+
+  // --- HELPER: FIND NEXT AVAILABLE SLOT ---
+  findNextAvailableSlot(tenantId, durationMinutes = 30) {
+    const now = new Date();
+    // Start at least 1 hour from now, rounded to :00 or :30
+    let candidate = new Date(now.getTime() + 60 * 60 * 1000);
+
+    for (let day = 0; day < 7; day++) {
+      const checkDate = new Date(now);
+      checkDate.setDate(now.getDate() + day);
+
+      for (let hour = 9; hour < 17; hour++) {
+        for (const min of [0, 30]) {
+          const testStart = new Date(checkDate);
+          testStart.setHours(hour, min, 0, 0);
+
+          if (testStart.getTime() < candidate.getTime()) continue;
+
+          const testEnd = new Date(testStart.getTime() + durationMinutes * 60 * 1000);
+          const overlap = this.db.checkSlotOverlap(tenantId, testStart.toISOString(), testEnd.toISOString());
+          if (!overlap) {
+            return {
+              startTime: testStart.toISOString(),
+              endTime: testEnd.toISOString()
+            };
+          }
+        }
+      }
+    }
+
+    const fallbackStart = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    fallbackStart.setHours(10, 0, 0, 0);
+    return {
+      startTime: fallbackStart.toISOString(),
+      endTime: new Date(fallbackStart.getTime() + durationMinutes * 60 * 1000).toISOString()
+    };
+  }
+
+  // --- HELPER: FORMAT INDONESIAN DATETIME ---
+  formatIndoDateTime(isoStr) {
+    const d = new Date(isoStr);
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const dayName = days[d.getDay()];
+    const dateNum = d.getDate();
+    const monthName = months[d.getMonth()];
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    return `${dayName}, ${dateNum} ${monthName} ${year} pukul ${hours}:${mins} WIB`;
+  }
+
+  // --- HELPER: PARSE USER INPUT DATE STRING ---
+  parseDateString(text) {
+    try {
+      const clean = text.trim();
+      const direct = new Date(clean);
+      if (!isNaN(direct.getTime()) && direct.getTime() > Date.now()) {
+        return direct.toISOString();
+      }
+      const match = clean.match(/(\d{4}-\d{2}-\d{2})\s+(\d{1,2})[:.](\d{2})/);
+      if (match) {
+        const d = new Date(`${match[1]}T${String(match[2]).padStart(2, '0')}:${match[3]}:00.000Z`);
+        if (!isNaN(d.getTime())) return d.toISOString();
+      }
+    } catch (e) {}
+    return null;
   }
 }
 
