@@ -89,7 +89,10 @@ class BaileysManager {
    */
   async autoRestoreSessions() {
     const tenants = Array.from(this.db.tenants.values());
+    const restoredTenantIds = new Set();
     let restoredCount = 0;
+
+    // 1. Auto-restore active sessions for all recognized tenants
     for (const tenant of tenants) {
       if (this.hasExistingCredentials(tenant.id)) {
         try {
@@ -97,16 +100,68 @@ class BaileysManager {
           if (this.logger && typeof this.logger.addAuditLog === 'function') {
             this.logger.addAuditLog('info', 'BAILEYS', `Memulihkan sesi WhatsApp ${tenant.name} secara otomatis...`);
           }
-          // Launch session asynchronously in background so server startup is instantaneous
           this.startSession(tenant.id).catch(err => {
             console.warn(`[BaileysManager] Background auto-restore warning for ${tenant.slug}:`, err.message);
           });
+          restoredTenantIds.add(tenant.id);
           restoredCount++;
         } catch (err) {
           console.warn(`[BaileysManager] Gagal memulai auto-restore untuk ${tenant.slug}:`, err.message);
         }
       }
     }
+
+    // 2. SELF-HEALING: Scan sessions directory on disk for any session folders not yet restored
+    if (fs.existsSync(this.sessionsDir)) {
+      try {
+        const subDirs = fs.readdirSync(this.sessionsDir, { withFileTypes: true });
+        for (const dirent of subDirs) {
+          if (dirent.isDirectory()) {
+            const folderName = dirent.name;
+            if (!restoredTenantIds.has(folderName) && this.hasExistingCredentials(folderName)) {
+              let tenant = this.resolveTenant(folderName);
+              if (!tenant) {
+                const credsPath = path.join(this.sessionsDir, folderName, 'creds.json');
+                try {
+                  const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+                  const phone = creds?.me?.id ? creds.me.id.split(':')[0].replace(/\D/g, '') : null;
+                  if (phone) {
+                    tenant = this.db.getTenantByPhone(phone);
+                  }
+                  if (!tenant) {
+                    const recoveredName = creds?.me?.name || `Partner WA (${folderName.slice(0, 10)})`;
+                    const recoveredSlug = `wa_${folderName.replace(/[^a-z0-9]/gi, '_').toLowerCase().slice(0, 20)}`;
+                    tenant = this.db.createTenant({
+                      id: folderName,
+                      name: recoveredName,
+                      slug: recoveredSlug,
+                      owner_phone: phone || '62800000000',
+                      subscription_plan: 'STARTER',
+                      timezone: 'Asia/Jakarta'
+                    });
+                    if (phone) tenant.whatsapp_connected_phone = phone;
+                    this.db.saveToFile();
+                    console.log(`[BaileysManager] SELF-HEALING: Berhasil memulihkan tenant ${tenant.name} dari folder sesi disk ${folderName}`);
+                  }
+                } catch (e) {}
+              }
+
+              if (tenant) {
+                console.log(`[BaileysManager] Memulihkan sesi WhatsApp dari disk untuk ${tenant.name} (${folderName})...`);
+                this.startSession(folderName).catch(err => {
+                  console.warn(`[BaileysManager] Background auto-restore warning for disk session ${folderName}:`, err.message);
+                });
+                restoredTenantIds.add(folderName);
+                restoredCount++;
+              }
+            }
+          }
+        }
+      } catch (dirErr) {
+        console.warn('[BaileysManager] Error scanning sessions directory:', dirErr.message);
+      }
+    }
+
     if (restoredCount > 0) {
       console.log(`[BaileysManager] Berhasil memicu pemulihan otomatis untuk ${restoredCount} sesi WhatsApp.`);
     }
@@ -356,7 +411,11 @@ class BaileysManager {
     if (!fs.existsSync(credsPath)) return false;
     try {
       const data = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-      return !!(data && data.me && (data.me.id || data.me.jid));
+      return !!(
+        (data && data.me && (data.me.id || data.me.jid)) ||
+        (data && data.registered === true) ||
+        (data && data.noiseKey && data.signedIdentityKey)
+      );
     } catch (e) {
       return false;
     }
@@ -422,12 +481,6 @@ class BaileysManager {
     const tenantSessionDir = this.getSessionDir(tenantId);
     const hasAuth = this.hasExistingCredentials(tenantId);
 
-    // If session has no completed credentials, ensure directory is clean to prevent stale keypair handshake rejections
-    if (!hasAuth && fs.existsSync(tenantSessionDir)) {
-      try {
-        fs.rmSync(tenantSessionDir, { recursive: true, force: true });
-      } catch (e) {}
-    }
     if (!fs.existsSync(tenantSessionDir)) {
       fs.mkdirSync(tenantSessionDir, { recursive: true });
     }
@@ -555,7 +608,7 @@ class BaileysManager {
             session.qr = null;
             session.qrImage = null;
             session.sock = null;
-            this.purgeAuthFiles(tenantId);
+            console.warn(`[BaileysManager] Sesi ${tenant.slug} ditutup (loggedOut). Berkas autentikasi disk tetap diamankan.`);
           } else {
             session.status = 'OFFLINE';
             // Auto reconnect after 5s if disconnected unexpectedly

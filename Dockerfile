@@ -21,8 +21,7 @@ COPY . .
 # Ensure sessions and data directories exist with full read/write access
 RUN mkdir -p /app/sessions /app/data && chmod -R 777 /app/sessions /app/data
 
-# Persist WhatsApp session files and database across restarts
-VOLUME ["/app/sessions", "/app/data"]
+# Sessions and database are mounted via docker-compose host volumes (./sessions, ./data)
 
 # Expose Web Interface & Backend REST API port
 EXPOSE 3000

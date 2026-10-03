@@ -3,8 +3,10 @@
    Compliant with PRD_WHATSAPP_PRACTICE_BOT.md (Sections 3, 4, 5, 7, 9, 10)
    ========================================================================== */
 
-// --- Initial Multi-Tenant Seed Data (16 Tenants matching PRD Milestone) ---
-let SAAS_TENANTS = [
+// --- Multi-Tenant SaaS State (Populated dynamically from Backend API /api/tenants) ---
+let SAAS_TENANTS = [];
+/* Legacy sample data (now loaded from live database via /api/tenants)
+let _MOCK_TENANTS = [
   {
     id: 'TNT-001',
     name: 'drg. Maya Dental Care',
@@ -246,9 +248,12 @@ let SAAS_TENANTS = [
     mrr: 99000
   }
 ];
+*/
 
-// --- Initial Subscription Invoices (Mayar.id Dynamic QRIS) ---
-let SAAS_INVOICES = [
+// --- Subscription Invoices (Populated dynamically from Backend API /api/invoices) ---
+let SAAS_INVOICES = [];
+/* Legacy sample invoices (loaded from live backend)
+let _MOCK_INVOICES = [
   {
     id: 'INV-MYR-849201',
     tenantName: 'drg. Maya Dental Care',
@@ -300,6 +305,7 @@ let SAAS_INVOICES = [
     hmacVerified: true
   }
 ];
+*/
 
 // --- 7 Idempotency & Concurrency Scenarios Definition (PRD Section 7) ---
 const IDEMP_SCENARIOS = {

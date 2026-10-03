@@ -87,6 +87,29 @@ class DatabaseEngine {
     this.saveToFile();
   }
 
+  parseToMap(input) {
+    if (!input) return new Map();
+    if (input instanceof Map) return input;
+    if (Array.isArray(input)) {
+      if (input.length > 0 && Array.isArray(input[0]) && input[0].length === 2) {
+        return new Map(input);
+      }
+      const map = new Map();
+      for (const item of input) {
+        if (item && item.id) {
+          map.set(item.id, item);
+        } else if (Array.isArray(item) && item.length === 2) {
+          map.set(item[0], item[1]);
+        }
+      }
+      return map;
+    }
+    if (typeof input === 'object') {
+      return new Map(Object.entries(input));
+    }
+    return new Map();
+  }
+
   loadFromFile() {
     if (!this.storagePath) return;
 
@@ -107,12 +130,12 @@ class DatabaseEngine {
           if (raw && raw.trim().length > 0) {
             const data = JSON.parse(raw);
             if (data && (Array.isArray(data.tenants) || typeof data === 'object')) {
-              this.tenants = new Map(data.tenants || []);
-              this.services = new Map(data.services || []);
-              this.appointments = new Map(data.appointments || []);
-              this.subscriptionInvoices = new Map(data.subscriptionInvoices || []);
-              this.idempotencyRecords = new Map(data.idempotencyRecords || []);
-              this.userSessions = new Map(data.userSessions || []);
+              this.tenants = this.parseToMap(data.tenants);
+              this.services = this.parseToMap(data.services);
+              this.appointments = this.parseToMap(data.appointments);
+              this.subscriptionInvoices = this.parseToMap(data.subscriptionInvoices);
+              this.idempotencyRecords = this.parseToMap(data.idempotencyRecords);
+              this.userSessions = this.parseToMap(data.userSessions);
               foundValid = true;
               console.log(`[DatabaseEngine] Berhasil memuat basis data dari: ${p} (Total ${this.tenants.size} tenant)`);
               break;
@@ -125,10 +148,15 @@ class DatabaseEngine {
     }
 
     if (!foundValid) {
-      if (process.env.NODE_ENV === 'test') {
-        this.seedSampleData();
+      const primaryExists = fs.existsSync(this.storagePath);
+      if (!primaryExists) {
+        if (process.env.NODE_ENV === 'test') {
+          this.seedSampleData();
+        }
+        this.saveToFile();
+      } else {
+        console.error(`[DatabaseEngine] PERINGATAN: Berkas basis data ${this.storagePath} ada namun gagal dimuat. Menolak penimpaan berkas kosong untuk melindungi data disk!`);
       }
-      this.saveToFile();
     }
   }
 
@@ -834,6 +862,12 @@ class DatabaseEngine {
   }
 }
 
-// Singleton export
-const db = new DatabaseEngine();
-module.exports = { db, DatabaseEngine };
+// Lazy singleton export
+let _defaultDbInstance = null;
+module.exports = {
+  get db() {
+    if (!_defaultDbInstance) _defaultDbInstance = new DatabaseEngine();
+    return _defaultDbInstance;
+  },
+  DatabaseEngine
+};

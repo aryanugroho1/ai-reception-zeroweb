@@ -6,6 +6,8 @@
 
 const http = require('http');
 const url = require('url');
+const fs = require('fs');
+const path = require('path');
 const { DatabaseEngine } = require('./database');
 const { TierGatingService, PLAN_LIMITS } = require('./tier_gating');
 const { IdempotencyService } = require('./idempotency');
@@ -51,6 +53,8 @@ class AppServer {
     }
 
     this.adminSessions = new Map();
+    this.adminSessionsPath = path.join(process.cwd(), 'data/admin_sessions.json');
+    this.loadAdminSessions();
     this.adminUsername = process.env.ADMIN_USERNAME || 'admin';
     this.adminPassword = process.env.ADMIN_PASSWORD || 'AdminPraktika2026!';
 
@@ -98,6 +102,32 @@ class AppServer {
       return null;
     }
     return session;
+  }
+
+  loadAdminSessions() {
+    try {
+      if (fs.existsSync(this.adminSessionsPath)) {
+        const raw = fs.readFileSync(this.adminSessionsPath, 'utf8');
+        const data = JSON.parse(raw);
+        if (Array.isArray(data)) {
+          this.adminSessions = new Map(data);
+        } else if (typeof data === 'object') {
+          this.adminSessions = new Map(Object.entries(data));
+        }
+      }
+    } catch (e) {
+      console.warn('[AppServer] Warning loading admin sessions from disk:', e.message);
+    }
+  }
+
+  saveAdminSessions() {
+    try {
+      const dir = path.dirname(this.adminSessionsPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(this.adminSessionsPath, JSON.stringify(Array.from(this.adminSessions.entries()), null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[AppServer] Warning saving admin sessions to disk:', e.message);
+    }
   }
 
   // Helper to read JSON request body
@@ -169,6 +199,7 @@ class AppServer {
             expiresAt
           };
           this.adminSessions.set(token, session);
+          this.saveAdminSessions();
           return this.sendJson(res, 200, {
             success: true,
             token,
@@ -189,6 +220,7 @@ class AppServer {
         if (authHeader) {
           const token = authHeader.replace(/^Bearer\s+/i, '').trim();
           this.adminSessions.delete(token);
+          this.saveAdminSessions();
         }
         return this.sendJson(res, 200, { success: true, message: 'Berhasil logout' });
       }
