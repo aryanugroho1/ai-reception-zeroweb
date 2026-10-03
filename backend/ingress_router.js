@@ -42,6 +42,10 @@ class IngressRouter {
    * @param {string} [message.tenant_slug] Optional explicit tenant slug
    */
   async routeMessage({ from, text, tenant_slug }) {
+    // Defense-in-depth: Never route messages originating from group chats, newsletters, or broadcasts
+    if (!from || from.includes('@g.us') || from.includes('@newsletter') || from.includes('@broadcast')) {
+      return null;
+    }
     const cleanPhone = (from || '').replace(/@.*$/, '').replace(/\D/g, '');
     const cleanText = (text || '').trim();
 

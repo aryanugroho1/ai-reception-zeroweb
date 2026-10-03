@@ -401,11 +401,14 @@ class BaileysManager {
         try {
           if (m.type !== 'notify' && m.type !== 'append') return;
           for (const msg of m.messages) {
-            // Ignore status broadcasts
-            if (msg.key.remoteJid === 'status@broadcast') continue;
-            // Handle only individual chats (or clinic groups if desired)
             const senderJid = msg.key.remoteJid;
             if (!senderJid) continue;
+
+            // 1. STRICTLY IGNORE GROUP CHATS, BROADCASTS, CHANNELS/NEWSLETTERS
+            // The AI Receptionist must NEVER reply to WhatsApp groups or broadcast lists!
+            if (senderJid.endsWith('@g.us') || senderJid.includes('@g.us') || msg.key.participant) continue;
+            if (senderJid.endsWith('@newsletter') || senderJid.includes('@newsletter')) continue;
+            if (senderJid === 'status@broadcast' || senderJid.endsWith('@broadcast')) continue;
 
             const text = msg.message?.conversation ||
               msg.message?.extendedTextMessage?.text ||
