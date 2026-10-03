@@ -70,7 +70,9 @@ class DatabaseEngine {
 
   loadFromFile() {
     if (!this.storagePath || !fs.existsSync(this.storagePath)) {
-      this.seedSampleData();
+      if (process.env.NODE_ENV === 'test') {
+        this.seedSampleData();
+      }
       this.saveToFile();
       return;
     }
@@ -86,13 +88,15 @@ class DatabaseEngine {
       this.idempotencyRecords = new Map(data.idempotencyRecords || []);
       this.userSessions = new Map(data.userSessions || []);
 
-      if (this.tenants.size === 0) {
+      if (this.tenants.size === 0 && process.env.NODE_ENV === 'test') {
         this.seedSampleData();
         this.saveToFile();
       }
     } catch (err) {
-      console.error('[DatabaseEngine] Failed to parse database file, falling back to seed:', err.message);
-      this.seedSampleData();
+      console.error('[DatabaseEngine] Failed to parse database file:', err.message);
+      if (process.env.NODE_ENV === 'test') {
+        this.seedSampleData();
+      }
       this.saveToFile();
     }
   }

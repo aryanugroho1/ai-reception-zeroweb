@@ -18,11 +18,11 @@ RUN npm install --omit=dev
 # Copy all project source code & backend modules
 COPY . .
 
-# Ensure sessions directory exists and adjust permissions for non-root node user
-RUN mkdir -p /app/sessions && chown -R node:node /app
+# Ensure sessions and data directories exist and adjust permissions for non-root node user
+RUN mkdir -p /app/sessions /app/data && chown -R node:node /app
 
-# Persist WhatsApp session files across restarts
-VOLUME ["/app/sessions"]
+# Persist WhatsApp session files and database across restarts
+VOLUME ["/app/sessions", "/app/data"]
 
 # Switch to non-root user for security
 USER node
