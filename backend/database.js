@@ -346,9 +346,14 @@ class DatabaseEngine {
     return null;
   }
 
+  save() {
+    return this.saveToFile();
+  }
+
   normalizePhone(phone) {
     if (!phone) return '';
-    let clean = phone.toString().replace(/@.*$/, '').replace(/\D/g, '');
+    const str = phone.toString().split('@')[0].split(':')[0];
+    let clean = str.replace(/\D/g, '');
     if (clean.startsWith('0')) clean = '62' + clean.slice(1);
     else if (clean.startsWith('8')) clean = '62' + clean;
     return clean;
@@ -358,7 +363,13 @@ class DatabaseEngine {
     if (!phone) return null;
     const clean = this.normalizePhone(phone);
     for (const tenant of this.tenants.values()) {
-      if (this.normalizePhone(tenant.owner_phone) === clean || (tenant.whatsapp_connected_phone && this.normalizePhone(tenant.whatsapp_connected_phone) === clean)) {
+      const cleanOwner = this.normalizePhone(tenant.owner_phone);
+      const cleanBot = tenant.whatsapp_connected_phone ? this.normalizePhone(tenant.whatsapp_connected_phone) : null;
+      const extraPhones = Array.isArray(tenant.whitelist_phones)
+        ? tenant.whitelist_phones.map(p => this.normalizePhone(p))
+        : (tenant.whitelist_phones ? tenant.whitelist_phones.split(',').map(p => this.normalizePhone(p)) : []);
+
+      if (cleanOwner === clean || cleanBot === clean || extraPhones.includes(clean)) {
         return tenant;
       }
     }

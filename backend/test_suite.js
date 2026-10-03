@@ -550,6 +550,14 @@ async function runTestSuite() {
     });
     assert(docRoute.recipient_type === 'DOCTOR', 'Doctor message routed to Doctor Copilot');
 
+    // Ingress from Doctor multi-device phone with device suffix e.g. :12 sending 'jadwal'
+    const docMdRoute = await router.routeMessage({
+      from: `${maya.owner_phone}:12@s.whatsapp.net`,
+      text: 'jadwal'
+    });
+    assert(docMdRoute.recipient_type === 'DOCTOR', 'Multi-device Doctor JID with device ID routed to Doctor Copilot');
+    assert(docMdRoute.metadata && docMdRoute.metadata.action === 'STATUS', "Command 'jadwal' correctly returns queue status");
+
     // Ingress from Patient with deep-link
     const patientRoute = await router.routeMessage({
       from: '628991234567@s.whatsapp.net',
@@ -697,7 +705,11 @@ async function runTestSuite() {
     const purgeRes = await makeRequest('POST', '/api/tenants/purge-samples', null, { 'Authorization': `Bearer ${adminToken}` });
     assert(purgeRes.statusCode === 200 && purgeRes.body.success === true && purgeRes.body.deleted_count >= 1, 'HTTP POST /api/tenants/purge-samples purged demo accounts');
 
-    // 12. Logout
+    // 12. Super Admin System Audit Logs Stream: GET /api/admin/system-logs
+    const logsRes = await makeRequest('GET', '/api/admin/system-logs', null, { 'Authorization': `Bearer ${adminToken}` });
+    assert(logsRes.statusCode === 200 && logsRes.body.success === true && Array.isArray(logsRes.body.logs) && logsRes.body.logs.length > 0, 'HTTP GET /api/admin/system-logs streamed system events');
+
+    // 13. Logout
     const logoutRes = await makeRequest('POST', '/api/auth/logout', null, { 'Authorization': `Bearer ${adminToken}` });
     assert(logoutRes.statusCode === 200 && logoutRes.body.success === true, 'Super Admin Logout successful');
 

@@ -463,16 +463,20 @@ class SuperadminController {
           const authData = await checkRes.json();
           this.showMainApp();
           await this.loadBackendData();
+          this.startServerLogStream();
           this.logAudit('info', `Super Admin terotentikasi: ${authData.user.username} (${authData.user.role}).`);
           return;
         } else {
           this.clearAuthToken();
+          this.stopServerLogStream();
           this.showLoginGate();
         }
       } catch (e) {
+        this.stopServerLogStream();
         this.showLoginGate();
       }
     } else {
+      this.stopServerLogStream();
       this.showLoginGate();
     }
   }
@@ -517,6 +521,7 @@ class SuperadminController {
           this.setAuthToken(data.token, remember);
           this.showMainApp();
           await this.loadBackendData();
+          this.startServerLogStream();
           this.logAudit('success', `Login berhasil sebagai Super Admin (${username}).`);
         } catch (err) {
           if (errAlert && errMsg) {
@@ -530,6 +535,7 @@ class SuperadminController {
     if (logoutBtn) {
       logoutBtn.addEventListener('click', async () => {
         if (confirm('Apakah Anda yakin ingin keluar dari sesi Super Admin?')) {
+          this.stopServerLogStream();
           try {
             await fetch('/api/auth/logout', {
               method: 'POST',
@@ -1345,7 +1351,7 @@ class SuperadminController {
           img.src = data.qr_image;
         }
       } catch (e) {}
-    }, 2500);
+    }, 1500);
   }
 
   async disconnectWaSession(tenantId) {
@@ -1370,8 +1376,66 @@ class SuperadminController {
     const now = new Date().toLocaleTimeString('id-ID');
     const entry = document.createElement('div');
     entry.className = `log-entry ${type}`;
-    entry.textContent = `[${now} UTC+7] ${message}`;
+    entry.textContent = `[${now} WIB] [CLIENT] ${message}`;
     consoleEl.prepend(entry);
+  }
+
+  startServerLogStream() {
+    if (this.logStreamInterval) clearInterval(this.logStreamInterval);
+    this.lastServerLogId = 0;
+    this.fetchServerLogs();
+    this.logStreamInterval = setInterval(() => {
+      this.fetchServerLogs();
+    }, 2000);
+  }
+
+  stopServerLogStream() {
+    if (this.logStreamInterval) {
+      clearInterval(this.logStreamInterval);
+      this.logStreamInterval = null;
+    }
+  }
+
+  async fetchServerLogs() {
+    const consoleEl = document.getElementById('systemAuditLog');
+    if (!consoleEl) return;
+    try {
+      const token = this.getAuthToken();
+      if (!token) return;
+
+      const url = this.lastServerLogId > 0
+        ? `/api/admin/system-logs?since=${this.lastServerLogId}`
+        : '/api/admin/system-logs';
+
+      const res = await fetch(url, { headers: this.getAuthHeaders() });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      if (!data.logs || !Array.isArray(data.logs) || data.logs.length === 0) return;
+
+      // New logs arrive, reverse to append chronologically (newest at top with prepend)
+      data.logs.slice().reverse().forEach(log => {
+        if (log.id > this.lastServerLogId) {
+          this.lastServerLogId = log.id;
+        }
+        // Avoid duplicate elements if already rendered
+        if (consoleEl.querySelector(`[data-log-id="${log.id}"]`)) return;
+
+        const timeStr = log.timestamp ? new Date(log.timestamp).toLocaleTimeString('id-ID') : new Date().toLocaleTimeString('id-ID');
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${log.level || 'info'}`;
+        entry.setAttribute('data-log-id', log.id);
+        entry.textContent = `[${timeStr} WIB] [${log.tag}] ${log.message}`;
+        consoleEl.prepend(entry);
+      });
+
+      // Keep maximum 200 rows in DOM
+      while (consoleEl.children.length > 200) {
+        consoleEl.removeChild(consoleEl.lastChild);
+      }
+    } catch (e) {
+      // Quiet fail for polling
+    }
   }
 
   async renderCouponsManagement() {

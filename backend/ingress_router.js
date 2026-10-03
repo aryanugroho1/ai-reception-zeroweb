@@ -16,7 +16,8 @@ class IngressRouter {
    */
   normalizePhone(phone) {
     if (!phone) return '';
-    let clean = phone.toString().replace(/@.*$/, '').replace(/\D/g, '');
+    const str = phone.toString().split('@')[0].split(':')[0];
+    let clean = str.replace(/\D/g, '');
     if (clean.startsWith('0')) clean = '62' + clean.slice(1);
     else if (clean.startsWith('8')) clean = '62' + clean;
     return clean;
@@ -24,10 +25,15 @@ class IngressRouter {
 
   resolveDoctorTenant(senderPhone) {
     const cleanPhone = this.normalizePhone(senderPhone);
+    if (!cleanPhone) return null;
     for (const tenant of this.db.tenants.values()) {
       const cleanOwner = this.normalizePhone(tenant.owner_phone);
-      const cleanBot = this.normalizePhone(tenant.whatsapp_connected_phone);
-      if (cleanOwner === cleanPhone || cleanBot === cleanPhone) {
+      const cleanBot = tenant.whatsapp_connected_phone ? this.normalizePhone(tenant.whatsapp_connected_phone) : null;
+      const extraPhones = Array.isArray(tenant.whitelist_phones)
+        ? tenant.whitelist_phones.map(p => this.normalizePhone(p))
+        : (tenant.whitelist_phones ? tenant.whitelist_phones.split(',').map(p => this.normalizePhone(p)) : []);
+
+      if (cleanOwner === cleanPhone || cleanBot === cleanPhone || extraPhones.includes(cleanPhone)) {
         return tenant;
       }
     }
@@ -46,7 +52,7 @@ class IngressRouter {
     if (!from || from.includes('@g.us') || from.includes('@newsletter') || from.includes('@broadcast')) {
       return null;
     }
-    const cleanPhone = (from || '').replace(/@.*$/, '').replace(/\D/g, '');
+    const cleanPhone = this.normalizePhone(from);
     const cleanText = (text || '').trim();
 
     // 1. DOCTOR WHITLELIST ROUTING
@@ -56,7 +62,7 @@ class IngressRouter {
       const copilotResponse = await this.doctorCopilot.handleCommand({
         tenantId: doctorTenant.id,
         commandText: cleanText,
-        doctorPhone: doctorTenant.owner_phone
+        doctorPhone: cleanPhone
       });
 
       return {

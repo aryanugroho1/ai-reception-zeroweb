@@ -138,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (e) {
         console.warn('Poll error:', e);
       }
-    }, 2500);
+    }, 1500);
   }
 
   // 4. Render UI state

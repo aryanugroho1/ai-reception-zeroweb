@@ -21,7 +21,27 @@ class DoctorCopilotEngine {
       throw new Error(`Practice tenant ${tenantId} not found`);
     }
 
-    if (tenant.owner_phone.replace(/\D/g, '') !== (doctorPhone || '').replace(/\D/g, '')) {
+    const cleanDoc = (doctorPhone || '').toString().split('@')[0].split(':')[0].replace(/\D/g, '');
+    const normDoc = cleanDoc.startsWith('0') ? '62' + cleanDoc.slice(1) : (cleanDoc.startsWith('8') ? '62' + cleanDoc : cleanDoc);
+
+    const cleanOwner = (tenant.owner_phone || '').toString().split('@')[0].split(':')[0].replace(/\D/g, '');
+    const normOwner = cleanOwner.startsWith('0') ? '62' + cleanOwner.slice(1) : (cleanOwner.startsWith('8') ? '62' + cleanOwner : cleanOwner);
+
+    const cleanBot = (tenant.whatsapp_connected_phone || '').toString().split('@')[0].split(':')[0].replace(/\D/g, '');
+    const normBot = cleanBot.startsWith('0') ? '62' + cleanBot.slice(1) : (cleanBot.startsWith('8') ? '62' + cleanBot : cleanBot);
+
+    const extraClean = Array.isArray(tenant.whitelist_phones)
+      ? tenant.whitelist_phones.map(p => {
+          const c = (p || '').toString().split('@')[0].split(':')[0].replace(/\D/g, '');
+          return c.startsWith('0') ? '62' + c.slice(1) : (c.startsWith('8') ? '62' + c : c);
+        })
+      : (tenant.whitelist_phones ? tenant.whitelist_phones.split(',').map(p => {
+          const c = (p || '').toString().split('@')[0].split(':')[0].replace(/\D/g, '');
+          return c.startsWith('0') ? '62' + c.slice(1) : (c.startsWith('8') ? '62' + c : c);
+        }) : []);
+
+    const isAuthorized = normDoc === normOwner || normDoc === normBot || extraClean.includes(normDoc);
+    if (!isAuthorized) {
       const err = new Error(`Unauthorized doctor phone ${doctorPhone} for tenant ${tenant.name}`);
       err.statusCode = 403;
       throw err;

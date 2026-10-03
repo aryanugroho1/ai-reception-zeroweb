@@ -32,9 +32,14 @@ class AppServer {
     });
     this.baileys = new BaileysManager({
       db: this.db,
-      ingressRouter: this.ingressRouter
+      ingressRouter: this.ingressRouter,
+      logger: this
     });
     this.mayar.baileys = this.baileys;
+
+    this.auditLogs = [];
+    this.logCounter = 0;
+    this.addAuditLog('info', 'SYSTEM', 'ZeroWeb Backend API Engine v3.0.0 siap & aktif melayani.');
 
     this.adminSessions = new Map();
     this.adminUsername = process.env.ADMIN_USERNAME || 'admin';
@@ -54,6 +59,22 @@ class AppServer {
     ]);
 
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
+  }
+
+  addAuditLog(level = 'info', tag = 'SYSTEM', message = '') {
+    const entry = {
+      id: ++this.logCounter,
+      timestamp: new Date().toISOString(),
+      level: level, // 'info', 'success', 'warning', 'danger'
+      tag: (tag || 'SYSTEM').toUpperCase(),
+      message: message || ''
+    };
+    this.auditLogs.unshift(entry);
+    if (this.auditLogs.length > 250) {
+      this.auditLogs.pop();
+    }
+    console.log(`[${entry.tag}] ${entry.message}`);
+    return entry;
   }
 
   validateAdminSession(req) {
@@ -306,14 +327,16 @@ class AppServer {
         const body = await this.readRequestBody(req);
         if (body.name) tenant.name = body.name.trim();
         if (body.owner_phone) {
+          const oldPhone = tenant.owner_phone;
           tenant.owner_phone = body.owner_phone.replace(/\D/g, '');
+          this.addAuditLog('success', 'TENANT', `Whitelist dokter ${tenant.name} (${tenant.slug}) diperbarui: +${tenant.owner_phone} (sebelumnya +${oldPhone})`);
         }
         if (body.category) tenant.category = body.category;
         if (body.subscription_plan) tenant.subscription_plan = body.subscription_plan;
         tenant.updated_at = new Date().toISOString();
 
-        if (this.db && typeof this.db.save === 'function') {
-          this.db.save();
+        if (this.db && typeof this.db.saveToFile === 'function') {
+          this.db.saveToFile();
         }
 
         return this.sendJson(res, 200, {
@@ -1129,6 +1152,24 @@ class AppServer {
         return this.sendJson(res, 200, {
           scenario,
           execution_result: result
+        });
+      }
+
+      // 14. System Audit Logs Stream (Super Admin Protected): GET /api/admin/system-logs
+      if (pathname === '/api/admin/system-logs' && method === 'GET') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const sinceParam = parsedUrl.searchParams ? parsedUrl.searchParams.get('since') : (parsedUrl.query ? parsedUrl.query.since : null);
+        const sinceId = parseInt(sinceParam, 10) || 0;
+        const filtered = sinceId > 0
+          ? this.auditLogs.filter(l => l.id > sinceId)
+          : this.auditLogs.slice(0, 80);
+
+        return this.sendJson(res, 200, {
+          success: true,
+          logs: filtered,
+          total: this.auditLogs.length
         });
       }
 

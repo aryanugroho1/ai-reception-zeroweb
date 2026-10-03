@@ -16,15 +16,17 @@ const crypto = require('crypto');
 class BaileysManager {
   normalizePhone(phone) {
     if (!phone) return '';
-    let clean = phone.toString().replace(/@.*$/, '').replace(/\D/g, '');
+    const str = phone.toString().split('@')[0].split(':')[0];
+    let clean = str.replace(/\D/g, '');
     if (clean.startsWith('0')) clean = '62' + clean.slice(1);
     else if (clean.startsWith('8')) clean = '62' + clean;
     return clean;
   }
 
-  constructor({ db, ingressRouter, sessionsDir }) {
+  constructor({ db, ingressRouter, sessionsDir, logger }) {
     this.db = db;
     this.ingressRouter = ingressRouter;
+    this.logger = logger || null;
     this.sessionsDir = sessionsDir || path.join(__dirname, '../sessions');
     this.sessions = new Map(); // tenantId -> sessionData
     this.tokenSecret = process.env.CONNECT_TOKEN_SECRET || 'praktika-doctor-onboard-secret-2026';
@@ -39,6 +41,10 @@ class BaileysManager {
         console.error('[BaileysManager] Failed to create sessions dir:', err.message);
       }
     }
+  }
+
+  setLogger(logger) {
+    this.logger = logger;
   }
 
   // --- PENDING REGISTRATION STAGING ---
@@ -239,6 +245,14 @@ class BaileysManager {
       return this.formatSessionResponse(tenant, session);
     }
 
+    if (session && session.sock && session.status !== 'CONNECTED') {
+      try {
+        session.sock.ev.removeAllListeners();
+        session.sock.end(undefined);
+      } catch (e) {}
+      session.sock = null;
+    }
+
     if (!session) {
       session = {
         tenantId,
@@ -347,6 +361,9 @@ class BaileysManager {
           }
           session.status = 'SCAN_QR';
           session.updatedAt = new Date().toISOString();
+          if (this.logger && typeof this.logger.addAuditLog === 'function') {
+            this.logger.addAuditLog('info', 'BAILEYS', `QR Code baru dibuat untuk [${tenant.slug}]. Siap di-scan.`);
+          }
         }
 
         if (connection === 'open') {
@@ -369,6 +386,9 @@ class BaileysManager {
           }
 
           console.log(`[BaileysManager] Sesi WhatsApp ${tenant.name} (${tenant.slug}) BERHASIL TERHUBUNG: +${session.phone}`);
+          if (this.logger && typeof this.logger.addAuditLog === 'function') {
+            this.logger.addAuditLog('success', 'BAILEYS', `WhatsApp ${tenant.name} (${tenant.slug}) BERHASIL TERHUBUNG: +${session.phone}`);
+          }
         }
 
         if (connection === 'close') {
@@ -376,6 +396,9 @@ class BaileysManager {
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
           console.log(`[BaileysManager] Koneksi ${tenant.slug} ditutup (Code: ${statusCode}, Reconnect: ${shouldReconnect})`);
+          if (this.logger && typeof this.logger.addAuditLog === 'function') {
+            this.logger.addAuditLog('warning', 'BAILEYS', `Koneksi WhatsApp ${tenant.slug} ditutup (Code: ${statusCode || 'unknown'})`);
+          }
 
           if (statusCode === DisconnectReason.loggedOut) {
             session.status = 'DISCONNECTED';
@@ -421,10 +444,12 @@ class BaileysManager {
             const cleanSender = this.normalizePhone(senderJid);
             const cleanOwnerPhone = this.normalizePhone(tenant.owner_phone);
             const cleanBotPhone = this.normalizePhone(tenant.whatsapp_connected_phone || (sock.user && sock.user.id));
-            const isSelfDoctorChat = msg.key.fromMe && (
-              cleanSender === cleanOwnerPhone ||
-              cleanSender === cleanBotPhone
-            );
+            const extraPhones = Array.isArray(tenant.whitelist_phones)
+              ? tenant.whitelist_phones.map(p => this.normalizePhone(p))
+              : (tenant.whitelist_phones ? tenant.whitelist_phones.split(',').map(p => this.normalizePhone(p)) : []);
+
+            const isDoctorOrOwner = cleanSender === cleanOwnerPhone || cleanSender === cleanBotPhone || extraPhones.includes(cleanSender);
+            const isSelfDoctorChat = msg.key.fromMe && isDoctorOrOwner;
 
             // If message sent by bot itself to other users, ignore to prevent looping.
             // If message to self from doctor, only process recognized Copilot commands.
@@ -432,6 +457,10 @@ class BaileysManager {
               if (!isSelfDoctorChat) continue;
               const isCopilotCmd = /(NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN)/i.test(text.trim());
               if (!isCopilotCmd) continue;
+            }
+
+            if (this.logger && typeof this.logger.addAuditLog === 'function') {
+              this.logger.addAuditLog('info', 'WHATSAPP', `Pesan masuk dari +${cleanSender} [${tenant.slug}]: "${text.trim().slice(0, 40)}"`);
             }
 
             // Route through Ingress Router bound to this specific tenant!
@@ -443,10 +472,16 @@ class BaileysManager {
 
             if (reply && reply.message) {
               await sock.sendMessage(senderJid, { text: reply.message });
+              if (this.logger && typeof this.logger.addAuditLog === 'function') {
+                this.logger.addAuditLog('success', 'WHATSAPP', `Balasan terkirim ke +${cleanSender} (${reply.recipient_type || 'CHAT'})`);
+              }
             }
           }
         } catch (msgErr) {
           console.error(`[BaileysManager] Error processing incoming chat for ${tenant.slug}:`, msgErr.message);
+          if (this.logger && typeof this.logger.addAuditLog === 'function') {
+            this.logger.addAuditLog('danger', 'WHATSAPP', `Gagal memproses pesan [${tenant.slug}]: ${msgErr.message}`);
+          }
         }
       });
 
