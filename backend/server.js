@@ -434,12 +434,19 @@ class AppServer {
         if (!this.validateAdminSession(req)) {
           return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
         }
-        const sampleSlugs = ['drg_maya', 'dr_rian_dalam', 'klinik_estetika_ayra'];
+        const sampleSlugs = [
+          'drg_maya', 'dr_rian_dalam', 'dr_budi_umum', 'drg_siti_ortho', 'dr_hendra_anak',
+          'dr_sarah_skin', 'drg_kevin_bali', 'dr_anton_jantung', 'dr_wahyu_paru', 'drg_linda_jogja',
+          'dr_fajar_ortho', 'dr_nadia_dermatology', 'dr_gunawan_mata', 'dr_lukman_obgyn',
+          'dr_melani_keluarga', 'drg_wawan_sby', 'klinik_estetika_ayra'
+        ];
         let deletedCount = 0;
         for (const slug of sampleSlugs) {
-          const t = this.db.getTenantBySlug(slug);
+          const t = this.db.getTenantBySlug(slug) || this.db.tenants.get(slug);
           if (t) {
-            await this.baileys.disconnectSession(t.id, true);
+            try {
+              await this.baileys.disconnectSession(t.id, true);
+            } catch (e) {}
             this.db.deleteTenant(t.id);
             deletedCount++;
           }
@@ -452,19 +459,54 @@ class AppServer {
       }
 
       // 2F. Delete Single Tenant (Super Admin Protected): DELETE /api/tenants/:id
-      const deleteTenantMatch = pathname.match(/^\/api\/tenants\/([a-zA-Z0-9_-]+)$/);
+      const deleteTenantMatch = pathname.match(/^\/api\/tenants\/([a-zA-Z0-9_.-]+)$/);
       if (deleteTenantMatch && method === 'DELETE') {
         if (!this.validateAdminSession(req)) {
           return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
         }
         const tId = deleteTenantMatch[1];
-        const tenant = this.db.tenants.get(tId) || this.db.getTenantBySlug(tId);
+        const sampleIdMap = {
+          'TNT-001': 'drg_maya', 'TNT-002': 'dr_rian_dalam', 'TNT-003': 'dr_budi_umum',
+          'TNT-004': 'drg_siti_ortho', 'TNT-005': 'dr_hendra_anak', 'TNT-006': 'dr_sarah_skin',
+          'TNT-007': 'drg_kevin_bali', 'TNT-008': 'dr_anton_jantung', 'TNT-009': 'dr_wahyu_paru',
+          'TNT-010': 'drg_linda_jogja', 'TNT-011': 'dr_fajar_ortho', 'TNT-012': 'dr_nadia_dermatology',
+          'TNT-013': 'dr_gunawan_mata', 'TNT-014': 'dr_lukman_obgyn', 'TNT-015': 'dr_melani_keluarga',
+          'TNT-016': 'drg_wawan_sby'
+        };
+        const resolvedSlug = sampleIdMap[tId] || tId;
+        const tenant = this.db.tenants.get(tId) || 
+                       this.db.getTenantBySlug(tId) || 
+                       this.db.getTenantBySlug(resolvedSlug) ||
+                       Array.from(this.db.tenants.values()).find(t => t.id === tId || t.slug === tId || t.slug === resolvedSlug);
+        
         if (!tenant) {
+          // If only pending in Baileys, clean it up
+          if (this.baileys.pendingRegistrations && (this.baileys.pendingRegistrations.has(tId) || this.baileys.pendingRegistrations.has(resolvedSlug))) {
+            this.baileys.pendingRegistrations.delete(tId);
+            this.baileys.pendingRegistrations.delete(resolvedSlug);
+            await this.baileys.disconnectSession(tId, true).catch(() => {});
+            return this.sendJson(res, 200, { success: true, message: `Pendaftaran pending ${tId} berhasil dibersihkan.` });
+          }
           return this.sendJson(res, 404, { error: 'Tenant dokter tidak ditemukan' });
         }
-        // Cleanup WhatsApp Baileys session files if any
-        await this.baileys.disconnectSession(tenant.id, true);
+
+        // Cleanup WhatsApp Baileys session files safely
+        try {
+          await this.baileys.disconnectSession(tenant.id, true);
+        } catch (e) {
+          console.error('[DeleteTenant] Baileys session cleanup error:', e.message);
+        }
+        if (this.baileys.sessions) {
+          this.baileys.sessions.delete(tenant.id);
+          this.baileys.sessions.delete(tenant.slug);
+        }
+        if (this.baileys.pendingRegistrations) {
+          this.baileys.pendingRegistrations.delete(tenant.id);
+          this.baileys.pendingRegistrations.delete(tenant.slug);
+        }
+
         this.db.deleteTenant(tenant.id);
+        this.addAuditLog('warning', 'TENANT', `Tenant ${tenant.name} (${tenant.slug} / ${tenant.id}) berhasil dihapus permanen oleh Super Admin.`);
         return this.sendJson(res, 200, {
           success: true,
           deleted_id: tenant.id,

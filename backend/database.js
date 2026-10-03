@@ -445,30 +445,45 @@ class DatabaseEngine {
   }
 
   deleteTenant(tenantId) {
-    if (!this.tenants.has(tenantId)) return false;
+    let tenant = this.tenants.get(tenantId);
+    if (!tenant) {
+      tenant = this.getTenantBySlug(tenantId);
+    }
+    if (!tenant) {
+      for (const t of this.tenants.values()) {
+        if (t.id === tenantId || t.slug === tenantId) {
+          tenant = t;
+          break;
+        }
+      }
+    }
+    if (!tenant) return false;
+
+    const actualId = tenant.id;
+    const actualSlug = tenant.slug;
 
     // ON DELETE CASCADE: Delete related services
     for (const [sId, service] of this.services.entries()) {
-      if (service.tenant_id === tenantId) {
+      if (service.tenant_id === actualId || service.tenant_id === actualSlug) {
         this.services.delete(sId);
       }
     }
 
     // ON DELETE CASCADE: Delete related appointments
     for (const [aId, appt] of this.appointments.entries()) {
-      if (appt.tenant_id === tenantId) {
+      if (appt.tenant_id === actualId || appt.tenant_id === actualSlug) {
         this.appointments.delete(aId);
       }
     }
 
     // ON DELETE CASCADE: Delete related invoices
     for (const [iId, inv] of this.subscriptionInvoices.entries()) {
-      if (inv.tenant_id === tenantId) {
+      if (inv.tenant_id === actualId || inv.tenant_id === actualSlug) {
         this.subscriptionInvoices.delete(iId);
       }
     }
 
-    this.tenants.delete(tenantId);
+    this.tenants.delete(actualId);
     this.saveToFile();
     return true;
   }

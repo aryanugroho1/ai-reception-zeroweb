@@ -725,28 +725,37 @@ class BaileysManager {
   // --- DISCONNECT & PURGE SESSION ---
   async disconnectSession(tenantIdentifier, purgeAuth = true) {
     const tenant = this.resolveTenant(tenantIdentifier);
-    if (!tenant) return false;
+    const targetId = tenant ? tenant.id : tenantIdentifier;
 
-    const session = this.sessions.get(tenant.id);
+    const session = this.sessions.get(targetId);
     if (session && session.sock) {
       try {
-        await session.sock.logout().catch(() => {});
+        await Promise.race([
+          session.sock.logout().catch(() => {}),
+          new Promise(r => setTimeout(r, 2000))
+        ]);
+      } catch (e) {}
+      try {
         session.sock.end();
       } catch (e) {}
     }
 
     if (purgeAuth) {
-      this.purgeAuthFiles(tenant.id);
+      this.purgeAuthFiles(targetId);
+      this.sessions.delete(targetId);
+      if (tenant && tenant.slug) {
+        this.sessions.delete(tenant.slug);
+      }
+    } else {
+      this.sessions.set(targetId, {
+        tenantId: targetId,
+        status: 'DISCONNECTED',
+        qrImage: null,
+        qr: null,
+        phone: null,
+        updatedAt: new Date().toISOString()
+      });
     }
-
-    this.sessions.set(tenant.id, {
-      tenantId: tenant.id,
-      status: 'DISCONNECTED',
-      qrImage: null,
-      qr: null,
-      phone: null,
-      updatedAt: new Date().toISOString()
-    });
 
     return true;
   }

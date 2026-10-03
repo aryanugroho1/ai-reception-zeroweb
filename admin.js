@@ -564,7 +564,7 @@ class SuperadminController {
       const tenantsRes = await fetch('/api/tenants', { headers: this.getAuthHeaders() }).catch(() => null);
       if (tenantsRes && tenantsRes.ok) {
         const data = await tenantsRes.json();
-        if (data.tenants && data.tenants.length > 0) {
+        if (data && Array.isArray(data.tenants)) {
           SAAS_TENANTS = data.tenants;
         }
       } else if (tenantsRes && tenantsRes.status === 401) {
@@ -766,7 +766,7 @@ class SuperadminController {
             <button class="tbl-btn" style="border-color:#38bdf8; color:#38bdf8;" onclick="window.adminCtrl.openEditModal('${t.id}')" title="Edit Data & Whitelist Dokter">✏️ Whitelist</button>
             <button class="tbl-btn" style="border-color:#10b981; color:#34d399;" onclick="window.adminCtrl.openServicesModal('${t.id}')" title="Kelola Layanan & Tarif">💰 Tarif</button>
             <button class="tbl-btn" onclick="window.adminCtrl.testLink('${t.slug}', '${t.botPhone || t.ownerPhone || ''}')" title="Buka Link WhatsApp Pasien">Link</button>
-            <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.deleteTenant('${t.id}', '${(t.name||'').replace(/'/g, "\\'")}')" title="Hapus Akun Dokter">🗑️</button>
+            <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.deleteTenant('${t.id}')" title="Hapus Akun Dokter / Partner">🗑️</button>
           </div>
         </td>
       `;
@@ -1243,18 +1243,55 @@ class SuperadminController {
     window.open(link, '_blank');
   }
 
-  async deleteTenant(tenantId, tenantName) {
-    if (!confirm(`⚠️ HAPUS AKUN DOKTER:\n\nApakah Anda yakin ingin menghapus akun "${tenantName}" (${tenantId})?\n\nSemua riwayat booking, layanan, invoice, dan sesi WhatsApp terkait akan dihapus secara permanen.`)) {
+  async deleteTenant(tenantId) {
+    if (!tenantId) return;
+    const target = (Array.isArray(SAAS_TENANTS) ? SAAS_TENANTS : []).find(t => t.id === tenantId || t.slug === tenantId);
+    const tenantName = target ? target.name : tenantId;
+    const tenantSlug = target ? target.slug : '';
+
+    if (!confirm(`⚠️ HAPUS AKUN DOKTER / PARTNER:\n\nApakah Anda yakin ingin menghapus akun "${tenantName}" (${tenantId})?\n\nSemua riwayat booking, layanan, invoice, dan sesi WhatsApp terkait akan dihapus secara permanen.`)) {
       return;
     }
     try {
-      const res = await fetch(`/api/tenants/${tenantId}`, {
+      const endpoint = `/api/tenants/${encodeURIComponent(tenantId)}`;
+      const res = await fetch(endpoint, {
         method: 'DELETE',
         headers: this.getAuthHeaders()
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal menghapus tenant');
-      alert(`✅ ${data.message || 'Tenant berhasil dihapus.'}`);
+      
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (e) {
+        data = { error: 'Gagal membaca respon server' };
+      }
+
+      if (!res.ok) {
+        // Fallback: If 404 and tenantSlug is available, try deleting by slug
+        if (res.status === 404 && tenantSlug && tenantSlug !== tenantId) {
+          const fallbackRes = await fetch(`/api/tenants/${encodeURIComponent(tenantSlug)}`, {
+            method: 'DELETE',
+            headers: this.getAuthHeaders()
+          });
+          const fallbackData = await fallbackRes.json().catch(() => ({}));
+          if (fallbackRes.ok) {
+            data = fallbackData;
+          } else {
+            throw new Error(data.error || fallbackData.error || 'Tenant tidak ditemukan di server');
+          }
+        } else {
+          throw new Error(data.error || `Gagal menghapus tenant (HTTP ${res.status})`);
+        }
+      }
+
+      // Optimistically remove from local state immediately
+      if (Array.isArray(SAAS_TENANTS)) {
+        SAAS_TENANTS = SAAS_TENANTS.filter(t => t.id !== tenantId && t.slug !== tenantId && (!tenantSlug || t.slug !== tenantSlug));
+      }
+      this.renderTenantsTable();
+      this.renderMetrics();
+
+      alert(`✅ ${data.message || `Akun ${tenantName} berhasil dihapus permanen.`}`);
       this.logAudit('warning', `Tenant deleted: ${tenantName} (${tenantId})`);
       await this.loadBackendData();
     } catch (err) {
