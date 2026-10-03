@@ -126,22 +126,92 @@ class IngressRouter {
       };
     }
 
-    // Check Reschedule intent: RESCHEDULE_{appointment_id}
-    const reschedMatch = cleanText.match(/^RESCHEDULE_([a-zA-Z0-9-]+)/i);
-    if (reschedMatch) {
-      const apptId = reschedMatch[1];
+    // Check Reschedule intent:
+    // Supports:
+    // 1. RESCHEDULE_<appointment_id>
+    // 2. RESCHEDULE_<nama lengkap> or RESCHEDULE <nama lengkap>
+    // 3. RESCHEDULE (plain, auto-detect active appointment by phone)
+    // 4. UBAH JADWAL or GANTI JADWAL
+    const isRescheduleIntent = /^(?:RESCHEDULE|UBAH JADWAL|GANTI JADWAL)(?:[_\s]+(.+))?$/i.test(cleanText);
+    if (isRescheduleIntent) {
+      const match = cleanText.match(/^(?:RESCHEDULE|UBAH JADWAL|GANTI JADWAL)(?:[_\s]+(.+))?$/i);
+      const param = (match && match[1] ? match[1].trim() : '');
+
+      let targetAppt = null;
+
+      // A. If param is an exact appointment ID
+      if (param && this.db.appointments.has(param)) {
+        targetAppt = this.db.appointments.get(param);
+      }
+
+      // B. If param is a name, look for active appointment with that name
+      if (!targetAppt && param) {
+        const cleanParam = param.toLowerCase();
+        for (const apt of this.db.appointments.values()) {
+          if (apt.tenant_id === targetTenant.id && (apt.status === 'CONFIRMED' || apt.status === 'IN_CONSULTATION')) {
+            if (apt.customer_name.toLowerCase().includes(cleanParam) || cleanParam.includes(apt.customer_name.toLowerCase())) {
+              targetAppt = apt;
+              break;
+            }
+          }
+        }
+      }
+
+      // C. Look up active appointment for this sender phone number
+      if (!targetAppt) {
+        const activeCheck = this.db.checkCustomerActiveSlot(targetTenant.id, cleanPhone);
+        if (activeCheck) {
+          targetAppt = activeCheck.appointment;
+        }
+      }
+
+      // D. Fallback search by phone
+      if (!targetAppt) {
+        for (const apt of this.db.appointments.values()) {
+          if (apt.tenant_id === targetTenant.id && (apt.status === 'CONFIRMED' || apt.status === 'IN_CONSULTATION')) {
+            if (apt.customer_phone.replace(/\D/g, '') === cleanPhone) {
+              targetAppt = apt;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!targetAppt) {
+        return {
+          recipient_type: 'PATIENT',
+          tenant: targetTenant,
+          response_type: 'TEXT',
+          message: `Tidak ditemukan reservasi aktif atas nomor Anda di *${targetTenant.name}*.\n\nUntuk membuat reservasi baru, silakan ketik *Nama Lengkap <spasi> Nomor Layanan* (contoh: *Budi Santoso 1*).`
+        };
+      }
+
       this.db.saveSession(cleanPhone, {
         tenant_id: targetTenant.id,
         step: 'AWAITING_RESCHEDULE_TIME',
-        target_reschedule_id: apptId,
+        target_reschedule_id: targetAppt.id,
         last_activity: new Date().toISOString()
       });
+
+      const svc = targetAppt.service_id ? this.db.services.get(targetAppt.service_id) : null;
       return {
         recipient_type: 'PATIENT',
         tenant: targetTenant,
         action: 'PROMPT_RESCHEDULE_SLOT',
-        appointment_id: apptId,
-        message: `Silakan pilih waktu pengganti baru untuk reservasi Anda. (Ketik tanggal & jam yang diinginkan, misal: 2026-10-05 10:00 atau ketik BATAL untuk membatalkan).`
+        appointment_id: targetAppt.id,
+        message: [
+          `📅 *UBAH JADWAL RESERVASI*`,
+          `----------------------------------------`,
+          `👤 *Pasien:* ${targetAppt.customer_name}`,
+          `📋 *Layanan:* ${svc ? svc.name : 'Pemeriksaan'}`,
+          `⏰ *Jadwal Saat Ini:* ${this.formatIndoDateTime(targetAppt.start_time)}`,
+          `----------------------------------------`,
+          `Silakan balas dengan waktu baru yang Anda inginkan.`,
+          `Contoh:`,
+          `• *Besok jam 14:00*`,
+          `• *2026-10-05 10:00*`,
+          `• Atau ketik *BATAL* untuk membatalkan.`
+        ].join('\n')
       };
     }
 
@@ -175,6 +245,7 @@ class IngressRouter {
             newStartTime: parsedTime,
             customerPhone: cleanPhone
           });
+          const updatedAppt = reschedResult.new_appointment || reschedResult.newAppointment;
           this.db.saveSession(cleanPhone, { ...existingSession, step: null, target_reschedule_id: null });
           return {
             recipient_type: 'PATIENT',
@@ -184,8 +255,8 @@ class IngressRouter {
               `✅ *JADWAL BERHASIL DIUBAH!*`,
               `----------------------------------------`,
               `🏥 *Klinik:* ${targetTenant.name}`,
-              `⏰ *Waktu Baru:* ${this.formatIndoDateTime(reschedResult.newAppointment.start_time)}`,
-              `📌 *Kode Booking:* #${reschedResult.newAppointment.id.slice(-8).toUpperCase()}`,
+              `⏰ *Waktu Baru:* ${this.formatIndoDateTime(updatedAppt.start_time)}`,
+              `📌 *Kode Booking:* #${updatedAppt.id.slice(-8).toUpperCase()}`,
               `----------------------------------------`,
               `Terima kasih! Sampai jumpa di jadwal yang baru.`
             ].join('\n')
@@ -288,7 +359,7 @@ class IngressRouter {
             `⏰ *Waktu:* ${this.formatIndoDateTime(exist.start_time)}`,
             `----------------------------------------`,
             `Untuk mengubah waktu, balas dengan:`,
-            `*RESCHEDULE_${exist.id}*`
+            `*RESCHEDULE* atau *RESCHEDULE_${exist.customer_name}*`
           ].join('\n')
         };
       }
@@ -333,8 +404,8 @@ class IngressRouter {
           `----------------------------------------`,
           `📌 *Kode Reservasi:* #${appt.id.slice(-8).toUpperCase()}`,
           `Mohon hadir 10 menit sebelum jadwal reservasi.`,
-          `Jika ingin membatalkan/ubah jadwal, ketik:`,
-          `*RESCHEDULE_${appt.id}*`
+          `Jika ingin mengubah jadwal, cukup ketik:`,
+          `*RESCHEDULE* atau *RESCHEDULE_${customerName}*`
         ].join('\n')
       };
     }
@@ -416,14 +487,41 @@ class IngressRouter {
   parseDateString(text) {
     try {
       const clean = text.trim();
+      const now = new Date();
+
+      // Check natural language: "besok jam 14:00", "besok jam 14.00", "besok jam 10", "lusa jam 11", "hari ini jam 15"
+      const naturalMatch = clean.match(/(hari ini|besok|lusa)?\s*(?:jam|pukul)?\s*(\d{1,2})[:.]?(\d{2})?/i);
+      if (naturalMatch && naturalMatch[2]) {
+        const dayWord = (naturalMatch[1] || '').toLowerCase();
+        let targetDate = new Date(now);
+        if (dayWord === 'besok') {
+          targetDate.setDate(targetDate.getDate() + 1);
+        } else if (dayWord === 'lusa') {
+          targetDate.setDate(targetDate.getDate() + 2);
+        } else if (!dayWord && clean.toLowerCase().includes('jam')) {
+          targetDate.setDate(targetDate.getDate() + 1);
+        }
+
+        const hour = parseInt(naturalMatch[2], 10);
+        const min = parseInt(naturalMatch[3] || '0', 10);
+        if (hour >= 0 && hour <= 23 && min >= 0 && min <= 59) {
+          targetDate.setHours(hour, min, 0, 0);
+          if (targetDate.getTime() > now.getTime()) {
+            return targetDate.toISOString();
+          }
+        }
+      }
+
+      // Check standard ISO or YYYY-MM-DD HH:mm
+      const matchDate = clean.match(/(\d{4}-\d{2}-\d{2})\s*(?:jam|pukul)?\s*(\d{1,2})[:.](\d{2})/);
+      if (matchDate) {
+        const d = new Date(`${matchDate[1]}T${String(matchDate[2]).padStart(2, '0')}:${matchDate[3]}:00.000Z`);
+        if (!isNaN(d.getTime())) return d.toISOString();
+      }
+
       const direct = new Date(clean);
       if (!isNaN(direct.getTime()) && direct.getTime() > Date.now()) {
         return direct.toISOString();
-      }
-      const match = clean.match(/(\d{4}-\d{2}-\d{2})\s+(\d{1,2})[:.](\d{2})/);
-      if (match) {
-        const d = new Date(`${match[1]}T${String(match[2]).padStart(2, '0')}:${match[3]}:00.000Z`);
-        if (!isNaN(d.getTime())) return d.toISOString();
       }
     } catch (e) {}
     return null;
