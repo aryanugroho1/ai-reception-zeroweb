@@ -324,6 +324,36 @@ class DoctorCopilotEngine {
   }
 
   handleDashboardInsight(tenant) {
+    const plan = (tenant.subscription_plan || 'FREE').toUpperCase();
+    const isProOrAbove = ['PRO', 'CLINIC', 'LIFETIME_PARTNER'].includes(plan);
+
+    if (!isProOrAbove) {
+      const quotaLimit = plan === 'FREE' ? 25 : 100;
+      return {
+        action: 'DASHBOARD_LOCKED',
+        chart_url: null,
+        charts: null,
+        reply: [
+          `🔒 *FITUR VISUAL CHART ANALYTICS DIKUNCI*`,
+          `----------------------------------------`,
+          `Halo *${tenant.name}*, fitur Visual Chart harian & mingguan serta analisis omset adalah fitur eksklusif untuk paket *PRO* dan *Business*.`,
+          ``,
+          `📦 *Status Paket Anda:*`,
+          `• Paket: *${plan}*`,
+          `• Kuota Bulanan: ${quotaLimit} booking/bulan`,
+          `• Visual Chart: 🔒 Belum Aktif`,
+          ``,
+          `✨ *Keunggulan Paket PRO:*`,
+          `✓ 3 Visual Chart WhatsApp (Hari Ini, Mingguan, Bulanan)`,
+          `✓ Analisis Omset & Rekap Keuangan Otomatis`,
+          `✓ Smart Nudge Timer Durasi Layanan`,
+          `✓ Kuota hingga 400 booking/bulan`,
+          `----------------------------------------`,
+          `Silakan hubungi admin atau upgrade paket Anda melalui website untuk membuka fitur ini.`
+        ].join('\n')
+      };
+    }
+
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
 

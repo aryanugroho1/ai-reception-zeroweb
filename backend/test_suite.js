@@ -534,10 +534,16 @@ async function runTestSuite() {
     const openRes = await copilot.handleCommand({ tenantId: maya.id, commandText: 'BUKA', doctorPhone });
     assert(maya.is_accepting_patients === true, 'Command BUKA resumed practice');
 
-    // Command: DASHBOARD
+    // Command: DASHBOARD on PRO tier (Allowed)
     const dashRes = await copilot.handleCommand({ tenantId: maya.id, commandText: 'DASHBOARD', doctorPhone });
-    assert(dashRes.action === 'DASHBOARD' && dashRes.chart_url.includes('quickchart.io'), 'Command DASHBOARD generated QuickChart URL');
+    assert(dashRes.action === 'DASHBOARD' && dashRes.chart_url.includes('quickchart.io'), 'Command DASHBOARD generated QuickChart URL for PRO');
     assert(dashRes.charts && dashRes.charts.today && dashRes.charts.week && dashRes.charts.month, 'Command DASHBOARD generated 3 visual charts (Today, Week Daily, Month Weekly)');
+
+    // Command: DASHBOARD on STARTER/FREE tier (Locked)
+    const tempFree = db.createTenant({ name: 'Klinik Free Test', slug: 'klinik_free_test', owner_phone: '628999111222', subscription_plan: 'FREE' });
+    const freeDashRes = await copilot.handleCommand({ tenantId: tempFree.id, commandText: 'DASHBOARD', doctorPhone: '628999111222' });
+    assert(freeDashRes.action === 'DASHBOARD_LOCKED' && !freeDashRes.charts && freeDashRes.reply.includes('DIKUNCI'), 'Feature gate: FREE tier is blocked from accessing visual charts');
+    db.deleteTenant(tempFree.id);
 
     // Command: TARIF (List)
     const tarifListRes = await copilot.handleCommand({ tenantId: maya.id, commandText: 'TARIF', doctorPhone });
