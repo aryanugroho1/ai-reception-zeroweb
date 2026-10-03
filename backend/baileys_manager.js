@@ -154,6 +154,9 @@ class BaileysManager {
     }
 
     this.pendingRegistrations.delete(pendingId);
+    if (this.db && typeof this.db.save === 'function') {
+      this.db.save();
+    }
     console.log(`[BaileysManager] Tenant officially COMMITTED to database after QR connection: ${tenant.name} (${tenant.id}) - Phone: ${tenant.owner_phone}`);
     return tenant;
   }

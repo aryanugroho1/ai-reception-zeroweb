@@ -4,6 +4,7 @@
  * Reschedule Atomic Swap, Mayar HMAC Webhook, Doctor Copilot, and REST APIs.
  */
 
+process.env.NODE_ENV = 'test';
 const http = require('http');
 const crypto = require('crypto');
 const { DatabaseEngine } = require('./database');

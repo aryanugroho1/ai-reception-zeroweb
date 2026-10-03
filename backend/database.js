@@ -15,10 +15,12 @@
  * 2. view_tenant_quota_monitoring
  */
 
+const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 
 class DatabaseEngine {
-  constructor() {
+  constructor(storagePath = null) {
     this.tenants = new Map();
     this.services = new Map();
     this.appointments = new Map();
@@ -26,7 +28,73 @@ class DatabaseEngine {
     this.idempotencyRecords = new Map();
     this.userSessions = new Map();
 
-    this.seedSampleData();
+    if (storagePath === false || process.env.NODE_ENV === 'test') {
+      this.storagePath = null;
+      this.seedSampleData();
+    } else {
+      this.storagePath = storagePath || process.env.DB_STORAGE_PATH || path.join(__dirname, '../data/app_database.json');
+      this.loadFromFile();
+    }
+  }
+
+  saveToFile() {
+    if (!this.storagePath) return;
+    try {
+      const data = {
+        version: '1.0.0',
+        saved_at: new Date().toISOString(),
+        tenants: Array.from(this.tenants.entries()),
+        services: Array.from(this.services.entries()),
+        appointments: Array.from(this.appointments.entries()),
+        subscriptionInvoices: Array.from(this.subscriptionInvoices.entries()),
+        idempotencyRecords: Array.from(this.idempotencyRecords.entries()),
+        userSessions: Array.from(this.userSessions.entries())
+      };
+
+      const dir = path.dirname(this.storagePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      const tmpPath = `${this.storagePath}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
+      fs.renameSync(tmpPath, this.storagePath);
+    } catch (err) {
+      console.error('[DatabaseEngine] Error persisting database to disk:', err.message);
+    }
+  }
+
+  save() {
+    this.saveToFile();
+  }
+
+  loadFromFile() {
+    if (!this.storagePath || !fs.existsSync(this.storagePath)) {
+      this.seedSampleData();
+      this.saveToFile();
+      return;
+    }
+
+    try {
+      const raw = fs.readFileSync(this.storagePath, 'utf8');
+      const data = JSON.parse(raw);
+
+      this.tenants = new Map(data.tenants || []);
+      this.services = new Map(data.services || []);
+      this.appointments = new Map(data.appointments || []);
+      this.subscriptionInvoices = new Map(data.subscriptionInvoices || []);
+      this.idempotencyRecords = new Map(data.idempotencyRecords || []);
+      this.userSessions = new Map(data.userSessions || []);
+
+      if (this.tenants.size === 0) {
+        this.seedSampleData();
+        this.saveToFile();
+      }
+    } catch (err) {
+      console.error('[DatabaseEngine] Failed to parse database file, falling back to seed:', err.message);
+      this.seedSampleData();
+      this.saveToFile();
+    }
   }
 
   // --- Seed Registered Sample Tenants (PRD v3.0.0) ---
@@ -311,6 +379,7 @@ class DatabaseEngine {
       updated_at: new Date().toISOString()
     };
     this.tenants.set(id, tenant);
+    this.saveToFile();
     return tenant;
   }
 
@@ -339,6 +408,7 @@ class DatabaseEngine {
     }
 
     this.tenants.delete(tenantId);
+    this.saveToFile();
     return true;
   }
 
@@ -371,6 +441,7 @@ class DatabaseEngine {
       updated_at: new Date().toISOString()
     };
     this.services.set(id, service);
+    this.saveToFile();
     return service;
   }
 
@@ -505,6 +576,7 @@ class DatabaseEngine {
     };
 
     this.appointments.set(id, apt);
+    this.saveToFile();
     return apt;
   }
 
@@ -530,6 +602,7 @@ class DatabaseEngine {
       updated_at: new Date().toISOString()
     };
     this.subscriptionInvoices.set(id, invoice);
+    this.saveToFile();
     return invoice;
   }
 
@@ -560,6 +633,7 @@ class DatabaseEngine {
       created_at: new Date().toISOString()
     };
     this.idempotencyRecords.set(id, record);
+    this.saveToFile();
     return record;
   }
 
@@ -575,6 +649,7 @@ class DatabaseEngine {
       updated_at: new Date().toISOString()
     };
     this.userSessions.set(phoneNumber, session);
+    this.saveToFile();
     return session;
   }
 
