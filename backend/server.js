@@ -226,6 +226,8 @@ class AppServer {
             name: t.name,
             slug: t.slug,
             ownerPhone: t.owner_phone,
+            doctorLid: t.doctor_lid || null,
+            whitelistPhones: t.whitelist_phones || [],
             specialty: t.category,
             plan: t.subscription_plan,
             maxQuota: maxQuotaMap[t.subscription_plan] || 150,
@@ -328,8 +330,13 @@ class AppServer {
         if (body.name) tenant.name = body.name.trim();
         if (body.owner_phone) {
           const oldPhone = tenant.owner_phone;
-          tenant.owner_phone = body.owner_phone.replace(/\D/g, '');
-          this.addAuditLog('success', 'TENANT', `Whitelist dokter ${tenant.name} (${tenant.slug}) diperbarui: +${tenant.owner_phone} (sebelumnya +${oldPhone})`);
+          const raw = body.owner_phone.toString().replace(/[^0-9,]/g, '');
+          const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+          tenant.owner_phone = parts[0] || raw;
+          if (parts.length > 1) {
+            tenant.whitelist_phones = parts;
+          }
+          this.addAuditLog('success', 'TENANT', `Whitelist dokter ${tenant.name} (${tenant.slug}) diperbarui: ${raw} (sebelumnya +${oldPhone})`);
         }
         if (body.category) tenant.category = body.category;
         if (body.subscription_plan) tenant.subscription_plan = body.subscription_plan;

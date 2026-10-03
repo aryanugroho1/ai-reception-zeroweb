@@ -968,7 +968,7 @@ class SuperadminController {
         e.preventDefault();
         const id = document.getElementById('editTenantId').value;
         const name = document.getElementById('editTenantName').value.trim();
-        const phone = document.getElementById('editTenantPhone').value.trim().replace(/[^0-9]/g, '');
+        const phone = document.getElementById('editTenantPhone').value.trim().replace(/[^0-9,]/g, '');
         const category = document.getElementById('editTenantCategory').value;
         const plan = document.getElementById('editTenantPlan').value;
 
@@ -1667,7 +1667,13 @@ class SuperadminController {
 
     document.getElementById('editTenantId').value = tenant.id;
     document.getElementById('editTenantName').value = tenant.name || '';
-    document.getElementById('editTenantPhone').value = tenant.ownerPhone || '';
+    let phoneVal = tenant.ownerPhone || '';
+    if (tenant.whitelistPhones && tenant.whitelistPhones.length > 0) {
+      phoneVal = tenant.whitelistPhones.join(', ');
+    } else if (tenant.doctorLid && !phoneVal.includes(tenant.doctorLid)) {
+      phoneVal = `${phoneVal}, ${tenant.doctorLid}`;
+    }
+    document.getElementById('editTenantPhone').value = phoneVal;
     if (document.getElementById('editTenantCategory')) {
       document.getElementById('editTenantCategory').value = tenant.specialty || 'GENERAL';
     }

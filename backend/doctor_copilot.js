@@ -30,6 +30,8 @@ class DoctorCopilotEngine {
     const cleanBot = (tenant.whatsapp_connected_phone || '').toString().split('@')[0].split(':')[0].replace(/\D/g, '');
     const normBot = cleanBot.startsWith('0') ? '62' + cleanBot.slice(1) : (cleanBot.startsWith('8') ? '62' + cleanBot : cleanBot);
 
+    const cleanDoctorLid = (tenant.doctor_lid || '').toString().replace(/\D/g, '');
+
     const extraClean = Array.isArray(tenant.whitelist_phones)
       ? tenant.whitelist_phones.map(p => {
           const c = (p || '').toString().split('@')[0].split(':')[0].replace(/\D/g, '');
@@ -40,7 +42,14 @@ class DoctorCopilotEngine {
           return c.startsWith('0') ? '62' + c.slice(1) : (c.startsWith('8') ? '62' + c : c);
         }) : []);
 
-    const isAuthorized = normDoc === normOwner || normDoc === normBot || extraClean.includes(normDoc);
+    const isAuthorized =
+      normDoc === normOwner ||
+      normDoc === normBot ||
+      (cleanDoctorLid && cleanDoc === cleanDoctorLid) ||
+      (tenant.owner_phone && tenant.owner_phone.replace(/\D/g, '') === cleanDoc) ||
+      extraClean.includes(normDoc) ||
+      extraClean.includes(cleanDoc);
+
     if (!isAuthorized) {
       const err = new Error(`Unauthorized doctor phone ${doctorPhone} for tenant ${tenant.name}`);
       err.statusCode = 403;

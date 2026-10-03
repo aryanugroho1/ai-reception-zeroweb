@@ -32,6 +32,7 @@ class BaileysManager {
     this.tokenSecret = process.env.CONNECT_TOKEN_SECRET || 'praktika-doctor-onboard-secret-2026';
     this.connectTokens = new Map(); // token -> { tenantId, expiresAt }
     this.pendingRegistrations = new Map(); // pendingId -> pendingData
+    this.lidMap = new Map(); // LID -> Phone and Phone -> LID bidirectional cache
 
     // Ensure sessions root directory exists
     if (!fs.existsSync(this.sessionsDir)) {
@@ -45,6 +46,60 @@ class BaileysManager {
 
   setLogger(logger) {
     this.logger = logger;
+  }
+
+  /**
+   * Resolve Phone Number and LID from incoming Baileys message
+   * Supports WhatsApp Multi-Device privacy accounts where remoteJid is @lid
+   */
+  async resolveSenderIdentity(msg, sock) {
+    const rawJid = msg.key?.remoteJid || '';
+    const altJid = msg.key?.remoteJidAlt || msg.key?.participantAlt || '';
+
+    let cleanPhone = '';
+    let cleanLid = '';
+
+    // If rawJid is LID e.g. 28918434295981@lid
+    if (rawJid.includes('@lid')) {
+      cleanLid = rawJid.split('@')[0].split(':')[0].replace(/\D/g, '');
+    } else {
+      cleanPhone = this.normalizePhone(rawJid);
+    }
+
+    // Check if altJid has phone number
+    if (altJid && (altJid.includes('@s.whatsapp.net') || !altJid.includes('@lid'))) {
+      cleanPhone = this.normalizePhone(altJid);
+    } else if (altJid && altJid.includes('@lid') && !cleanLid) {
+      cleanLid = altJid.split('@')[0].split(':')[0].replace(/\D/g, '');
+    }
+
+    // Query Baileys signalRepository reverse LID mapping if cleanPhone is still missing
+    if (!cleanPhone && cleanLid && sock?.signalRepository?.lidMapping?.getPNForLID) {
+      try {
+        const pnJid = await sock.signalRepository.lidMapping.getPNForLID(rawJid);
+        if (pnJid) {
+          cleanPhone = this.normalizePhone(pnJid);
+        }
+      } catch (e) {}
+    }
+
+    // Check our local memory cache
+    if (!cleanPhone && cleanLid && this.lidMap && this.lidMap.has(cleanLid)) {
+      cleanPhone = this.lidMap.get(cleanLid);
+    }
+
+    // Store mapping bidirectional
+    if (cleanLid && cleanPhone) {
+      this.lidMap.set(cleanLid, cleanPhone);
+      this.lidMap.set(cleanPhone, cleanLid);
+    }
+
+    return {
+      senderJid: rawJid,
+      phone: cleanPhone || cleanLid,
+      lid: cleanLid || null,
+      resolvedPhone: cleanPhone || null
+    };
   }
 
   // --- PENDING REGISTRATION STAGING ---
@@ -389,6 +444,24 @@ class BaileysManager {
           if (this.logger && typeof this.logger.addAuditLog === 'function') {
             this.logger.addAuditLog('success', 'BAILEYS', `WhatsApp ${tenant.name} (${tenant.slug}) BERHASIL TERHUBUNG: +${session.phone}`);
           }
+
+          // Pre-resolve doctor's LID if owner_phone is known
+          if (tenant.owner_phone && sock?.signalRepository?.lidMapping?.getLIDForPN) {
+            try {
+              const cleanOwner = this.normalizePhone(tenant.owner_phone);
+              const lid = await sock.signalRepository.lidMapping.getLIDForPN(`${cleanOwner}@s.whatsapp.net`);
+              if (lid) {
+                const cleanLid = lid.split('@')[0].split(':')[0].replace(/\D/g, '');
+                this.lidMap.set(cleanLid, cleanOwner);
+                this.lidMap.set(cleanOwner, cleanLid);
+                tenant.doctor_lid = cleanLid;
+                if (this.db && typeof this.db.saveToFile === 'function') {
+                  this.db.saveToFile();
+                }
+                console.log(`[BaileysManager] Pre-mapped doctor LID: ${cleanOwner} -> LID:${cleanLid}`);
+              }
+            } catch (e) {}
+          }
         }
 
         if (connection === 'close') {
@@ -440,15 +513,24 @@ class BaileysManager {
 
             if (!text.trim()) continue;
 
+            // Resolve Sender Identity (Handles modern WhatsApp @lid privacy accounts)
+            const identity = await this.resolveSenderIdentity(msg, sock);
+            const cleanSenderPhone = identity.resolvedPhone || (senderJid.includes('@lid') ? '' : identity.phone);
+            const cleanSenderLid = identity.lid;
+
             // Support "Message to Self" (You) if doctor uses same phone for bot & practice management
-            const cleanSender = this.normalizePhone(senderJid);
             const cleanOwnerPhone = this.normalizePhone(tenant.owner_phone);
             const cleanBotPhone = this.normalizePhone(tenant.whatsapp_connected_phone || (sock.user && sock.user.id));
+            const cleanDoctorLid = tenant.doctor_lid ? tenant.doctor_lid.toString().replace(/\D/g, '') : null;
+
             const extraPhones = Array.isArray(tenant.whitelist_phones)
               ? tenant.whitelist_phones.map(p => this.normalizePhone(p))
               : (tenant.whitelist_phones ? tenant.whitelist_phones.split(',').map(p => this.normalizePhone(p)) : []);
 
-            const isDoctorOrOwner = cleanSender === cleanOwnerPhone || cleanSender === cleanBotPhone || extraPhones.includes(cleanSender);
+            const isDoctorOrOwner =
+              (cleanSenderPhone && (cleanSenderPhone === cleanOwnerPhone || cleanSenderPhone === cleanBotPhone || extraPhones.includes(cleanSenderPhone))) ||
+              (cleanSenderLid && (cleanSenderLid === cleanDoctorLid || cleanSenderLid === cleanOwnerPhone || extraPhones.includes(cleanSenderLid)));
+
             const isSelfDoctorChat = msg.key.fromMe && isDoctorOrOwner;
 
             // If message sent by bot itself to other users, ignore to prevent looping.
@@ -459,13 +541,19 @@ class BaileysManager {
               if (!isCopilotCmd) continue;
             }
 
+            const senderLabel = identity.resolvedPhone
+              ? `+${identity.resolvedPhone} (LID: ${identity.lid})`
+              : (identity.lid ? `+${identity.lid} [LID]` : `+${identity.phone}`);
+
             if (this.logger && typeof this.logger.addAuditLog === 'function') {
-              this.logger.addAuditLog('info', 'WHATSAPP', `Pesan masuk dari +${cleanSender} [${tenant.slug}]: "${text.trim().slice(0, 40)}"`);
+              this.logger.addAuditLog('info', 'WHATSAPP', `Pesan masuk dari ${senderLabel} [${tenant.slug}]: "${text.trim().slice(0, 40)}"`);
             }
 
             // Route through Ingress Router bound to this specific tenant!
             const reply = await this.ingressRouter.routeMessage({
               from: senderJid,
+              sender_phone: cleanSenderPhone,
+              sender_lid: cleanSenderLid,
               text: text.trim(),
               tenant_slug: tenant.slug
             });
@@ -473,7 +561,7 @@ class BaileysManager {
             if (reply && reply.message) {
               await sock.sendMessage(senderJid, { text: reply.message });
               if (this.logger && typeof this.logger.addAuditLog === 'function') {
-                this.logger.addAuditLog('success', 'WHATSAPP', `Balasan terkirim ke +${cleanSender} (${reply.recipient_type || 'CHAT'})`);
+                this.logger.addAuditLog('success', 'WHATSAPP', `Balasan terkirim ke ${senderLabel} (${reply.recipient_type || 'CHAT'})`);
               }
             }
           }

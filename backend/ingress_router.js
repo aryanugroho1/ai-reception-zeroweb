@@ -23,17 +23,39 @@ class IngressRouter {
     return clean;
   }
 
-  resolveDoctorTenant(senderPhone) {
+  resolveDoctorTenant(senderPhone, senderLid = null) {
     const cleanPhone = this.normalizePhone(senderPhone);
-    if (!cleanPhone) return null;
+    const cleanLid = senderLid ? senderLid.toString().split('@')[0].split(':')[0].replace(/\D/g, '') : null;
+
+    if (!cleanPhone && !cleanLid) return null;
+
     for (const tenant of this.db.tenants.values()) {
       const cleanOwner = this.normalizePhone(tenant.owner_phone);
       const cleanBot = tenant.whatsapp_connected_phone ? this.normalizePhone(tenant.whatsapp_connected_phone) : null;
+      const cleanDoctorLid = tenant.doctor_lid ? tenant.doctor_lid.toString().replace(/\D/g, '') : null;
       const extraPhones = Array.isArray(tenant.whitelist_phones)
         ? tenant.whitelist_phones.map(p => this.normalizePhone(p))
-        : (tenant.whitelist_phones ? tenant.whitelist_phones.split(',').map(p => this.normalizePhone(p)) : []);
+        : (tenant.whitelist_phones ? tenant.whitelist_phones.split(',').map(p => this.normalizePhone(p).trim()).filter(Boolean) : []);
 
-      if (cleanOwner === cleanPhone || cleanBot === cleanPhone || extraPhones.includes(cleanPhone)) {
+      const matchesPhone = cleanPhone && (
+        cleanOwner === cleanPhone ||
+        cleanBot === cleanPhone ||
+        extraPhones.includes(cleanPhone)
+      );
+
+      const matchesLid = cleanLid && (
+        cleanDoctorLid === cleanLid ||
+        extraPhones.includes(cleanLid) ||
+        (tenant.owner_phone && tenant.owner_phone.replace(/\D/g, '') === cleanLid)
+      );
+
+      if (matchesPhone || matchesLid) {
+        if (cleanLid && !tenant.doctor_lid) {
+          tenant.doctor_lid = cleanLid;
+          if (this.db && typeof this.db.saveToFile === 'function') {
+            this.db.saveToFile();
+          }
+        }
         return tenant;
       }
     }
@@ -43,26 +65,31 @@ class IngressRouter {
   /**
    * Route incoming WhatsApp message
    * @param {Object} message Baileys-compatible message object
-   * @param {string} message.from e.g. "6281299887766@s.whatsapp.net"
+   * @param {string} message.from e.g. "6281299887766@s.whatsapp.net" or "28918434295981@lid"
+   * @param {string} [message.sender_phone] Resolved Phone Number if from was LID
+   * @param {string} [message.sender_lid] Raw LID if from was LID
    * @param {string} message.text e.g. "NEXT" or "BOOK_drg_maya" or "Halo Dok"
    * @param {string} [message.tenant_slug] Optional explicit tenant slug
    */
-  async routeMessage({ from, text, tenant_slug }) {
+  async routeMessage({ from, text, tenant_slug, sender_phone, sender_lid }) {
     // Defense-in-depth: Never route messages originating from group chats, newsletters, or broadcasts
     if (!from || from.includes('@g.us') || from.includes('@newsletter') || from.includes('@broadcast')) {
       return null;
     }
-    const cleanPhone = this.normalizePhone(from);
+    const cleanPhone = sender_phone ? this.normalizePhone(sender_phone) : (from.includes('@lid') ? '' : this.normalizePhone(from));
+    const cleanLid = sender_lid
+      ? sender_lid.toString().split('@')[0].split(':')[0].replace(/\D/g, '')
+      : (from.includes('@lid') ? from.split('@')[0].split(':')[0].replace(/\D/g, '') : null);
     const cleanText = (text || '').trim();
 
-    // 1. DOCTOR WHITLELIST ROUTING
-    const doctorTenant = this.resolveDoctorTenant(cleanPhone);
+    // 1. DOCTOR WHITLELIST ROUTING (Check Phone AND LID)
+    const doctorTenant = this.resolveDoctorTenant(cleanPhone, cleanLid);
     if (doctorTenant) {
       // Doctor is sending a message -> pass to Doctor Copilot
       const copilotResponse = await this.doctorCopilot.handleCommand({
         tenantId: doctorTenant.id,
         commandText: cleanText,
-        doctorPhone: cleanPhone
+        doctorPhone: cleanPhone || cleanLid
       });
 
       return {

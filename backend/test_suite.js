@@ -558,6 +558,23 @@ async function runTestSuite() {
     assert(docMdRoute.recipient_type === 'DOCTOR', 'Multi-device Doctor JID with device ID routed to Doctor Copilot');
     assert(docMdRoute.metadata && docMdRoute.metadata.action === 'STATUS', "Command 'jadwal' correctly returns queue status");
 
+    // Ingress from Doctor via WhatsApp Privacy LID (@lid) format
+    const docLidRoute = await router.routeMessage({
+      from: '28918434295981@lid',
+      sender_phone: maya.owner_phone,
+      sender_lid: '28918434295981',
+      text: 'jadwal'
+    });
+    assert(docLidRoute.recipient_type === 'DOCTOR', 'Doctor message via WhatsApp LID routed to Doctor Copilot');
+    assert(maya.doctor_lid === '28918434295981', 'Doctor LID auto-associated to tenant');
+
+    // Subsequent ingress from same LID without phone hint
+    const docLidCachedRoute = await router.routeMessage({
+      from: '28918434295981@lid',
+      text: 'jadwal'
+    });
+    assert(docLidCachedRoute.recipient_type === 'DOCTOR', 'Direct LID-only message resolved to Doctor via cached doctor_lid');
+
     // Ingress from Patient with deep-link
     const patientRoute = await router.routeMessage({
       from: '628991234567@s.whatsapp.net',

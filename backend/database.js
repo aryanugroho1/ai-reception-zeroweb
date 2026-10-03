@@ -362,14 +362,19 @@ class DatabaseEngine {
   getTenantByPhone(phone) {
     if (!phone) return null;
     const clean = this.normalizePhone(phone);
+    const cleanDigits = phone.toString().split('@')[0].split(':')[0].replace(/\D/g, '');
     for (const tenant of this.tenants.values()) {
       const cleanOwner = this.normalizePhone(tenant.owner_phone);
       const cleanBot = tenant.whatsapp_connected_phone ? this.normalizePhone(tenant.whatsapp_connected_phone) : null;
+      const cleanDoctorLid = tenant.doctor_lid ? tenant.doctor_lid.toString().replace(/\D/g, '') : null;
       const extraPhones = Array.isArray(tenant.whitelist_phones)
         ? tenant.whitelist_phones.map(p => this.normalizePhone(p))
         : (tenant.whitelist_phones ? tenant.whitelist_phones.split(',').map(p => this.normalizePhone(p)) : []);
 
-      if (cleanOwner === clean || cleanBot === clean || extraPhones.includes(clean)) {
+      const matchesPhone = clean && (cleanOwner === clean || cleanBot === clean || extraPhones.includes(clean));
+      const matchesLid = cleanDigits && (cleanDoctorLid === cleanDigits || extraPhones.includes(cleanDigits) || (tenant.owner_phone && tenant.owner_phone.replace(/\D/g, '') === cleanDigits));
+
+      if (matchesPhone || matchesLid) {
         return tenant;
       }
     }
