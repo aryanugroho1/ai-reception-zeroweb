@@ -30,9 +30,9 @@ const server = http.createServer((req, res) => {
   let reqPath = req.url.split('?')[0];
   if (reqPath === '/' || reqPath === '') {
     reqPath = '/index.html';
-  } else if (reqPath === '/admin') {
+  } else if (reqPath === '/admin' || reqPath === '/admin/') {
     reqPath = '/admin.html';
-  } else if (reqPath === '/connect') {
+  } else if (reqPath === '/connect' || reqPath === '/connect/') {
     reqPath = '/connect.html';
   }
 
