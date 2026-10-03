@@ -92,6 +92,10 @@ class IngressRouter {
         doctorPhone: cleanPhone || cleanLid
       });
 
+      if (!copilotResponse || !copilotResponse.reply || copilotResponse.action === 'IGNORE_BOT_ECHO') {
+        return null;
+      }
+
       return {
         recipient_type: 'DOCTOR',
         tenant: doctorTenant,

@@ -56,7 +56,13 @@ class DoctorCopilotEngine {
       throw err;
     }
 
-    const normalizedCmd = (commandText || '').trim().toUpperCase();
+    // Anti-loop defense: Reject bot generated message templates or long formatted replies
+    const rawCmd = (commandText || '').trim();
+    if (rawCmd.length > 70 || rawCmd.includes('\n\n') || /^[📅✅🛑🟢🩺ℹ️👋🔢⚠️📋]/.test(rawCmd)) {
+      return { action: 'IGNORE_BOT_ECHO', reply: null };
+    }
+
+    const normalizedCmd = rawCmd.toUpperCase();
 
     // Check if practice subscription has expired
     if (tenant.subscription_until && new Date(tenant.subscription_until) < new Date()) {
@@ -67,27 +73,27 @@ class DoctorCopilotEngine {
     }
 
     // 1. Command: NEXT / BERIKUTNYA / PANGGIL
-    if (/^(NEXT|BERIKUTNYA|PANGGIL)/i.test(normalizedCmd) || normalizedCmd === 'NEXT') {
+    if (/^\s*(?:NEXT|BERIKUTNYA|PANGGIL)(?:\s+.*)?$/i.test(normalizedCmd)) {
       return this.handleNextPatient(tenant);
     }
 
     // 2. Command: DONE / SELESAI
-    if (/^(DONE|SELESAI)/i.test(normalizedCmd)) {
+    if (/^\s*(?:DONE|SELESAI)(?:\s+.*)?$/i.test(normalizedCmd)) {
       return this.handleCompletePatient(tenant);
     }
 
     // 3. Command: STATUS / ANTREAN / DAFTAR / JADWAL / REKAP
-    if (/(STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI INI|LIST)/i.test(normalizedCmd)) {
+    if (/^\s*(?:STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI\s+INI|LIST)(?:\s+.*)?$/i.test(normalizedCmd)) {
       return this.handleQueueStatus(tenant);
     }
 
     // 4. Command: DASHBOARD / RINGKASAN / INSIGHT / OMSET
-    if (/(DASHBOARD|RINGKASAN|INSIGHT|OMSET|PENDAPATAN)/i.test(normalizedCmd)) {
+    if (/^\s*(?:DASHBOARD|RINGKASAN|INSIGHT|OMSET|PENDAPATAN)(?:\s+.*)?$/i.test(normalizedCmd)) {
       return this.handleDashboardInsight(tenant);
     }
 
     // 5. Command: TUTUP / ISTIRAHAT / PAUSE
-    if (/(TUTUP|ISTIRAHAT|PAUSE)/i.test(normalizedCmd)) {
+    if (/^\s*(?:TUTUP|ISTIRAHAT|PAUSE)(?:\s+.*)?$/i.test(normalizedCmd)) {
       tenant.is_accepting_patients = false;
       tenant.updated_at = new Date().toISOString();
       return {
@@ -98,7 +104,7 @@ class DoctorCopilotEngine {
     }
 
     // 6. Command: BUKA / AKTIF / RESUME
-    if (/(BUKA|AKTIF|RESUME)/i.test(normalizedCmd)) {
+    if (/^\s*(?:BUKA|AKTIF|RESUME)(?:\s+.*)?$/i.test(normalizedCmd)) {
       tenant.is_accepting_patients = true;
       tenant.updated_at = new Date().toISOString();
       return {

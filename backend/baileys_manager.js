@@ -33,6 +33,7 @@ class BaileysManager {
     this.connectTokens = new Map(); // token -> { tenantId, expiresAt }
     this.pendingRegistrations = new Map(); // pendingId -> pendingData
     this.lidMap = new Map(); // LID -> Phone and Phone -> LID bidirectional cache
+    this.sentMessageIds = new Set(); // Sent message IDs to prevent echo looping in self-chat
 
     // Ensure sessions root directory exists
     if (!fs.existsSync(this.sessionsDir)) {
@@ -497,8 +498,13 @@ class BaileysManager {
         try {
           if (m.type !== 'notify' && m.type !== 'append') return;
           for (const msg of m.messages) {
-            const senderJid = msg.key.remoteJid;
+            const senderJid = msg.key?.remoteJid;
             if (!senderJid) continue;
+
+            // 0. ANTI-LOOP GUARD: Drop any messages sent by our own bot instance
+            if (msg.key?.id && this.sentMessageIds.has(msg.key.id)) {
+              continue;
+            }
 
             // 1. STRICTLY IGNORE GROUP CHATS, BROADCASTS, CHANNELS/NEWSLETTERS
             // The AI Receptionist must NEVER reply to WhatsApp groups or broadcast lists!
@@ -537,7 +543,13 @@ class BaileysManager {
             // If message to self from doctor, only process recognized Copilot commands.
             if (msg.key.fromMe) {
               if (!isSelfDoctorChat) continue;
-              const isCopilotCmd = /(NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN)/i.test(text.trim());
+              const cleanMsg = text.trim();
+              // Anti-loop defense: Doctor commands are short single-line inputs (e.g. "jadwal", "next").
+              // Ignore bot response templates, status emojis, long formatted text, and multi-line summaries.
+              if (cleanMsg.length > 60 || cleanMsg.includes('\n') || /^[📅✅🛑🟢🩺ℹ️👋🔢⚠️📋]/.test(cleanMsg)) {
+                continue;
+              }
+              const isCopilotCmd = /^\s*(?:NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI\s+INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN)(?:\s+.*)?$/i.test(cleanMsg);
               if (!isCopilotCmd) continue;
             }
 
@@ -559,7 +571,12 @@ class BaileysManager {
             });
 
             if (reply && reply.message) {
-              await sock.sendMessage(senderJid, { text: reply.message });
+              const sent = await sock.sendMessage(senderJid, { text: reply.message });
+              if (sent?.key?.id) {
+                this.sentMessageIds.add(sent.key.id);
+                // Evict after 3 minutes to keep memory footprint bounded
+                setTimeout(() => this.sentMessageIds.delete(sent.key.id), 180000);
+              }
               if (this.logger && typeof this.logger.addAuditLog === 'function') {
                 this.logger.addAuditLog('success', 'WHATSAPP', `Balasan terkirim ke ${senderLabel} (${reply.recipient_type || 'CHAT'})`);
               }

@@ -527,6 +527,11 @@ async function runTestSuite() {
     // Smart Nudge Simulation
     const nudge = copilot.checkConsultationNudge(maya.id, 0);
     assert(nudge !== null, 'Smart Nudge check executed cleanly');
+
+    // Anti-loop echo guard test: Simulating bot response echo containing 'jadwal' or 'hari ini'
+    const botEchoText = '📅 *JADWAL PRAKTEK HARI INI*\n\nBelum ada pasien terdaftar untuk hari ini.\n\nKetik *NEXT* untuk memanggil antrean berikutnya.';
+    const echoRes = await copilot.handleCommand({ tenantId: maya.id, commandText: botEchoText, doctorPhone });
+    assert(echoRes.action === 'IGNORE_BOT_ECHO' && echoRes.reply === null, 'Doctor Copilot dropped bot reply echo to prevent self-chat loop');
   }
 
   // -------------------------------------------------------------
@@ -574,6 +579,14 @@ async function runTestSuite() {
       text: 'jadwal'
     });
     assert(docLidCachedRoute.recipient_type === 'DOCTOR', 'Direct LID-only message resolved to Doctor via cached doctor_lid');
+
+    // Ingress Router anti-loop test: Bot template message from doctor JID must yield null
+    const botEchoMsg = '📅 *JADWAL PRAKTEK HARI INI*\n\nBelum ada jadwal pasien untuk hari ini.';
+    const echoRoute = await router.routeMessage({
+      from: `${maya.owner_phone}@s.whatsapp.net`,
+      text: botEchoMsg
+    });
+    assert(echoRoute === null, 'Ingress Router successfully dropped bot echo message (returned null)');
 
     // Ingress from Patient with deep-link
     const patientRoute = await router.routeMessage({
