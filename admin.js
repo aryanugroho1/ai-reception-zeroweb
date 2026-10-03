@@ -1592,6 +1592,8 @@ class SuperadminController {
       }
       this.logAudit('danger', `Gagal mengubah kuota kupon ${couponCode}: ${err.message}`);
     }
+  }
+
   openEditModal(tenantId) {
     const tenant = SAAS_TENANTS.find(t => t.id === tenantId);
     if (!tenant) return alert('Tenant tidak ditemukan');
