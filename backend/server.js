@@ -285,6 +285,38 @@ class AppServer {
         });
       }
 
+      // 2E. Update Tenant Whitelist & Details (Super Admin Protected): PUT/PATCH /api/tenants/:id
+      const updateTenantMatch = pathname.match(/^\/api\/tenants\/([a-zA-Z0-9_-]+)$/);
+      if (updateTenantMatch && (method === 'PUT' || method === 'PATCH')) {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const tId = updateTenantMatch[1];
+        const tenant = this.db.tenants.get(tId) || this.db.getTenantBySlug(tId);
+        if (!tenant) {
+          return this.sendJson(res, 404, { error: 'Tenant tidak ditemukan' });
+        }
+
+        const body = await this.readRequestBody(req);
+        if (body.name) tenant.name = body.name.trim();
+        if (body.owner_phone) {
+          tenant.owner_phone = body.owner_phone.replace(/\D/g, '');
+        }
+        if (body.category) tenant.category = body.category;
+        if (body.subscription_plan) tenant.subscription_plan = body.subscription_plan;
+        tenant.updated_at = new Date().toISOString();
+
+        if (this.db && typeof this.db.save === 'function') {
+          this.db.save();
+        }
+
+        return this.sendJson(res, 200, {
+          success: true,
+          message: `Data tenant ${tenant.name} berhasil diperbarui. Whitelist nomor dokter: +${tenant.owner_phone}`,
+          tenant
+        });
+      }
+
       // 2E. Purge Sample Demo Tenants (Super Admin Protected): POST /api/tenants/purge-samples
       if (pathname === '/api/tenants/purge-samples' && method === 'POST') {
         if (!this.validateAdminSession(req)) {

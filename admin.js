@@ -757,6 +757,7 @@ class SuperadminController {
             <button class="tbl-btn" onclick="window.adminCtrl.toggleQuota('${t.id}')" title="Buka/Tutup Kuota Pendaftaran">
               ${t.isAccepting ? 'Tutup' : 'Buka'}
             </button>
+            <button class="tbl-btn" style="border-color:#38bdf8; color:#38bdf8;" onclick="window.adminCtrl.openEditModal('${t.id}')" title="Edit Data & Whitelist Dokter">✏️ Whitelist</button>
             <button class="tbl-btn" onclick="window.adminCtrl.testLink('${t.slug}')" title="Buka Link WhatsApp Pasien">Link</button>
             <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.deleteTenant('${t.id}', '${(t.name||'').replace(/'/g, "\\'")}')" title="Hapus Akun Dokter">🗑️</button>
           </div>
@@ -935,6 +936,59 @@ class SuperadminController {
     if (modalAdminQr) {
       modalAdminQr.addEventListener('click', (e) => {
         if (e.target === modalAdminQr) closeQr();
+      });
+    }
+
+    // Edit Tenant & Whitelist Modal Listeners
+    const modalEdit = document.getElementById('modalEditTenant');
+    const closeEditBtn = document.getElementById('btnCloseEditTenant');
+    const cancelEditBtn = document.getElementById('btnCancelEditTenant');
+    const formEdit = document.getElementById('formEditTenant');
+
+    const closeEdit = () => {
+      if (modalEdit) modalEdit.classList.remove('active');
+    };
+
+    if (closeEditBtn) closeEditBtn.addEventListener('click', closeEdit);
+    if (cancelEditBtn) cancelEditBtn.addEventListener('click', closeEdit);
+    if (modalEdit) {
+      modalEdit.addEventListener('click', (e) => {
+        if (e.target === modalEdit) closeEdit();
+      });
+    }
+
+    if (formEdit) {
+      formEdit.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('editTenantId').value;
+        const name = document.getElementById('editTenantName').value.trim();
+        const phone = document.getElementById('editTenantPhone').value.trim().replace(/[^0-9]/g, '');
+        const category = document.getElementById('editTenantCategory').value;
+        const plan = document.getElementById('editTenantPlan').value;
+
+        try {
+          const res = await fetch(`/api/tenants/${id}`, {
+            method: 'PUT',
+            headers: this.getAuthHeaders(),
+            body: JSON.stringify({
+              name,
+              owner_phone: phone,
+              category,
+              subscription_plan: plan
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Gagal memperbarui data tenant');
+
+          await this.loadBackendData();
+          closeEdit();
+          this.logAudit('success', `Data tenant ${name} berhasil diubah. Nomor Whitelist Dokter: +${phone}`);
+          alert(`✅ Berhasil menyimpan!\n\nNomor WhatsApp Whitelist Dokter untuk ${name} kini telah diatur ke:\n+${phone}`);
+        } catch (err) {
+          alert('❌ Gagal mengubah data: ' + err.message);
+          this.logAudit('danger', `Gagal mengubah tenant: ${err.message}`);
+        }
       });
     }
   }
@@ -1538,6 +1592,24 @@ class SuperadminController {
       }
       this.logAudit('danger', `Gagal mengubah kuota kupon ${couponCode}: ${err.message}`);
     }
+  openEditModal(tenantId) {
+    const tenant = SAAS_TENANTS.find(t => t.id === tenantId);
+    if (!tenant) return alert('Tenant tidak ditemukan');
+
+    const modal = document.getElementById('modalEditTenant');
+    if (!modal) return;
+
+    document.getElementById('editTenantId').value = tenant.id;
+    document.getElementById('editTenantName').value = tenant.name || '';
+    document.getElementById('editTenantPhone').value = tenant.ownerPhone || '';
+    if (document.getElementById('editTenantCategory')) {
+      document.getElementById('editTenantCategory').value = tenant.specialty || 'GENERAL';
+    }
+    if (document.getElementById('editTenantPlan')) {
+      document.getElementById('editTenantPlan').value = tenant.plan || 'PRO';
+    }
+
+    modal.classList.add('active');
   }
 }
 
