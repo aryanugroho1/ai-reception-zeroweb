@@ -48,13 +48,24 @@ class BaileysManager {
   }
 
   loadTokens() {
-    try {
-      if (fs.existsSync(this.tokensFilePath)) {
-        const raw = JSON.parse(fs.readFileSync(this.tokensFilePath, 'utf8'));
-        this.connectTokens = new Map(raw || []);
+    const candidatePaths = [
+      this.tokensFilePath,
+      `${this.tokensFilePath}.bak`,
+      path.join(process.cwd(), 'data/connect_tokens.json')
+    ];
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+          if (Array.isArray(raw)) {
+            this.connectTokens = new Map(raw);
+            break;
+          }
+        } catch (e) {
+          console.warn(`[BaileysManager] Failed loading connect tokens from ${p}:`, e.message);
+        }
       }
-    } catch (e) {
-      console.warn('[BaileysManager] Failed loading connect tokens from disk:', e.message);
     }
   }
 
@@ -62,7 +73,11 @@ class BaileysManager {
     try {
       const dir = path.dirname(this.tokensFilePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(this.tokensFilePath, JSON.stringify(Array.from(this.connectTokens.entries()), null, 2), 'utf8');
+      const jsonStr = JSON.stringify(Array.from(this.connectTokens.entries()), null, 2);
+      fs.writeFileSync(this.tokensFilePath, jsonStr, 'utf8');
+      try {
+        fs.writeFileSync(`${this.tokensFilePath}.bak`, jsonStr, 'utf8');
+      } catch (e) {}
     } catch (e) {
       console.warn('[BaileysManager] Failed saving connect tokens to disk:', e.message);
     }

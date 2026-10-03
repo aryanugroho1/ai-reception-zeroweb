@@ -56,11 +56,30 @@ class DatabaseEngine {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      const tmpPath = `${this.storagePath}.tmp`;
-      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
-      fs.renameSync(tmpPath, this.storagePath);
+      const jsonString = JSON.stringify(data, null, 2);
+
+      // 1. Direct write to primary storage file
+      fs.writeFileSync(this.storagePath, jsonString, 'utf8');
+
+      // 2. Synchronous backup write (.bak) to protect against accidental loss or truncation
+      try {
+        const bakPath = `${this.storagePath}.bak`;
+        fs.writeFileSync(bakPath, jsonString, 'utf8');
+      } catch (bakErr) {
+        // non-fatal for backup
+      }
     } catch (err) {
-      console.error('[DatabaseEngine] Error persisting database to disk:', err.message);
+      console.error('[DatabaseEngine] FATAL: Error persisting database to primary disk:', err.message);
+      // Emergency fallback write to project root if primary path had permission/volume errors
+      try {
+        const fallbackPath = path.join(process.cwd(), 'data/app_database.json');
+        const fallbackDir = path.dirname(fallbackPath);
+        if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+        fs.writeFileSync(fallbackPath, JSON.stringify(data, null, 2), 'utf8');
+        console.warn(`[DatabaseEngine] Emergency backup successfully written to ${fallbackPath}`);
+      } catch (emergencyErr) {
+        console.error('[DatabaseEngine] Emergency database backup write failed:', emergencyErr.message);
+      }
     }
   }
 
@@ -69,31 +88,43 @@ class DatabaseEngine {
   }
 
   loadFromFile() {
-    if (!this.storagePath || !fs.existsSync(this.storagePath)) {
-      if (process.env.NODE_ENV === 'test') {
-        this.seedSampleData();
+    if (!this.storagePath) return;
+
+    const candidatePaths = [
+      this.storagePath,
+      `${this.storagePath}.bak`,
+      `${this.storagePath}.tmp`,
+      path.join(process.cwd(), 'data/app_database.json'),
+      path.join(process.cwd(), 'app_database_fallback.json')
+    ];
+
+    let foundValid = false;
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        try {
+          const raw = fs.readFileSync(p, 'utf8');
+          if (raw && raw.trim().length > 0) {
+            const data = JSON.parse(raw);
+            if (data && (Array.isArray(data.tenants) || typeof data === 'object')) {
+              this.tenants = new Map(data.tenants || []);
+              this.services = new Map(data.services || []);
+              this.appointments = new Map(data.appointments || []);
+              this.subscriptionInvoices = new Map(data.subscriptionInvoices || []);
+              this.idempotencyRecords = new Map(data.idempotencyRecords || []);
+              this.userSessions = new Map(data.userSessions || []);
+              foundValid = true;
+              console.log(`[DatabaseEngine] Berhasil memuat basis data dari: ${p} (Total ${this.tenants.size} tenant)`);
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn(`[DatabaseEngine] Candidate database file ${p} could not be parsed:`, e.message);
+        }
       }
-      this.saveToFile();
-      return;
     }
 
-    try {
-      const raw = fs.readFileSync(this.storagePath, 'utf8');
-      const data = JSON.parse(raw);
-
-      this.tenants = new Map(data.tenants || []);
-      this.services = new Map(data.services || []);
-      this.appointments = new Map(data.appointments || []);
-      this.subscriptionInvoices = new Map(data.subscriptionInvoices || []);
-      this.idempotencyRecords = new Map(data.idempotencyRecords || []);
-      this.userSessions = new Map(data.userSessions || []);
-
-      if (this.tenants.size === 0 && process.env.NODE_ENV === 'test') {
-        this.seedSampleData();
-        this.saveToFile();
-      }
-    } catch (err) {
-      console.error('[DatabaseEngine] Failed to parse database file:', err.message);
+    if (!foundValid) {
       if (process.env.NODE_ENV === 'test') {
         this.seedSampleData();
       }

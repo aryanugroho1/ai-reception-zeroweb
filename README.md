@@ -42,15 +42,15 @@ The application will be accessible at:
 
 ### 3. Running with Docker 🐳
 
-Build and run using Docker:
+Build and run using Docker (dengan mount host volume permanen):
 ```bash
 docker build -t ai-reception-zeroweb .
-docker run -d -p 3000:3000 --name ai-receptionist ai-reception-zeroweb
+docker run -d -p 3000:3000 -v $(pwd)/data:/app/data -v $(pwd)/sessions:/app/sessions --name ai-receptionist ai-reception-zeroweb
 ```
 
-Or using Docker Compose:
+Or using Docker Compose (Rekomendasi untuk zero data-loss saat redeploy):
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 ### 4. Running Backend Tests
