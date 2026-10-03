@@ -37,28 +37,28 @@ class DoctorCopilotEngine {
       };
     }
 
-    // 1. Command: NEXT / BERIKUTNYA
-    if (normalizedCmd === 'NEXT' || normalizedCmd === 'BERIKUTNYA' || normalizedCmd === 'PANGGIL') {
+    // 1. Command: NEXT / BERIKUTNYA / PANGGIL
+    if (/^(NEXT|BERIKUTNYA|PANGGIL)/i.test(normalizedCmd) || normalizedCmd === 'NEXT') {
       return this.handleNextPatient(tenant);
     }
 
     // 2. Command: DONE / SELESAI
-    if (normalizedCmd === 'DONE' || normalizedCmd === 'SELESAI') {
+    if (/^(DONE|SELESAI)/i.test(normalizedCmd)) {
       return this.handleCompletePatient(tenant);
     }
 
-    // 3. Command: STATUS / ANTREAN / DAFTAR
-    if (['STATUS', 'ANTREAN', 'DAFTAR', 'JADWAL', 'REKAP', 'HARI INI', 'LIST'].includes(normalizedCmd)) {
+    // 3. Command: STATUS / ANTREAN / DAFTAR / JADWAL / REKAP
+    if (/(STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI INI|LIST)/i.test(normalizedCmd)) {
       return this.handleQueueStatus(tenant);
     }
 
-    // 4. Command: DASHBOARD / RINGKASAN / INSIGHT
-    if (normalizedCmd === 'DASHBOARD' || normalizedCmd === 'RINGKASAN' || normalizedCmd === 'INSIGHT') {
+    // 4. Command: DASHBOARD / RINGKASAN / INSIGHT / OMSET
+    if (/(DASHBOARD|RINGKASAN|INSIGHT|OMSET|PENDAPATAN)/i.test(normalizedCmd)) {
       return this.handleDashboardInsight(tenant);
     }
 
-    // 5. Command: TUTUP (Pause bookings)
-    if (normalizedCmd === 'TUTUP' || normalizedCmd === 'ISTIRAHAT' || normalizedCmd === 'PAUSE') {
+    // 5. Command: TUTUP / ISTIRAHAT / PAUSE
+    if (/(TUTUP|ISTIRAHAT|PAUSE)/i.test(normalizedCmd)) {
       tenant.is_accepting_patients = false;
       tenant.updated_at = new Date().toISOString();
       return {
@@ -68,8 +68,8 @@ class DoctorCopilotEngine {
       };
     }
 
-    // 6. Command: BUKA (Resume bookings)
-    if (normalizedCmd === 'BUKA' || normalizedCmd === 'AKTIF') {
+    // 6. Command: BUKA / AKTIF / RESUME
+    if (/(BUKA|AKTIF|RESUME)/i.test(normalizedCmd)) {
       tenant.is_accepting_patients = true;
       tenant.updated_at = new Date().toISOString();
       return {

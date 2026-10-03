@@ -346,11 +346,19 @@ class DatabaseEngine {
     return null;
   }
 
+  normalizePhone(phone) {
+    if (!phone) return '';
+    let clean = phone.toString().replace(/@.*$/, '').replace(/\D/g, '');
+    if (clean.startsWith('0')) clean = '62' + clean.slice(1);
+    else if (clean.startsWith('8')) clean = '62' + clean;
+    return clean;
+  }
+
   getTenantByPhone(phone) {
     if (!phone) return null;
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const clean = this.normalizePhone(phone);
     for (const tenant of this.tenants.values()) {
-      if (tenant.owner_phone === cleanPhone || (tenant.whatsapp_connected_phone && tenant.whatsapp_connected_phone === cleanPhone)) {
+      if (this.normalizePhone(tenant.owner_phone) === clean || (tenant.whatsapp_connected_phone && this.normalizePhone(tenant.whatsapp_connected_phone) === clean)) {
         return tenant;
       }
     }

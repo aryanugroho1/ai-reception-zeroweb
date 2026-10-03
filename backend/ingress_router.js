@@ -14,10 +14,20 @@ class IngressRouter {
   /**
    * Resolve tenant by doctor phone number (Whitelist routing)
    */
+  normalizePhone(phone) {
+    if (!phone) return '';
+    let clean = phone.toString().replace(/@.*$/, '').replace(/\D/g, '');
+    if (clean.startsWith('0')) clean = '62' + clean.slice(1);
+    else if (clean.startsWith('8')) clean = '62' + clean;
+    return clean;
+  }
+
   resolveDoctorTenant(senderPhone) {
-    const cleanPhone = senderPhone.replace(/\D/g, '');
+    const cleanPhone = this.normalizePhone(senderPhone);
     for (const tenant of this.db.tenants.values()) {
-      if (tenant.owner_phone.replace(/\D/g, '') === cleanPhone) {
+      const cleanOwner = this.normalizePhone(tenant.owner_phone);
+      const cleanBot = this.normalizePhone(tenant.whatsapp_connected_phone);
+      if (cleanOwner === cleanPhone || cleanBot === cleanPhone) {
         return tenant;
       }
     }

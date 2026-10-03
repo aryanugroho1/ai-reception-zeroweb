@@ -14,6 +14,14 @@ const path = require('path');
 const crypto = require('crypto');
 
 class BaileysManager {
+  normalizePhone(phone) {
+    if (!phone) return '';
+    let clean = phone.toString().replace(/@.*$/, '').replace(/\D/g, '');
+    if (clean.startsWith('0')) clean = '62' + clean.slice(1);
+    else if (clean.startsWith('8')) clean = '62' + clean;
+    return clean;
+  }
+
   constructor({ db, ingressRouter, sessionsDir }) {
     this.db = db;
     this.ingressRouter = ingressRouter;
@@ -391,7 +399,7 @@ class BaileysManager {
       // Handle Incoming Patient & Doctor Messages
       sock.ev.on('messages.upsert', async (m) => {
         try {
-          if (m.type !== 'notify') return;
+          if (m.type !== 'notify' && m.type !== 'append') return;
           for (const msg of m.messages) {
             // Ignore status broadcasts
             if (msg.key.remoteJid === 'status@broadcast') continue;
@@ -407,21 +415,19 @@ class BaileysManager {
             if (!text.trim()) continue;
 
             // Support "Message to Self" (You) if doctor uses same phone for bot & practice management
-            const cleanSender = senderJid.replace(/@.*$/, '').replace(/\D/g, '');
-            const cleanOwnerPhone = (tenant.owner_phone || '').replace(/\D/g, '');
-            const cleanBotPhone = (tenant.whatsapp_connected_phone || '').replace(/\D/g, '');
+            const cleanSender = this.normalizePhone(senderJid);
+            const cleanOwnerPhone = this.normalizePhone(tenant.owner_phone);
+            const cleanBotPhone = this.normalizePhone(tenant.whatsapp_connected_phone || (sock.user && sock.user.id));
             const isSelfDoctorChat = msg.key.fromMe && (
               cleanSender === cleanOwnerPhone ||
-              cleanSender === cleanBotPhone ||
-              senderJid.includes(cleanOwnerPhone) ||
-              senderJid.includes(cleanBotPhone)
+              cleanSender === cleanBotPhone
             );
 
             // If message sent by bot itself to other users, ignore to prevent looping.
             // If message to self from doctor, only process recognized Copilot commands.
             if (msg.key.fromMe) {
               if (!isSelfDoctorChat) continue;
-              const isCopilotCmd = /^(NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN)$/i.test(text.trim());
+              const isCopilotCmd = /(NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN)/i.test(text.trim());
               if (!isCopilotCmd) continue;
             }
 
