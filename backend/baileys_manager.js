@@ -63,6 +63,7 @@ class BaileysManager {
       tenant.subscription_plan = p.plan || tenant.subscription_plan;
       tenant.subscription_until = p.subUntil || tenant.subscription_until;
       tenant.whatsapp_connected_phone = phone;
+      if (p.owner_phone) tenant.owner_phone = p.owner_phone;
       tenant.updated_at = new Date().toISOString();
     } else {
       const rawSlug = (p.business_name || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
@@ -70,7 +71,7 @@ class BaileysManager {
       tenant = this.db.createTenant({
         name: p.business_name,
         slug: uniqueSlug,
-        owner_phone: phone,
+        owner_phone: p.owner_phone || phone,
         category: p.category || 'GENERAL',
         subscription_plan: p.plan || 'STARTER',
         subscription_until: p.subUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),

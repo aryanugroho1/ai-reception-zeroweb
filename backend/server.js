@@ -422,6 +422,7 @@ class AppServer {
         const bizName = (body.business_name || body.name || 'Bisnis Pilot').trim();
         const ownerEmail = (body.email || '').trim();
         const category = (body.category || 'GENERAL').toUpperCase();
+        const doctorPhone = (body.doctor_phone || body.owner_phone || cleanPhone).replace(/[^0-9]/g, '');
         const subUntil = new Date(Date.now() + couponConfig.durationDays * 24 * 60 * 60 * 1000).toISOString();
 
         // Check if tenant already exists with this phone
@@ -432,6 +433,8 @@ class AppServer {
           if (ownerEmail) tenant.owner_email = ownerEmail;
           tenant.subscription_plan = couponConfig.plan;
           tenant.subscription_until = subUntil;
+          tenant.whatsapp_connected_phone = cleanPhone;
+          if (doctorPhone) tenant.owner_phone = doctorPhone;
           tenant.updated_at = new Date().toISOString();
         } else {
           const rawSlug = (body.slug || bizName).toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 25);
@@ -439,13 +442,14 @@ class AppServer {
           tenant = this.db.createTenant({
             name: bizName,
             slug: uniqueSlug,
-            owner_phone: cleanPhone,
+            owner_phone: doctorPhone || cleanPhone,
             owner_email: ownerEmail,
             category: category,
             subscription_plan: couponConfig.plan,
             subscription_until: subUntil,
             timezone: 'Asia/Jakarta'
           });
+          tenant.whatsapp_connected_phone = cleanPhone;
 
           // Seed default starter services for new pilot tenant
           try {
@@ -649,7 +653,8 @@ class AppServer {
         const body = await this.readRequestBody(req);
         const bizName = (body.business_name || body.clinic_name || body.name || 'Bisnis Anda').trim();
         const contactName = (body.contact_name || body.owner_name || body.name || '').trim();
-        const rawPhone = (body.phone || '').replace(/[^0-9]/g, '');
+        const rawPhone = (body.phone || body.bot_phone || '').replace(/[^0-9]/g, '');
+        const doctorPhone = (body.doctor_phone || body.owner_phone || rawPhone).replace(/[^0-9]/g, '');
 
         if (!rawPhone || rawPhone.length < 9) {
           return this.sendJson(res, 400, {
@@ -686,6 +691,7 @@ class AppServer {
           owner_name: contactName,
           rawPhone: rawPhone,
           phone: rawPhone,
+          owner_phone: doctorPhone || rawPhone,
           category: category,
           coupon: rawCoupon,
           plan: plan,
@@ -709,7 +715,8 @@ class AppServer {
             id: pendingResult.pendingId,
             name: bizName,
             slug: pendingResult.pendingId,
-            owner_phone: rawPhone,
+            owner_phone: doctorPhone || rawPhone,
+            bot_phone: rawPhone,
             category: category,
             plan: plan,
             subscription_until: subUntil.slice(0, 10)

@@ -952,6 +952,9 @@ class MayarPaymentModal {
     this.bizEmailInput = document.getElementById('mayarBizEmail');
     this.btnSubmitMayarInfo = document.getElementById('btnSubmitMayarInfo');
     this.btnBackToStep1 = document.getElementById('btnBackToStep1');
+    this.samePhoneCheck = document.getElementById('mayarSamePhoneCheck');
+    this.doctorPhoneGroup = document.getElementById('mayarDoctorPhoneGroup');
+    this.doctorPhoneInput = document.getElementById('mayarDoctorPhone');
 
     // Step 3: QR & Email
     this.qrImg = document.getElementById('baileysModalQrImg');
@@ -1021,6 +1024,18 @@ class MayarPaymentModal {
     if (this.btnMayarNext) {
       this.btnMayarNext.addEventListener('click', () => {
         this.goToStep2();
+      });
+    }
+
+    // Toggle separate Doctor Whitelist phone in Step 2
+    if (this.samePhoneCheck) {
+      this.samePhoneCheck.addEventListener('change', () => {
+        if (this.doctorPhoneGroup) {
+          this.doctorPhoneGroup.style.display = this.samePhoneCheck.checked ? 'none' : 'block';
+          if (!this.samePhoneCheck.checked && this.doctorPhoneInput) {
+            this.doctorPhoneInput.focus();
+          }
+        }
       });
     }
 
@@ -1140,9 +1155,20 @@ class MayarPaymentModal {
 
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     if (!cleanPhone || cleanPhone.length < 9) {
-      alert('Mohon masukkan nomor WhatsApp bisnis yang valid (minimal 9 digit).');
+      alert('Mohon masukkan nomor WhatsApp bot / resepsionis yang valid (minimal 9 digit).');
       this.bizPhoneInput?.focus();
       return;
+    }
+
+    let doctorPhone = cleanPhone;
+    if (this.samePhoneCheck && !this.samePhoneCheck.checked) {
+      const rawDoc = (this.doctorPhoneInput ? this.doctorPhoneInput.value : '').replace(/[^0-9]/g, '');
+      if (!rawDoc || rawDoc.length < 9) {
+        alert('Mohon masukkan nomor WhatsApp pribadi dokter / owner yang valid (minimal 9 digit) untuk akses Whitelist Copilot.');
+        this.doctorPhoneInput?.focus();
+        return;
+      }
+      doctorPhone = rawDoc;
     }
 
     if (!email || !email.includes('@')) {
@@ -1169,6 +1195,9 @@ class MayarPaymentModal {
             name: ownerName,
             category: category,
             phone: cleanPhone,
+            bot_phone: cleanPhone,
+            doctor_phone: doctorPhone,
+            owner_phone: doctorPhone,
             email: email
           })
         });
@@ -1182,6 +1211,9 @@ class MayarPaymentModal {
             owner_name: ownerName,
             category: category,
             phone: cleanPhone,
+            bot_phone: cleanPhone,
+            doctor_phone: doctorPhone,
+            owner_phone: doctorPhone,
             email: email
           })
         });
@@ -1395,6 +1427,21 @@ class FreeTrialModal {
       });
     }
 
+    // Toggle separate Doctor Whitelist phone in Trial modal
+    const trialSameCheck = document.getElementById('trialSamePhoneCheck');
+    const trialDocGroup = document.getElementById('trialDoctorPhoneGroup');
+    const trialDocInput = document.getElementById('trialDoctorPhone');
+    if (trialSameCheck) {
+      trialSameCheck.addEventListener('change', () => {
+        if (trialDocGroup) {
+          trialDocGroup.style.display = trialSameCheck.checked ? 'none' : 'block';
+          if (!trialSameCheck.checked && trialDocInput) {
+            trialDocInput.focus();
+          }
+        }
+      });
+    }
+
     if (this.backToEditBtn) {
       this.backToEditBtn.addEventListener('click', () => {
         if (this.formContainer) this.formContainer.style.display = 'block';
@@ -1484,9 +1531,21 @@ class FreeTrialModal {
 
         const cleanPhone = phone.replace(/[^0-9]/g, '');
         if (!cleanPhone || cleanPhone.length < 9) {
-          alert('Mohon masukkan nomor WhatsApp bisnis yang valid (minimal 9 digit).');
+          alert('Mohon masukkan nomor WhatsApp bot / resepsionis yang valid (minimal 9 digit).');
           document.getElementById('trialPhone')?.focus();
           return;
+        }
+
+        let doctorPhone = cleanPhone;
+        const trialSameCheck = document.getElementById('trialSamePhoneCheck');
+        if (trialSameCheck && !trialSameCheck.checked) {
+          const rawDoc = (document.getElementById('trialDoctorPhone')?.value || '').replace(/[^0-9]/g, '');
+          if (!rawDoc || rawDoc.length < 9) {
+            alert('Mohon masukkan nomor WhatsApp pribadi dokter / owner yang valid (minimal 9 digit) untuk akses Whitelist Copilot.');
+            document.getElementById('trialDoctorPhone')?.focus();
+            return;
+          }
+          doctorPhone = rawDoc;
         }
 
         // Save form draft to localStorage for seamless editing
@@ -1514,6 +1573,9 @@ class FreeTrialModal {
               owner_name: docName,
               category: category,
               phone: cleanPhone,
+              bot_phone: cleanPhone,
+              doctor_phone: doctorPhone,
+              owner_phone: doctorPhone,
               coupon: coupon
             })
           });

@@ -853,12 +853,31 @@
 
           <div class="trial-field-group">
             <label class="trial-field-label" for="mayarBizPhone">
-              Nomor WhatsApp Bisnis <span class="required-star">*</span>
+              Nomor WhatsApp Bot / Resepsionis <span class="required-star">*</span>
             </label>
             <input type="tel" id="mayarBizPhone" class="trial-input" required placeholder="Contoh: 081234567890">
             <span class="trial-field-hint">
-              Nomor WhatsApp ini yang akan membalas chat pelanggan secara otomatis.
+              Nomor WhatsApp ini yang akan men-scan QR dan membalas chat pelanggan secara otomatis.
             </span>
+          </div>
+
+          <!-- Pilihan Whitelist Nomor Pribadi Dokter / Owner -->
+          <div class="trial-field-group" style="background:#f8fafc; padding:12px 14px; border-radius:10px; border:1.5px solid #e2e8f0; margin-bottom:1rem;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="mayarSamePhoneCheck" checked style="width:16px; height:16px; cursor:pointer;">
+              <label for="mayarSamePhoneCheck" style="font-size:0.84rem; font-weight:700; color:#0f172a; cursor:pointer; margin:0;">
+                Nomor WhatsApp Dokter / Owner sama dengan Nomor Bot
+              </label>
+            </div>
+            <div id="mayarDoctorPhoneGroup" style="display:none; margin-top:10px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+              <label class="trial-field-label" for="mayarDoctorPhone" style="font-size:0.82rem; font-weight:700; color:#0369a1;">
+                Nomor WhatsApp Pribadi Dokter / Owner (Whitelist Copilot) <span class="required-star">*</span>
+              </label>
+              <input type="tel" id="mayarDoctorPhone" class="trial-input" placeholder="Contoh: 0817090934764">
+              <span class="trial-field-hint" style="color:#0369a1;">
+                🛡️ Nomor HP pribadi dokter/owner untuk mengirim perintah Copilot (STATUS, NEXT, DONE, TUTUP, BUKA, DASHBOARD).
+              </span>
+            </div>
           </div>
 
           <div class="trial-field-group">
@@ -968,12 +987,31 @@
 
           <div class="trial-field-group">
             <label class="trial-field-label" for="trialPhone">
-              Nomor WhatsApp Bisnis <span class="required-star">*</span>
+              Nomor WhatsApp Bot / Resepsionis <span class="required-star">*</span>
             </label>
             <input type="tel" id="trialPhone" class="trial-input" required placeholder="Contoh: 081234567890">
             <span class="trial-field-hint">
               Nomor WhatsApp ini yang akan merespons chat pelanggan &amp; mencatat booking secara otomatis.
             </span>
+          </div>
+
+          <!-- Pilihan Whitelist Nomor Pribadi Dokter / Owner -->
+          <div class="trial-field-group" style="background:#f8fafc; padding:12px 14px; border-radius:10px; border:1.5px solid #e2e8f0; margin-bottom:1rem;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="trialSamePhoneCheck" checked style="width:16px; height:16px; cursor:pointer;">
+              <label for="trialSamePhoneCheck" style="font-size:0.84rem; font-weight:700; color:#0f172a; cursor:pointer; margin:0;">
+                Nomor WhatsApp Dokter / Owner sama dengan Nomor Bot
+              </label>
+            </div>
+            <div id="trialDoctorPhoneGroup" style="display:none; margin-top:10px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+              <label class="trial-field-label" for="trialDoctorPhone" style="font-size:0.82rem; font-weight:700; color:#0369a1;">
+                Nomor WhatsApp Pribadi Dokter / Owner (Whitelist Copilot) <span class="required-star">*</span>
+              </label>
+              <input type="tel" id="trialDoctorPhone" class="trial-input" placeholder="Contoh: 0817090934764">
+              <span class="trial-field-hint" style="color:#0369a1;">
+                🛡️ Nomor HP pribadi dokter/owner untuk mengirim perintah Copilot (STATUS, NEXT, DONE, TUTUP, BUKA, DASHBOARD).
+              </span>
+            </div>
           </div>
 
           <div class="trial-field-group" style="margin-bottom:1.2rem;">

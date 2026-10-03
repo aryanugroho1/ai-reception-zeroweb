@@ -350,7 +350,9 @@ class DatabaseEngine {
     if (!phone) return null;
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     for (const tenant of this.tenants.values()) {
-      if (tenant.owner_phone === cleanPhone) return tenant;
+      if (tenant.owner_phone === cleanPhone || (tenant.whatsapp_connected_phone && tenant.whatsapp_connected_phone === cleanPhone)) {
+        return tenant;
+      }
     }
     return null;
   }
