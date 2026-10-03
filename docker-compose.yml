@@ -13,7 +13,10 @@ services:
       - NODE_ENV=production
     volumes:
       - baileys_sessions:/app/sessions
+      - app_data:/app/data
 
 volumes:
   baileys_sessions:
     name: ai_reception_baileys_sessions
+  app_data:
+    name: ai_reception_app_data

@@ -34,6 +34,8 @@ class BaileysManager {
     this.pendingRegistrations = new Map(); // pendingId -> pendingData
     this.lidMap = new Map(); // LID -> Phone and Phone -> LID bidirectional cache
     this.sentMessageIds = new Set(); // Sent message IDs to prevent echo looping in self-chat
+    this.tokensFilePath = path.join(__dirname, '../data/connect_tokens.json');
+    this.loadTokens();
 
     // Ensure sessions root directory exists
     if (!fs.existsSync(this.sessionsDir)) {
@@ -42,6 +44,56 @@ class BaileysManager {
       } catch (err) {
         console.error('[BaileysManager] Failed to create sessions dir:', err.message);
       }
+    }
+  }
+
+  loadTokens() {
+    try {
+      if (fs.existsSync(this.tokensFilePath)) {
+        const raw = JSON.parse(fs.readFileSync(this.tokensFilePath, 'utf8'));
+        this.connectTokens = new Map(raw || []);
+      }
+    } catch (e) {
+      console.warn('[BaileysManager] Failed loading connect tokens from disk:', e.message);
+    }
+  }
+
+  saveTokens() {
+    try {
+      const dir = path.dirname(this.tokensFilePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(this.tokensFilePath, JSON.stringify(Array.from(this.connectTokens.entries()), null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[BaileysManager] Failed saving connect tokens to disk:', e.message);
+    }
+  }
+
+  /**
+   * Auto-restore all active WhatsApp sessions across all tenants on server startup
+   * Ensures sessions persist and reconnect automatically across server restarts / redeploys!
+   */
+  async autoRestoreSessions() {
+    const tenants = Array.from(this.db.tenants.values());
+    let restoredCount = 0;
+    for (const tenant of tenants) {
+      if (this.hasExistingCredentials(tenant.id)) {
+        try {
+          console.log(`[BaileysManager] Memulihkan koneksi WhatsApp otomatis untuk ${tenant.name} (${tenant.slug})...`);
+          if (this.logger && typeof this.logger.addAuditLog === 'function') {
+            this.logger.addAuditLog('info', 'BAILEYS', `Memulihkan sesi WhatsApp ${tenant.name} secara otomatis...`);
+          }
+          // Launch session asynchronously in background so server startup is instantaneous
+          this.startSession(tenant.id).catch(err => {
+            console.warn(`[BaileysManager] Background auto-restore warning for ${tenant.slug}:`, err.message);
+          });
+          restoredCount++;
+        } catch (err) {
+          console.warn(`[BaileysManager] Gagal memulai auto-restore untuk ${tenant.slug}:`, err.message);
+        }
+      }
+    }
+    if (restoredCount > 0) {
+      console.log(`[BaileysManager] Berhasil memicu pemulihan otomatis untuk ${restoredCount} sesi WhatsApp.`);
     }
   }
 
@@ -237,18 +289,27 @@ class BaileysManager {
     const rawToken = crypto.randomBytes(24).toString('hex');
     const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days valid
     this.connectTokens.set(rawToken, { tenantId, expiresAt });
+    this.saveTokens();
     return rawToken;
   }
 
   verifyConnectToken(token) {
     if (!token) return null;
     const item = this.connectTokens.get(token);
-    if (!item) return null;
-    if (Date.now() > item.expiresAt) {
-      this.connectTokens.delete(token);
-      return null;
+    if (item) {
+      if (Date.now() > item.expiresAt) {
+        this.connectTokens.delete(token);
+        this.saveTokens();
+        return null;
+      }
+      return item.tenantId;
     }
-    return item.tenantId;
+    // Fallback: If token itself matches a registered tenant ID or slug
+    const tenant = this.db.tenants.get(token) || this.db.getTenantBySlug(token);
+    if (tenant) {
+      return tenant.id;
+    }
+    return null;
   }
 
   // Helper to resolve tenant (supports both registered tenants and pending staging)

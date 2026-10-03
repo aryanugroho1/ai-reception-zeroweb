@@ -41,6 +41,15 @@ class AppServer {
     this.logCounter = 0;
     this.addAuditLog('info', 'SYSTEM', 'ZeroWeb Backend API Engine v3.0.0 siap & aktif melayani.');
 
+    // Auto-restore any existing connected Baileys WhatsApp sessions on server startup
+    if (process.env.NODE_ENV !== 'test') {
+      setTimeout(() => {
+        this.baileys.autoRestoreSessions().catch(err => {
+          console.error('[AppServer] Error auto-restoring WhatsApp sessions:', err.message);
+        });
+      }, 1000);
+    }
+
     this.adminSessions = new Map();
     this.adminUsername = process.env.ADMIN_USERNAME || 'admin';
     this.adminPassword = process.env.ADMIN_PASSWORD || 'AdminPraktika2026!';
@@ -721,37 +730,99 @@ class AppServer {
 
         const subUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
-        // Stage as PENDING registration: data is ONLY committed to DB after QR code is successfully scanned!
-        const pendingResult = this.baileys.registerPendingTenant({
-          business_name: bizName,
-          owner_name: contactName,
-          rawPhone: rawPhone,
-          phone: rawPhone,
-          owner_phone: doctorPhone || rawPhone,
-          category: category,
-          coupon: rawCoupon,
-          plan: plan,
-          subUntil: subUntil,
-          planLabel: planLabel,
-          createdAt: new Date().toISOString()
-        });
+        // Create and commit tenant directly to persistent database immediately
+        let tenant = this.db.getTenantByPhone(rawPhone) || this.db.getTenantByPhone(doctorPhone);
+        if (tenant) {
+          tenant.name = bizName;
+          tenant.category = category;
+          tenant.subscription_plan = plan;
+          tenant.subscription_until = subUntil;
+          tenant.owner_phone = doctorPhone || rawPhone;
+          tenant.whatsapp_connected_phone = rawPhone;
+          tenant.updated_at = new Date().toISOString();
+        } else {
+          const rawSlug = (bizName || 'klinik').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
+          const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
+          tenant = this.db.createTenant({
+            name: bizName,
+            slug: uniqueSlug,
+            owner_phone: doctorPhone || rawPhone,
+            category: category,
+            subscription_plan: plan,
+            subscription_until: subUntil,
+            timezone: 'Asia/Jakarta'
+          });
+          tenant.whatsapp_connected_phone = rawPhone;
+          tenant.is_accepting_patients = true;
 
-        const token = pendingResult.token;
+          // Seed default starter services by specialty
+          const starterServicesByCategory = {
+            'BARBER': [
+              { name: 'Gentleman Haircut & Styling', duration_minutes: 45, price: 75000 },
+              { name: 'Beard Trim & Hot Towel', duration_minutes: 30, price: 50000 },
+              { name: 'Hair Wash & Scalp Massage', duration_minutes: 20, price: 35000 }
+            ],
+            'SALON': [
+              { name: 'Hair Treatment & Styling', duration_minutes: 60, price: 150000 },
+              { name: 'Manicure & Nail Art', duration_minutes: 45, price: 120000 },
+              { name: 'Wash & Blow Signature', duration_minutes: 30, price: 60000 }
+            ],
+            'SPA': [
+              { name: 'Full Body Relaxation Massage (60m)', duration_minutes: 60, price: 180000 },
+              { name: 'Refleksi Kaki & Relaksasi (45m)', duration_minutes: 45, price: 100000 },
+              { name: 'Aromatherapy Herbal Spa (90m)', duration_minutes: 90, price: 220000 }
+            ],
+            'DENTAL': [
+              { name: 'Pembersihan Karang Gigi (Scaling)', duration_minutes: 40, price: 250000 },
+              { name: 'Tambal Gigi Estetik', duration_minutes: 45, price: 200000 },
+              { name: 'Konsultasi & Pemeriksaan Gigi', duration_minutes: 30, price: 100000 }
+            ],
+            'PEDIATRICS': [
+              { name: 'Konsultasi Dokter Spesialis Anak', duration_minutes: 30, price: 150000 },
+              { name: 'Imunisasi & Tumbuh Kembang Anak', duration_minutes: 30, price: 200000 }
+            ],
+            'GENERAL': [
+              { name: 'Konsultasi Dokter Umum', duration_minutes: 20, price: 100000 },
+              { name: 'Pemeriksaan Kesehatan Rutin', duration_minutes: 30, price: 150000 }
+            ]
+          };
+
+          const srvs = starterServicesByCategory[category] || [
+            { name: 'Layanan Konsultasi Utama', duration_minutes: 30, price: 100000 },
+            { name: 'Pemeriksaan Lanjutan / Tindakan', duration_minutes: 45, price: 150000 }
+          ];
+
+          for (const s of srvs) {
+            try {
+              this.db.createService({
+                tenant_id: tenant.id,
+                name: s.name,
+                duration_minutes: s.duration_minutes,
+                price: s.price,
+                is_active: true
+              });
+            } catch (e) {}
+          }
+        }
+
+        this.db.saveToFile();
+
+        // Generate persistent connect token bound to permanent tenant.id
+        const token = this.baileys.generateConnectToken(tenant.id);
         const connectUrl = `/connect.html?token=${token}`;
         const waDeeplink = `https://wa.me/${rawPhone}?text=Halo%20${encodeURIComponent(bizName)}%2C%20saya%20ingin%20reservasi`;
 
         return this.sendJson(res, 200, {
           success: true,
-          is_pending: true,
-          message: 'Pendaftaran disiapkan! Silakan scan QR code WhatsApp untuk mengaktifkan bot.',
+          message: 'Pendaftaran berhasil disimpan permanen! Silakan scan QR code WhatsApp untuk mengaktifkan bot.',
           plan: plan,
           label: planLabel,
           coupon_applied: !!(rawCoupon && validCoupons[rawCoupon]),
           tenant: {
-            id: pendingResult.pendingId,
-            name: bizName,
-            slug: pendingResult.pendingId,
-            owner_phone: doctorPhone || rawPhone,
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            owner_phone: tenant.owner_phone,
             bot_phone: rawPhone,
             category: category,
             plan: plan,
