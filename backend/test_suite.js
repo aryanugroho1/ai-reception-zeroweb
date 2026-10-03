@@ -537,6 +537,15 @@ async function runTestSuite() {
     // Command: DASHBOARD
     const dashRes = await copilot.handleCommand({ tenantId: maya.id, commandText: 'DASHBOARD', doctorPhone });
     assert(dashRes.action === 'DASHBOARD' && dashRes.chart_url.includes('quickchart.io'), 'Command DASHBOARD generated QuickChart URL');
+    assert(dashRes.charts && dashRes.charts.today && dashRes.charts.week && dashRes.charts.month, 'Command DASHBOARD generated 3 visual charts (Today, Week Daily, Month Weekly)');
+
+    // Command: TARIF (List)
+    const tarifListRes = await copilot.handleCommand({ tenantId: maya.id, commandText: 'TARIF', doctorPhone });
+    assert(tarifListRes.action === 'SERVICES_LIST' && tarifListRes.services.length >= 1, 'Command TARIF returned active services list');
+
+    // Command: TARIF 1 280000 (Update Price)
+    const tarifUpdateRes = await copilot.handleCommand({ tenantId: maya.id, commandText: 'TARIF 1 280000', doctorPhone });
+    assert(tarifUpdateRes.action === 'SERVICE_PRICE_UPDATED' && tarifUpdateRes.service.price === 280000, 'Command TARIF updated service price successfully');
 
     // Command: NEXT & DONE
     const nextRes = await copilot.handleCommand({ tenantId: maya.id, commandText: 'NEXT', doctorPhone });
@@ -735,6 +744,19 @@ async function runTestSuite() {
     // 9. Doctor Public Onboarding Token Verification: GET /api/connect/verify?token=...
     const verifyRes = await makeRequest('GET', `/api/connect/verify?token=${firstSession.connect_token}`);
     assert(verifyRes.statusCode === 200 && verifyRes.body.valid === true, 'Doctor Onboarding: Token verified successfully');
+
+    // 9B. Tenant Services & Price Management: GET /api/tenants/:id/services & POST /api/services/:id
+    const srvsRes = await makeRequest('GET', `/api/tenants/${firstSession.id}/services`, null, { 'Authorization': `Bearer ${adminToken}` });
+    assert(srvsRes.statusCode === 200 && Array.isArray(srvsRes.body.services), 'HTTP GET /api/tenants/:id/services returned services list');
+    if (srvsRes.body.services.length > 0) {
+      const targetSrv = srvsRes.body.services[0];
+      const updatePriceRes = await makeRequest('POST', `/api/services/${targetSrv.id}`, {
+        name: targetSrv.name,
+        duration_minutes: targetSrv.duration_minutes,
+        price: 320000
+      }, { 'Authorization': `Bearer ${adminToken}` });
+      assert(updatePriceRes.statusCode === 200 && updatePriceRes.body.service.price === 320000, 'HTTP POST /api/services/:id updated service tariff successfully');
+    }
 
     // 10. Delete Single Tenant: DELETE /api/tenants/:id
     // Create a temporary tenant first

@@ -764,7 +764,8 @@ class SuperadminController {
               ${t.isAccepting ? 'Tutup' : 'Buka'}
             </button>
             <button class="tbl-btn" style="border-color:#38bdf8; color:#38bdf8;" onclick="window.adminCtrl.openEditModal('${t.id}')" title="Edit Data & Whitelist Dokter">✏️ Whitelist</button>
-            <button class="tbl-btn" onclick="window.adminCtrl.testLink('${t.slug}')" title="Buka Link WhatsApp Pasien">Link</button>
+            <button class="tbl-btn" style="border-color:#10b981; color:#34d399;" onclick="window.adminCtrl.openServicesModal('${t.id}')" title="Kelola Layanan & Tarif">💰 Tarif</button>
+            <button class="tbl-btn" onclick="window.adminCtrl.testLink('${t.slug}', '${t.botPhone || t.ownerPhone || ''}')" title="Buka Link WhatsApp Pasien">Link</button>
             <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.deleteTenant('${t.id}', '${(t.name||'').replace(/'/g, "\\'")}')" title="Hapus Akun Dokter">🗑️</button>
           </div>
         </td>
@@ -997,6 +998,62 @@ class SuperadminController {
         }
       });
     }
+
+    // Refresh All Data button
+    const refreshAllBtn = document.getElementById('btnRefreshAllData');
+    if (refreshAllBtn) {
+      refreshAllBtn.addEventListener('click', async () => {
+        refreshAllBtn.innerHTML = '⏳ <span>Loading...</span>';
+        await this.loadBackendData();
+        refreshAllBtn.innerHTML = '🔄 <span>Refresh</span>';
+        this.logAudit('success', 'UI', 'Data telemetri backend dan utilisasi booking berhasil dimuat ulang.');
+      });
+    }
+
+    // Modal Services & Tariffs Listeners
+    const modalServices = document.getElementById('modalServices');
+    const closeServicesBtn = document.getElementById('btnCloseServicesModal');
+    const closeServicesBtn2 = document.getElementById('btnCloseServicesModalBtn');
+    const formAddService = document.getElementById('formAddService');
+
+    const closeServices = () => {
+      if (modalServices) modalServices.classList.remove('active');
+    };
+
+    if (closeServicesBtn) closeServicesBtn.addEventListener('click', closeServices);
+    if (closeServicesBtn2) closeServicesBtn2.addEventListener('click', closeServices);
+    if (modalServices) {
+      modalServices.addEventListener('click', (e) => {
+        if (e.target === modalServices) closeServices();
+      });
+    }
+
+    if (formAddService) {
+      formAddService.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const tenantId = document.getElementById('newServiceTenantId').value;
+        const name = document.getElementById('newServiceName').value.trim();
+        const duration = parseInt(document.getElementById('newServiceDuration').value, 10);
+        const price = parseInt(document.getElementById('newServicePrice').value, 10);
+
+        try {
+          const res = await fetch(`/api/tenants/${tenantId}/services`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+            body: JSON.stringify({ name, duration_minutes: duration, price })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Gagal menambahkan layanan');
+          formAddService.reset();
+          document.getElementById('newServiceTenantId').value = tenantId;
+          document.getElementById('newServiceDuration').value = 30;
+          await this.openServicesModal(tenantId);
+          this.logAudit('success', `Layanan "${name}" (Rp ${price.toLocaleString('id-ID')}) berhasil ditambahkan.`);
+        } catch (err) {
+          alert('❌ Gagal: ' + err.message);
+        }
+      });
+    }
   }
 
   initIdempotencyMatrix() {
@@ -1179,8 +1236,10 @@ class SuperadminController {
     }
   }
 
-  testLink(slug) {
-    const link = `https://wa.me/6281234567890?text=BOOK_${slug}`;
+  testLink(slug, phone) {
+    const rawNum = (phone || '').toString().replace(/\D/g, '');
+    const cleanNum = rawNum ? (rawNum.startsWith('0') ? '62' + rawNum.slice(1) : (rawNum.startsWith('8') ? '62' + rawNum : rawNum)) : '';
+    const link = cleanNum ? `https://wa.me/${cleanNum}?text=BOOK_${slug}` : `https://wa.me/?text=BOOK_${slug}`;
     window.open(link, '_blank');
   }
 
@@ -1384,8 +1443,14 @@ class SuperadminController {
     if (this.logStreamInterval) clearInterval(this.logStreamInterval);
     this.lastServerLogId = 0;
     this.fetchServerLogs();
+    let tick = 0;
     this.logStreamInterval = setInterval(() => {
       this.fetchServerLogs();
+      tick++;
+      // Auto-refresh tenant booking counts and utilization every 8 seconds
+      if (tick % 4 === 0) {
+        this.loadBackendData();
+      }
     }, 2000);
   }
 
@@ -1682,6 +1747,103 @@ class SuperadminController {
     }
 
     modal.classList.add('active');
+  }
+
+  async openServicesModal(tenantId) {
+    const tenant = SAAS_TENANTS.find(t => t.id === tenantId || t.slug === tenantId);
+    if (!tenant) return alert('Tenant tidak ditemukan');
+
+    const modal = document.getElementById('modalServices');
+    const titleEl = document.getElementById('servicesModalTitle');
+    const listEl = document.getElementById('servicesModalList');
+    const tenantIdInput = document.getElementById('newServiceTenantId');
+
+    if (titleEl) titleEl.textContent = `💰 Layanan & Dasar Tarif: ${tenant.name}`;
+    if (tenantIdInput) tenantIdInput.value = tenant.id;
+
+    if (listEl) {
+      listEl.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:1.5rem; color:#94a3b8;">Memuat daftar layanan...</td></tr>`;
+    }
+    if (modal) modal.classList.add('active');
+
+    try {
+      const res = await fetch(`/api/tenants/${tenant.id}/services`, { headers: this.getAuthHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal memuat layanan');
+      this.renderServicesList(tenant.id, data.services || []);
+    } catch (e) {
+      if (listEl) {
+        listEl.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:1.5rem; color:#f87171;">Error: ${e.message}</td></tr>`;
+      }
+    }
+  }
+
+  renderServicesList(tenantId, services) {
+    const listEl = document.getElementById('servicesModalList');
+    if (!listEl) return;
+
+    if (services.length === 0) {
+      listEl.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:1.5rem; color:#94a3b8;">Belum ada layanan terdaftar. Tambahkan layanan baru di bawah.</td></tr>`;
+      return;
+    }
+
+    listEl.innerHTML = services.map((s, idx) => `
+      <tr>
+        <td style="font-family:var(--font-mono); color:#94a3b8;">${idx + 1}</td>
+        <td>
+          <input type="text" class="admin-input" style="padding:4px 8px; font-size:0.82rem;" id="srv_name_${s.id}" value="${s.name}">
+        </td>
+        <td>
+          <input type="number" class="admin-input" style="width:80px; padding:4px 8px; font-size:0.82rem;" id="srv_dur_${s.id}" value="${s.duration_minutes}">
+        </td>
+        <td>
+          <input type="number" class="admin-input" style="width:130px; padding:4px 8px; font-size:0.82rem; font-weight:700; color:#34d399;" id="srv_price_${s.id}" value="${s.price}">
+        </td>
+        <td style="text-align:right;">
+          <div style="display:flex; gap:6px; justify-content:flex-end;">
+            <button class="tbl-btn primary" onclick="window.adminCtrl.saveService('${tenantId}', '${s.id}')" title="Simpan Perubahan Tarif">💾 Simpan</button>
+            <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.deleteService('${tenantId}', '${s.id}')" title="Hapus Layanan">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  async saveService(tenantId, serviceId) {
+    const name = document.getElementById(`srv_name_${serviceId}`)?.value.trim();
+    const duration = parseInt(document.getElementById(`srv_dur_${serviceId}`)?.value, 10);
+    const price = parseInt(document.getElementById(`srv_price_${serviceId}`)?.value, 10);
+
+    if (!name || isNaN(price)) return alert('Nama dan harga wajib diisi');
+
+    try {
+      const res = await fetch(`/api/services/${serviceId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+        body: JSON.stringify({ name, duration_minutes: duration, price })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal menyimpan layanan');
+      alert(`✅ Tarif layanan "${name}" berhasil diperbarui menjadi Rp ${price.toLocaleString('id-ID')}!`);
+      this.openServicesModal(tenantId);
+    } catch (e) {
+      alert('❌ Error: ' + e.message);
+    }
+  }
+
+  async deleteService(tenantId, serviceId) {
+    if (!confirm('Hapus layanan ini?')) return;
+    try {
+      const res = await fetch(`/api/services/${serviceId}`, {
+        method: 'DELETE',
+        headers: this.getAuthHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal menghapus layanan');
+      this.openServicesModal(tenantId);
+    } catch (e) {
+      alert('❌ Error: ' + e.message);
+    }
   }
 }
 

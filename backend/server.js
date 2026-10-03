@@ -228,13 +228,14 @@ class AppServer {
         const maxQuotaMap = { FREE: 25, STARTER: 100, PRO: 400, CLINIC: 1200, LIFETIME_PARTNER: 999999 };
 
         const tenantsList = Array.from(this.db.tenants.values()).map(t => {
-          const quota = quotas.find(q => q.tenant_id === t.id);
+          const quota = quotas.find(q => q.tenant_id === t.id || q.slug === t.slug);
           const currentBookings = quota ? quota.current_month_bookings : 0;
           return {
             id: t.id,
             name: t.name,
             slug: t.slug,
             ownerPhone: t.owner_phone,
+            botPhone: t.whatsapp_connected_phone || t.owner_phone || '',
             doctorLid: t.doctor_lid || null,
             whitelistPhones: t.whitelist_phones || [],
             specialty: t.category,
@@ -360,6 +361,72 @@ class AppServer {
           message: `Data tenant ${tenant.name} berhasil diperbarui. Whitelist nomor dokter: +${tenant.owner_phone}`,
           tenant
         });
+      }
+
+      // 2F. Get Services for Tenant: GET /api/tenants/:id/services
+      const getServicesMatch = pathname.match(/^\/api\/tenants\/([a-zA-Z0-9_-]+)\/services$/);
+      if (getServicesMatch && method === 'GET') {
+        const tId = getServicesMatch[1];
+        const tenant = this.db.tenants.get(tId) || this.db.getTenantBySlug(tId);
+        if (!tenant) {
+          return this.sendJson(res, 404, { error: 'Tenant tidak ditemukan' });
+        }
+        const srvs = this.db.getServicesByTenant(tenant.id);
+        return this.sendJson(res, 200, { success: true, tenant_id: tenant.id, services: srvs });
+      }
+
+      // 2G. Create Service for Tenant: POST /api/tenants/:id/services
+      if (getServicesMatch && method === 'POST') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const tId = getServicesMatch[1];
+        const tenant = this.db.tenants.get(tId) || this.db.getTenantBySlug(tId);
+        if (!tenant) {
+          return this.sendJson(res, 404, { error: 'Tenant tidak ditemukan' });
+        }
+        const body = await this.readRequestBody(req);
+        if (!body.name) {
+          return this.sendJson(res, 400, { error: 'Nama layanan wajib diisi' });
+        }
+        const newService = this.db.createService({
+          tenant_id: tenant.id,
+          name: body.name.trim(),
+          duration_minutes: Number(body.duration_minutes) || 30,
+          price: Number(body.price) || 0,
+          is_active: body.is_active !== undefined ? Boolean(body.is_active) : true
+        });
+        this.addAuditLog('success', 'SERVICE', `Layanan baru [${newService.name}] ditambahkan untuk ${tenant.name} (${tenant.slug}) - Rp ${newService.price.toLocaleString('id-ID')}`);
+        return this.sendJson(res, 201, { success: true, message: 'Layanan berhasil ditambahkan', service: newService });
+      }
+
+      // 2H. Update Single Service: PUT/POST /api/services/:id
+      const updateServiceMatch = pathname.match(/^\/api\/services\/([a-zA-Z0-9_-]+)$/);
+      if (updateServiceMatch && (method === 'PUT' || method === 'POST')) {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const srvId = updateServiceMatch[1];
+        const body = await this.readRequestBody(req);
+        const updated = this.db.updateService(srvId, body);
+        if (!updated) {
+          return this.sendJson(res, 404, { error: 'Layanan tidak ditemukan' });
+        }
+        this.addAuditLog('success', 'SERVICE', `Tarif layanan [${updated.name}] diperbarui menjadi Rp ${updated.price.toLocaleString('id-ID')} (${updated.duration_minutes} menit)`);
+        return this.sendJson(res, 200, { success: true, message: 'Layanan & tarif berhasil diperbarui', service: updated });
+      }
+
+      // 2I. Delete Service: DELETE /api/services/:id
+      if (updateServiceMatch && method === 'DELETE') {
+        if (!this.validateAdminSession(req)) {
+          return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi diperlukan', code: 'AUTH_REQUIRED' });
+        }
+        const srvId = updateServiceMatch[1];
+        const deleted = this.db.deleteService(srvId);
+        if (!deleted) {
+          return this.sendJson(res, 404, { error: 'Layanan tidak ditemukan' });
+        }
+        return this.sendJson(res, 200, { success: true, message: 'Layanan berhasil dihapus' });
       }
 
       // 2E. Purge Sample Demo Tenants (Super Admin Protected): POST /api/tenants/purge-samples

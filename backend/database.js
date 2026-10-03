@@ -506,6 +506,28 @@ class DatabaseEngine {
     return service;
   }
 
+  updateService(serviceId, data) {
+    const service = this.services.get(serviceId);
+    if (!service) return null;
+
+    if (data.name !== undefined) service.name = data.name.trim();
+    if (data.duration_minutes !== undefined) service.duration_minutes = Number(data.duration_minutes);
+    if (data.price !== undefined) service.price = Number(data.price);
+    if (data.is_active !== undefined) service.is_active = Boolean(data.is_active);
+    service.updated_at = new Date().toISOString();
+
+    this.services.set(serviceId, service);
+    this.saveToFile();
+    return service;
+  }
+
+  deleteService(serviceId) {
+    if (!this.services.has(serviceId)) return false;
+    this.services.delete(serviceId);
+    this.saveToFile();
+    return true;
+  }
+
   // --- Appointments & Anti-Overlap (GIST Range-Lock Simulation) ---
   /**
    * Evaluates PostgreSQL btree_gist anti-overlap constraint:
@@ -764,9 +786,20 @@ class DatabaseEngine {
     for (const tenant of this.tenants.values()) {
       let currentBookings = 0;
       for (const a of this.appointments.values()) {
-        if (a.tenant_id === tenant.id && a.status !== 'CANCELLED') {
-          const aDate = new Date(a.created_at);
-          if (aDate.getUTCFullYear() === curYear && aDate.getUTCMonth() === curMonth) {
+        const isMatch = (a.tenant_id === tenant.id || a.tenant_id === tenant.slug);
+        if (isMatch && a.status !== 'CANCELLED') {
+          const dateStr = a.created_at || a.start_time || a.scheduled_time;
+          let inCurrentMonth = false;
+          if (dateStr) {
+            const aDate = new Date(dateStr);
+            if (!isNaN(aDate.getTime())) {
+              inCurrentMonth = (aDate.getUTCFullYear() === curYear && aDate.getUTCMonth() === curMonth) ||
+                               (Math.abs(now.getTime() - aDate.getTime()) <= 31 * 24 * 60 * 60 * 1000);
+            }
+          } else {
+            inCurrentMonth = true;
+          }
+          if (inCurrentMonth) {
             currentBookings++;
           }
         }

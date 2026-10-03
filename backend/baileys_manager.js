@@ -625,7 +625,7 @@ class BaileysManager {
               if (cleanMsg.length > 60 || cleanMsg.includes('\n') || /^[📅✅🛑🟢🩺ℹ️👋🔢⚠️📋]/.test(cleanMsg)) {
                 continue;
               }
-              const isCopilotCmd = /^\s*(?:NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI\s+INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN)(?:\s+.*)?$/i.test(cleanMsg);
+              const isCopilotCmd = /^\s*(?:NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI\s+INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|CHART|GRAFIK|TARIF|LAYANAN|HARGA|TAMBAH|UBAH|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN)(?:\s+.*)?$/i.test(cleanMsg);
               if (!isCopilotCmd) continue;
             }
 
@@ -633,8 +633,10 @@ class BaileysManager {
               ? `+${identity.resolvedPhone} (LID: ${identity.lid})`
               : (identity.lid ? `+${identity.lid} [LID]` : `+${identity.phone}`);
 
-            if (this.logger && typeof this.logger.addAuditLog === 'function') {
-              this.logger.addAuditLog('info', 'WHATSAPP', `Pesan masuk dari ${senderLabel} [${tenant.slug}]: "${text.trim().slice(0, 40)}"`);
+            // ONLY log Whitelist Number (Doctor / Owner) messages to superadmin log stream!
+            // Do NOT log patient messages to avoid noise and clutter
+            if (isDoctorOrOwner && this.logger && typeof this.logger.addAuditLog === 'function') {
+              this.logger.addAuditLog('info', 'KOPILOT', `Pesan masuk Dokter (${senderLabel}) [${tenant.slug}]: "${text.trim().slice(0, 40)}"`);
             }
 
             // Route through Ingress Router bound to this specific tenant!
@@ -653,8 +655,8 @@ class BaileysManager {
                 // Evict after 3 minutes to keep memory footprint bounded
                 setTimeout(() => this.sentMessageIds.delete(sent.key.id), 180000);
               }
-              if (this.logger && typeof this.logger.addAuditLog === 'function') {
-                this.logger.addAuditLog('success', 'WHATSAPP', `Balasan terkirim ke ${senderLabel} (${reply.recipient_type || 'CHAT'})`);
+              if (isDoctorOrOwner && this.logger && typeof this.logger.addAuditLog === 'function') {
+                this.logger.addAuditLog('success', 'KOPILOT', `Balasan Kopilot terkirim ke Dokter ${senderLabel}`);
               }
             }
 

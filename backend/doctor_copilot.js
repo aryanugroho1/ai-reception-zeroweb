@@ -87,8 +87,8 @@ class DoctorCopilotEngine {
       return this.handleQueueStatus(tenant);
     }
 
-    // 4. Command: DASHBOARD / RINGKASAN / INSIGHT / OMSET
-    if (/^\s*(?:DASHBOARD|RINGKASAN|INSIGHT|OMSET|PENDAPATAN)(?:\s+.*)?$/i.test(normalizedCmd)) {
+    // 4. Command: DASHBOARD / RINGKASAN / INSIGHT / OMSET / CHART / GRAFIK
+    if (/^\s*(?:DASHBOARD|RINGKASAN|INSIGHT|OMSET|PENDAPATAN|CHART|GRAFIK|VISUAL)(?:\s+.*)?$/i.test(normalizedCmd)) {
       return this.handleDashboardInsight(tenant);
     }
 
@@ -114,6 +114,23 @@ class DoctorCopilotEngine {
       };
     }
 
+    // 7. Command: TARIF [nomor] [harga] (Ubah harga layanan)
+    const tarifChangeMatch = rawCmd.match(/^\s*(?:TARIF|HARGA|UBAH\s+HARGA|UBAH\s+TARIF)\s+(\S+)\s+(\d+)\s*$/i);
+    if (tarifChangeMatch) {
+      return this.handleUpdateServicePrice(tenant, tarifChangeMatch[1], tarifChangeMatch[2]);
+    }
+
+    // 8. Command: TAMBAH [nama], [durasi], [harga] (Tambah layanan baru)
+    const tambahMatch = rawCmd.match(/^\s*(?:TAMBAH\s+LAYANAN|TAMBAH)\s+(.+?),\s*(\d+),\s*(\d+)\s*$/i);
+    if (tambahMatch) {
+      return this.handleAddService(tenant, tambahMatch[1], tambahMatch[2], tambahMatch[3]);
+    }
+
+    // 9. Command: TARIF / LAYANAN / HARGA (Daftar layanan & tarif)
+    if (/^\s*(?:TARIF|LAYANAN|HARGA|LIST\s+LAYANAN)(?:\s+.*)?$/i.test(normalizedCmd)) {
+      return this.handleServicesList(tenant);
+    }
+
     // Fallback menu assistance
     return {
       action: 'HELP',
@@ -122,8 +139,10 @@ class DoctorCopilotEngine {
         `----------------------------------------`,
         `👉 *NEXT* : Panggil pasien antrean berikutnya`,
         `👉 *DONE* : Selesaikan pasien yang sedang diperiksa`,
-        `👉 *STATUS* atau *JADWAL* : Lihat semua jadwal pasien hari ini`,
-        `👉 *DASHBOARD* atau *REKAP* : Ringkasan statistik & omset hari ini`,
+        `👉 *STATUS* atau *JADWAL* : Jadwal pasien hari ini`,
+        `👉 *DASHBOARD* atau *CHART* : 3 Visual Chart (Hari Ini, Week Daily, Month Weekly)`,
+        `👉 *TARIF* : Cek & kelola harga layanan praktek`,
+        `👉 *TARIF [nomor] [harga]* : Ubah harga layanan langsung`,
         `👉 *TUTUP* : Hentikan sementara reservasi baru`,
         `👉 *BUKA* : Aktifkan kembali reservasi baru`,
         `----------------------------------------`
@@ -305,63 +324,284 @@ class DoctorCopilotEngine {
   }
 
   handleDashboardInsight(tenant) {
-    const today = new Date().toISOString().slice(0, 10);
-    const todayAppts = Array.from(this.db.appointments.values())
-      .filter(a => a.tenant_id === tenant.id && a.start_time.startsWith(today));
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
 
-    let completed = 0;
-    let waiting = 0;
-    let totalRevenue = 0;
+    // --- 1. METRICS & CHART HARI INI ---
+    const todayAppts = Array.from(this.db.appointments.values())
+      .filter(a => (a.tenant_id === tenant.id || a.tenant_id === tenant.slug) && (a.start_time || a.scheduled_time || a.created_at || '').startsWith(today));
+
+    let completedToday = 0;
+    let waitingToday = 0;
+    let cancelledToday = 0;
+    let revenueToday = 0;
 
     for (const a of todayAppts) {
-      if (a.status === 'COMPLETED') completed++;
-      if (a.status === 'CONFIRMED' || a.status === 'IN_CONSULTATION') waiting++;
+      if (a.status === 'COMPLETED') completedToday++;
+      else if (a.status === 'CONFIRMED' || a.status === 'IN_CONSULTATION') waitingToday++;
+      else if (a.status === 'CANCELLED') cancelledToday++;
+
       if (a.status !== 'CANCELLED') {
         const srv = this.db.services.get(a.service_id);
-        if (srv) totalRevenue += srv.price;
+        if (srv) revenueToday += (srv.price || 0);
       }
     }
 
-    const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
-      type: 'bar',
+    const chartTodayUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
+      type: 'doughnut',
       data: {
         labels: ['Selesai', 'Menunggu', 'Batal'],
         datasets: [{
-          label: 'Pasien Hari Ini',
-          data: [completed, waiting, todayAppts.length - (completed + waiting)],
+          data: [completedToday, waitingToday, cancelledToday],
           backgroundColor: ['#10b981', '#3b82f6', '#ef4444']
         }]
+      },
+      options: {
+        title: { display: true, text: `Pasien Hari Ini (${today})` }
       }
     }))}`;
+
+    // --- 2. METRICS & CHART MINGGU INI (DAILY BASIS: MON - SUN) ---
+    const dayOfWeek = now.getDay();
+    const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMon);
+
+    const weekLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const weekCounts = [0, 0, 0, 0, 0, 0, 0];
+    const weekRevenue = [0, 0, 0, 0, 0, 0, 0];
+    let totalWeekAppts = 0;
+    let totalWeekRevenue = 0;
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const dStr = d.toISOString().slice(0, 10);
+
+      for (const a of this.db.appointments.values()) {
+        if ((a.tenant_id === tenant.id || a.tenant_id === tenant.slug) && a.status !== 'CANCELLED') {
+          const aDateStr = (a.start_time || a.scheduled_time || a.created_at || '').slice(0, 10);
+          if (aDateStr === dStr) {
+            weekCounts[i]++;
+            totalWeekAppts++;
+            const srv = this.db.services.get(a.service_id);
+            const p = srv ? (srv.price || 0) : 0;
+            weekRevenue[i] += p;
+            totalWeekRevenue += p;
+          }
+        }
+      }
+    }
+
+    const chartWeekUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
+      type: 'bar',
+      data: {
+        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        datasets: [{
+          label: 'Pasien (Daily)',
+          data: weekCounts,
+          backgroundColor: '#3b82f6'
+        }]
+      },
+      options: {
+        title: { display: true, text: 'Volume Pasien Minggu Ini (Daily: Mon - Sun)' }
+      }
+    }))}`;
+
+    // --- 3. METRICS & CHART BULAN INI (WEEKLY BASIS: WEEK 1 - 4) ---
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    const monthName = now.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+    const monthWeeksLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4+'];
+    const monthWeeksCounts = [0, 0, 0, 0];
+    const monthWeeksRevenue = [0, 0, 0, 0];
+    let totalMonthAppts = 0;
+    let totalMonthRevenue = 0;
+
+    for (const a of this.db.appointments.values()) {
+      if ((a.tenant_id === tenant.id || a.tenant_id === tenant.slug) && a.status !== 'CANCELLED') {
+        const refStr = a.start_time || a.scheduled_time || a.created_at;
+        if (refStr) {
+          const aDate = new Date(refStr);
+          if (!isNaN(aDate.getTime()) && aDate.getFullYear() === curYear && aDate.getMonth() === curMonth) {
+            const dayNum = aDate.getDate();
+            let wIdx = 0;
+            if (dayNum <= 7) wIdx = 0;
+            else if (dayNum <= 14) wIdx = 1;
+            else if (dayNum <= 21) wIdx = 2;
+            else wIdx = 3;
+
+            monthWeeksCounts[wIdx]++;
+            totalMonthAppts++;
+            const srv = this.db.services.get(a.service_id);
+            const p = srv ? (srv.price || 0) : 0;
+            monthWeeksRevenue[wIdx] += p;
+            totalMonthRevenue += p;
+          }
+        }
+      }
+    }
+
+    const chartMonthUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify({
+      type: 'bar',
+      data: {
+        labels: monthWeeksLabels,
+        datasets: [{
+          label: 'Pasien per Minggu',
+          data: monthWeeksCounts,
+          backgroundColor: '#8b5cf6'
+        }]
+      },
+      options: {
+        title: { display: true, text: `Tren Pasien ${monthName} (Weekly Basis)` }
+      }
+    }))}`;
+
+    const weekSummaryStr = weekLabels.map((lbl, idx) => `${lbl}:${weekCounts[idx]}`).join(' ');
+    const monthSummaryStr = monthWeeksLabels.map((lbl, idx) => `${lbl}:${monthWeeksCounts[idx]}`).join(' ');
 
     return {
       action: 'DASHBOARD',
       metrics: {
-        total: todayAppts.length,
-        completed,
-        waiting,
-        estimated_revenue: totalRevenue,
-        is_accepting: tenant.is_accepting_patients
+        today: { total: todayAppts.length, completed: completedToday, waiting: waitingToday, revenue: revenueToday },
+        week: { total: totalWeekAppts, revenue: totalWeekRevenue, daily: weekCounts },
+        month: { total: totalMonthAppts, revenue: totalMonthRevenue, weekly: monthWeeksCounts }
       },
-      chart_url: chartUrl,
+      charts: {
+        today: chartTodayUrl,
+        week: chartWeekUrl,
+        month: chartMonthUrl
+      },
+      chart_url: chartTodayUrl,
       reply: [
-        `📊 *RINGKASAN & INSIGHT PRAKTEK*`,
+        `📊 *DASHBOARD & REKAP KINERJA PRAKTEK*`,
         `Praktek : *${tenant.name}*`,
         `Status  : ${tenant.is_accepting_patients ? '🟢 BUKA (Menerima Pasien)' : '🛑 TUTUP'}`,
         `----------------------------------------`,
-        `👥 Total Pasien Hari Ini : *${todayAppts.length}*`,
-        `✅ Sudah Selesai         : *${completed}*`,
-        `⏳ Menunggu/Berjalan     : *${waiting}*`,
-        `💰 Estimasi Omzet Hari Ini: *Rp ${totalRevenue.toLocaleString('id-ID')}*`,
+        `📅 *1. HARI INI (${today})*`,
+        `• Total Pasien : *${todayAppts.length}* (${completedToday} Selesai, ${waitingToday} Menunggu)`,
+        `• Estimasi Omzet : *Rp ${revenueToday.toLocaleString('id-ID')}*`,
+        `📈 *Visual Chart Hari Ini:*`,
+        `${chartTodayUrl}`,
+        ``,
+        `📆 *2. MINGGU INI (Daily Basis)*`,
+        `• Total Minggu Ini : *${totalWeekAppts} pasien*`,
+        `• Estimasi Omzet   : *Rp ${totalWeekRevenue.toLocaleString('id-ID')}*`,
+        `• Rincian Harian   : ${weekSummaryStr}`,
+        `📈 *Visual Chart Minggu Ini (Mon - Sun):*`,
+        `${chartWeekUrl}`,
+        ``,
+        `🗓️ *3. BULAN INI (Weekly Basis: ${monthName})*`,
+        `• Total Bulan Ini  : *${totalMonthAppts} booking*`,
+        `• Estimasi Omzet   : *Rp ${totalMonthRevenue.toLocaleString('id-ID')}*`,
+        `• Rincian Mingguan : ${monthSummaryStr}`,
+        `📈 *Visual Chart Bulan Ini (Week 1 - 4):*`,
+        `${chartMonthUrl}`,
         `----------------------------------------`,
-        `📈 Visual Chart: ${chartUrl}`
+        `💡 Ketik *TARIF* untuk melihat & mengatur harga layanan.`
       ].join('\n')
     };
   }
 
-  /**
-   * Smart Nudge: Check if any active consultation exceeds max threshold (e.g. 20 mins)
-   */
+  handleServicesList(tenant) {
+    const services = Array.from(this.db.services.values())
+      .filter(s => (s.tenant_id === tenant.id || s.tenant_id === tenant.slug) && s.is_active);
+
+    if (services.length === 0) {
+      return {
+        action: 'SERVICES_EMPTY',
+        reply: `📋 Belum ada layanan terdaftar untuk *${tenant.name}*.\n\nKetik *TAMBAH [nama], [durasi], [harga]* untuk menambahkan layanan pertama.`
+      };
+    }
+
+    const lines = services.map((s, idx) => {
+      return `${idx + 1}. *${s.name}*\n   💰 Tarif: Rp ${(s.price || 0).toLocaleString('id-ID')} | ⏱️ ${s.duration_minutes} menit`;
+    });
+
+    return {
+      action: 'SERVICES_LIST',
+      services,
+      reply: [
+        `📋 *DAFTAR LAYANAN & TARIF PRAKTEK*`,
+        `Praktek : *${tenant.name}*`,
+        `----------------------------------------`,
+        ...lines,
+        `----------------------------------------`,
+        `✏️ *CARA UBAH TARIF:*`,
+        `Ketik: *TARIF [nomor] [harga_baru]*`,
+        `Contoh: *TARIF 1 80000*`,
+        ``,
+        `➕ *CARA TAMBAH LAYANAN:*`,
+        `Ketik: *TAMBAH [nama], [durasi_menit], [harga]*`,
+        `Contoh: *TAMBAH Cukur Kumis, 15, 30000*`
+      ].join('\n')
+    };
+  }
+
+  handleUpdateServicePrice(tenant, targetInput, newPrice) {
+    const services = Array.from(this.db.services.values())
+      .filter(s => (s.tenant_id === tenant.id || s.tenant_id === tenant.slug) && s.is_active);
+
+    let targetService = null;
+    const numIdx = parseInt(targetInput, 10);
+    if (!isNaN(numIdx) && numIdx >= 1 && numIdx <= services.length) {
+      targetService = services[numIdx - 1];
+    } else {
+      targetService = services.find(s => s.name.toLowerCase().includes(targetInput.toLowerCase()));
+    }
+
+    if (!targetService) {
+      return {
+        action: 'SERVICE_NOT_FOUND',
+        reply: `⚠️ Layanan "${targetInput}" tidak ditemukan.\nKetik *TARIF* untuk melihat nomor dan nama layanan yang tersedia.`
+      };
+    }
+
+    const oldPrice = targetService.price || 0;
+    const priceNum = Number(newPrice);
+    targetService.price = priceNum;
+    targetService.updated_at = new Date().toISOString();
+    this.db.saveToFile();
+
+    return {
+      action: 'SERVICE_PRICE_UPDATED',
+      service: targetService,
+      reply: [
+        `✅ *TARIF LAYANAN BERHASIL DIPERBARUI!*`,
+        `----------------------------------------`,
+        `🩺 Layanan: *${targetService.name}*`,
+        `💰 Tarif Baru: *Rp ${priceNum.toLocaleString('id-ID')}*`,
+        `*(Sebelumnya: Rp ${oldPrice.toLocaleString('id-ID')})*`,
+        `----------------------------------------`,
+        `Perhitungan omset dan insight berikutnya otomatis menggunakan tarif terbaru ini.`
+      ].join('\n')
+    };
+  }
+
+  handleAddService(tenant, name, duration, price) {
+    const srv = this.db.createService({
+      tenant_id: tenant.id,
+      name: name.trim(),
+      duration_minutes: Number(duration) || 30,
+      price: Number(price) || 0,
+      is_active: true
+    });
+
+    return {
+      action: 'SERVICE_CREATED',
+      service: srv,
+      reply: [
+        `✅ *LAYANAN BARU BERHASIL DITAMBAHKAN!*`,
+        `----------------------------------------`,
+        `🩺 Layanan: *${srv.name}*`,
+        `⏱️ Durasi: *${srv.duration_minutes} menit*`,
+        `💰 Tarif: *Rp ${srv.price.toLocaleString('id-ID')}*`,
+        `----------------------------------------`,
+        `Pasien kini dapat langsung memilih layanan ini saat reservasi.`
+      ].join('\n')
+    };
+  }
+
   checkConsultationNudge(tenantId, maxMinutes = 20) {
     const tenant = this.db.tenants.get(tenantId);
     if (!tenant) return null;

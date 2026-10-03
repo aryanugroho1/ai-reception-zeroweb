@@ -119,6 +119,9 @@
             <span class="theme-toggle-icon" id="themeIcon">☀️</span>
             <span class="theme-toggle-text" id="themeLabel">Day</span>
           </button>
+          <button class="btn btn-secondary btn-sm" id="btnRefreshAllData" title="Muat Ulang Data Booking & Tenant">
+            🔄 <span>Refresh</span>
+          </button>
           <button class="btn btn-secondary btn-sm" id="btnTestWebhookTop">
             ⚡ <span>Test Webhook Mayar</span>
           </button>
@@ -839,7 +842,7 @@ GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code>
           <div class="form-group">
             <label>Slug Deep-Link (Huruf kecil &amp; underscore): <span style="color:#f87171;">*</span></label>
             <input type="text" class="admin-input" id="newTenantSlug" placeholder="dr_anton_anak" required>
-            <span class="field-hint">Link Pasien: https://wa.me/6281234567890?text=BOOK_[slug]</span>
+            <span class="field-hint">Link Pasien Otomatis: https://wa.me/[Nomor_WhatsApp_Bot]?text=BOOK_[slug]</span>
           </div>
           <div class="form-group">
             <label>Nomor WhatsApp Dokter (JID Whitelist): <span style="color:#f87171;">*</span></label>
@@ -941,6 +944,51 @@ GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code>
           <button type="submit" class="btn btn-primary">💾 Simpan Perubahan Whitelist</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL 4: Kelola Layanan & Tarif -->
+  <div class="admin-modal" id="modalServices">
+    <div class="modal-dialog" style="max-width: 680px;">
+      <div class="modal-header">
+        <h3 id="servicesModalTitle">💰 Layanan &amp; Dasar Tarif</h3>
+        <button class="btn-close-modal" id="btnCloseServicesModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <p style="font-size: 0.85rem; color: #94a3b8; margin-top: 0; margin-bottom: 16px;">
+          Tarif ini merupakan dasar perhitungan estimasi omset, insight harian/mingguan/bulanan pada Kopilot Dokter, dan ditampilkan kepada pasien saat reservasi.
+        </p>
+        <div style="overflow-x: auto; margin-bottom: 20px;">
+          <table class="admin-table" style="width: 100%;">
+            <thead>
+              <tr>
+                <th style="width: 30px;">#</th>
+                <th>Nama Layanan</th>
+                <th style="width: 90px;">Durasi (m)</th>
+                <th style="width: 140px;">Tarif (Rp)</th>
+                <th style="text-align: right; width: 140px;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="servicesModalList">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <div style="background: rgba(30, 41, 59, 0.7); border: 1px dashed #475569; padding: 14px; border-radius: 8px;">
+          <h4 style="font-size: 0.9rem; color: #e2e8f0; margin: 0 0 10px 0;">➕ Tambah Layanan Baru</h4>
+          <form id="formAddService" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <input type="hidden" id="newServiceTenantId">
+            <input type="text" class="admin-input" id="newServiceName" placeholder="Nama layanan (misal: Cukur Styling)" style="flex: 2; min-width: 160px; font-size: 0.85rem;" required>
+            <input type="number" class="admin-input" id="newServiceDuration" placeholder="Durasi (m)" style="width: 85px; font-size: 0.85rem;" value="30" required>
+            <input type="number" class="admin-input" id="newServicePrice" placeholder="Tarif Rp" style="width: 120px; font-size: 0.85rem;" required>
+            <button type="submit" class="btn btn-primary btn-sm" style="white-space: nowrap;">+ Tambah</button>
+          </form>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnCloseServicesModalBtn">Tutup</button>
+      </div>
     </div>
   </div>
 
