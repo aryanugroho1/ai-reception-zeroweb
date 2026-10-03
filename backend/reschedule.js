@@ -56,16 +56,35 @@ class RescheduleService {
     }
 
     // 3. Cutoff window check: H-2 hours (or tenant.reschedule_cutoff_hours)
-    const cutoffHours = tenant.reschedule_cutoff_hours !== undefined ? tenant.reschedule_cutoff_hours : 2;
+    const cutoffHours = tenant.reschedule_cutoff_hours !== undefined ? Number(tenant.reschedule_cutoff_hours) : 2;
     const now = new Date();
     const origStart = new Date(original.start_time);
-    const cutoffThreshold = new Date(origStart.getTime() - cutoffHours * 60 * 60 * 1000);
 
-    if (now > cutoffThreshold) {
-      const err = new Error(`Perubahan jadwal ditutup ${cutoffHours} jam sebelum waktu praktek. Silakan hubungi langsung resepsionis.`);
+    // If the appointment time has already begun or passed
+    if (now >= origStart) {
+      const err = new Error('Waktu reservasi awal telah lewat dari waktu praktek. Silakan buat reservasi baru.');
       err.statusCode = 400;
-      err.code = 'RESCHEDULE_CUTOFF_EXCEEDED';
+      err.code = 'APPOINTMENT_ALREADY_PASSED';
       throw err;
+    }
+
+    if (cutoffHours > 0) {
+      const cutoffThreshold = new Date(origStart.getTime() - cutoffHours * 60 * 60 * 1000);
+      const createdAt = original.created_at ? new Date(original.created_at) : origStart;
+      const bookedLeadTime = origStart.getTime() - createdAt.getTime();
+      const timeSinceBooking = now.getTime() - createdAt.getTime();
+
+      // Grace period: Allow reschedule if booked in the last 30 minutes,
+      // OR if the booking itself was made with shorter lead time than the cutoff window
+      const isRecentBookingGrace = timeSinceBooking >= 0 && timeSinceBooking <= 30 * 60 * 1000;
+      const isShortNoticeBooking = bookedLeadTime > 0 && bookedLeadTime <= cutoffHours * 60 * 60 * 1000;
+
+      if (!isRecentBookingGrace && !isShortNoticeBooking && now > cutoffThreshold) {
+        const err = new Error(`Perubahan jadwal ditutup ${cutoffHours} jam sebelum waktu praktek. Silakan hubungi langsung resepsionis.`);
+        err.statusCode = 400;
+        err.code = 'RESCHEDULE_CUTOFF_EXCEEDED';
+        throw err;
+      }
     }
 
     // Calculate new start and end times based on service duration

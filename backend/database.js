@@ -597,7 +597,7 @@ class DatabaseEngine {
       status: data.status || 'CONFIRMED',
       parent_booking_id: data.parent_booking_id || null,
       reschedule_count: data.reschedule_count || 0,
-      created_at: new Date().toISOString(),
+      created_at: data.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
 

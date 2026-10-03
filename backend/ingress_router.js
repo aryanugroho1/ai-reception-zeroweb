@@ -101,6 +101,7 @@ class IngressRouter {
         tenant: doctorTenant,
         response_type: 'TEXT',
         message: copilotResponse.reply,
+        notifications: copilotResponse.notifications || [],
         metadata: copilotResponse
       };
     }

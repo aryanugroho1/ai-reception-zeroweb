@@ -177,10 +177,49 @@ class DoctorCopilotEngine {
       `\nKetik *DONE* bila pemeriksaan selesai, atau *NEXT* untuk langsung panggil pasien selanjutnya.`
     ].filter(Boolean).join('\n');
 
+    const notifications = [];
+
+    // 1. Direct notification to the patient being called
+    if (nextPatient.customer_phone) {
+      notifications.push({
+        phone: nextPatient.customer_phone,
+        type: 'PATIENT_CALLED',
+        message: [
+          `🔔 *PANGGILAN PEMERIKSAAN DOKTER*`,
+          `----------------------------------------`,
+          `Halo *${nextPatient.customer_name}*,`,
+          `Giliran pemeriksaan/konsultasi Anda di *${tenant.name}* telah tiba! 🩺`,
+          ``,
+          `📋 Layanan: *${serviceName}*`,
+          `Silakan langsung masuk ke ruang praktek dokter sekarang. Terima kasih! 🙏`
+        ].join('\n')
+      });
+    }
+
+    // 2. Queue nudge to the upcoming patient in line (if any)
+    if (queue.length > 1) {
+      const upcoming = queue[1];
+      if (upcoming && upcoming.customer_phone) {
+        notifications.push({
+          phone: upcoming.customer_phone,
+          type: 'UPCOMING_NUDGE',
+          message: [
+            `⏳ *PENGINGAT ANTREAN PRAKTEK*`,
+            `----------------------------------------`,
+            `Halo *${upcoming.customer_name}*,`,
+            `Pasien sebelum Anda saat ini sedang masuk ke ruang periksa di *${tenant.name}*.`,
+            ``,
+            `Mohon dapat bersiap-siap di ruang tunggu, giliran Anda akan dipanggil berikutnya! 🙏`
+          ].join('\n')
+        });
+      }
+    }
+
     return {
       action: 'PATIENT_CALLED',
       current_patient: nextPatient,
-      reply
+      reply,
+      notifications
     };
   }
 
@@ -207,11 +246,27 @@ class DoctorCopilotEngine {
     const remaining = Array.from(this.db.appointments.values())
       .filter(a => a.tenant_id === tenant.id && a.status === 'CONFIRMED' && a.start_time.startsWith(today)).length;
 
+    const notifications = [];
+    if (completedPatient.customer_phone) {
+      notifications.push({
+        phone: completedPatient.customer_phone,
+        type: 'PATIENT_COMPLETED',
+        message: [
+          `✅ *KONSULTASI SELESAI*`,
+          `----------------------------------------`,
+          `Terima kasih telah berkonsultasi di *${tenant.name}*, ${completedPatient.customer_name}! 🩺`,
+          ``,
+          `Semoga lekas sembuh dan sehat selalu. Jika membutuhkan reservasi lanjutan, silakan hubungi asisten kami kapan saja. 🙏`
+        ].join('\n')
+      });
+    }
+
     return {
       action: 'PATIENT_COMPLETED',
       completed_patient: completedPatient,
       remaining_count: remaining,
-      reply: `✅ Pasien *${completedPatient.customer_name}* selesai diperiksa.\n\nSisa antrean hari ini: *${remaining} pasien*.\nKetik *NEXT* untuk memanggil antrean berikutnya.`
+      reply: `✅ Pasien *${completedPatient.customer_name}* selesai diperiksa.\n\nSisa antrean hari ini: *${remaining} pasien*.\nKetik *NEXT* untuk memanggil antrean berikutnya.`,
+      notifications
     };
   }
 

@@ -381,6 +381,7 @@ async function runTestSuite() {
       customer_phone: '62877777777',
       start_time: imminentStart,
       end_time: imminentEnd,
+      created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Booked in advance (yesterday)
       status: 'CONFIRMED'
     });
 
@@ -393,9 +394,30 @@ async function runTestSuite() {
       });
     } catch (err) {
       cutoffCaught = true;
-      assert(err.code === 'RESCHEDULE_CUTOFF_EXCEEDED', 'Reschedule cutoff: Blocked rescheduling within H-2 hours window');
+      assert(err.code === 'RESCHEDULE_CUTOFF_EXCEEDED', 'Reschedule cutoff: Blocked rescheduling within H-2 hours window for advance booking');
     }
-    assert(cutoffCaught, 'Cutoff constraint verified');
+    assert(cutoffCaught, 'Cutoff constraint verified for advance booking');
+
+    // Case A2: Recent Booking Grace Period (Booked recently < 30 mins, allows reschedule even within cutoff)
+    const recentBookingStart = new Date(Date.now() + 75 * 60 * 1000).toISOString();
+    const apptRecent = db.createAppointment({
+      tenant_id: maya.id,
+      service_id: service.id,
+      customer_name: 'Rudi Pratama',
+      customer_phone: '62877777776',
+      start_time: recentBookingStart,
+      end_time: new Date(Date.now() + 115 * 60 * 1000).toISOString(),
+      created_at: new Date().toISOString(), // Just booked 1 second ago
+      status: 'CONFIRMED'
+    });
+
+    const recentResched = await rescheduleService.rescheduleAppointment({
+      tenantId: maya.id,
+      appointmentId: apptRecent.id,
+      newStartTime: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      customerPhone: '62877777776'
+    });
+    assert(recentResched.success === true, 'Grace period: Newly booked appointment successfully rescheduled despite short notice');
 
     // Case B: Valid Atomic Reschedule
     const futureStart = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
@@ -520,9 +542,12 @@ async function runTestSuite() {
     const nextRes = await copilot.handleCommand({ tenantId: maya.id, commandText: 'NEXT', doctorPhone });
     assert(nextRes.action === 'PATIENT_CALLED', 'Command NEXT called first queued patient');
     assert(nextRes.current_patient.status === 'IN_CONSULTATION', 'Patient transitioned to IN_CONSULTATION');
+    assert(Array.isArray(nextRes.notifications) && nextRes.notifications.length >= 1, 'Command NEXT created patient WhatsApp notification');
+    assert(nextRes.notifications[0].type === 'PATIENT_CALLED' && nextRes.notifications[0].phone === nextRes.current_patient.customer_phone, 'Notification targeted to called patient phone');
 
     const doneRes = await copilot.handleCommand({ tenantId: maya.id, commandText: 'DONE', doctorPhone });
     assert(doneRes.action === 'PATIENT_COMPLETED', 'Command DONE marked patient COMPLETED');
+    assert(Array.isArray(doneRes.notifications) && doneRes.notifications.length >= 1, 'Command DONE created completion message for patient');
 
     // Smart Nudge Simulation
     const nudge = copilot.checkConsultationNudge(maya.id, 0);

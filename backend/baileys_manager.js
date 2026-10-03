@@ -581,6 +581,28 @@ class BaileysManager {
                 this.logger.addAuditLog('success', 'WHATSAPP', `Balasan terkirim ke ${senderLabel} (${reply.recipient_type || 'CHAT'})`);
               }
             }
+
+            // Dispatch any outbound patient notifications (e.g. Patient called on NEXT, queue nudge, or completed)
+            if (Array.isArray(reply?.notifications) && reply.notifications.length > 0) {
+              for (const notif of reply.notifications) {
+                if (!notif.phone || !notif.message) continue;
+                const normPhone = this.normalizePhone(notif.phone);
+                if (!normPhone) continue;
+                const notifJid = `${normPhone}@s.whatsapp.net`;
+                try {
+                  const notifSent = await sock.sendMessage(notifJid, { text: notif.message });
+                  if (notifSent?.key?.id) {
+                    this.sentMessageIds.add(notifSent.key.id);
+                    setTimeout(() => this.sentMessageIds.delete(notifSent.key.id), 180000);
+                  }
+                  if (this.logger && typeof this.logger.addAuditLog === 'function') {
+                    this.logger.addAuditLog('success', 'NOTIFIKASI', `Pengingat [${notif.type}] terkirim ke pasien +${normPhone}`);
+                  }
+                } catch (notifErr) {
+                  console.error(`[BaileysManager] Gagal mengirim pengingat ke +${normPhone}:`, notifErr.message);
+                }
+              }
+            }
           }
         } catch (msgErr) {
           console.error(`[BaileysManager] Error processing incoming chat for ${tenant.slug}:`, msgErr.message);
