@@ -393,8 +393,6 @@ class BaileysManager {
         try {
           if (m.type !== 'notify') return;
           for (const msg of m.messages) {
-            // Ignore messages sent by bot itself
-            if (msg.key.fromMe) continue;
             // Ignore status broadcasts
             if (msg.key.remoteJid === 'status@broadcast') continue;
             // Handle only individual chats (or clinic groups if desired)
@@ -407,6 +405,25 @@ class BaileysManager {
               '';
 
             if (!text.trim()) continue;
+
+            // Support "Message to Self" (You) if doctor uses same phone for bot & practice management
+            const cleanSender = senderJid.replace(/@.*$/, '').replace(/\D/g, '');
+            const cleanOwnerPhone = (tenant.owner_phone || '').replace(/\D/g, '');
+            const cleanBotPhone = (tenant.whatsapp_connected_phone || '').replace(/\D/g, '');
+            const isSelfDoctorChat = msg.key.fromMe && (
+              cleanSender === cleanOwnerPhone ||
+              cleanSender === cleanBotPhone ||
+              senderJid.includes(cleanOwnerPhone) ||
+              senderJid.includes(cleanBotPhone)
+            );
+
+            // If message sent by bot itself to other users, ignore to prevent looping.
+            // If message to self from doctor, only process recognized Copilot commands.
+            if (msg.key.fromMe) {
+              if (!isSelfDoctorChat) continue;
+              const isCopilotCmd = /^(NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN)$/i.test(text.trim());
+              if (!isCopilotCmd) continue;
+            }
 
             // Route through Ingress Router bound to this specific tenant!
             const reply = await this.ingressRouter.routeMessage({

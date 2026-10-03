@@ -358,8 +358,18 @@ async function runTestSuite() {
   {
     const db = new DatabaseEngine();
     const rescheduleService = new RescheduleService(db);
-    const maya = db.getTenantBySlug('drg_maya');
-    const service = db.getServicesByTenant(maya.id)[0];
+    const maya = db.createTenant({
+      name: 'Reschedule Test Practice',
+      slug: 'reschedule_test_practice',
+      owner_phone: '62899990000',
+      category: 'GENERAL'
+    });
+    const service = db.createService({
+      tenant_id: maya.id,
+      name: 'Konsultasi Reschedule',
+      duration_minutes: 40,
+      price: 150000
+    });
 
     // Case A: Cutoff Exceeded (appointment starts in 30 mins, cutoff is 2h)
     const imminentStart = new Date(Date.now() + 30 * 60 * 1000).toISOString();

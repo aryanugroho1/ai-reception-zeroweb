@@ -21,7 +21,7 @@ class DoctorCopilotEngine {
       throw new Error(`Practice tenant ${tenantId} not found`);
     }
 
-    if (tenant.owner_phone !== doctorPhone) {
+    if (tenant.owner_phone.replace(/\D/g, '') !== (doctorPhone || '').replace(/\D/g, '')) {
       const err = new Error(`Unauthorized doctor phone ${doctorPhone} for tenant ${tenant.name}`);
       err.statusCode = 403;
       throw err;
@@ -48,7 +48,7 @@ class DoctorCopilotEngine {
     }
 
     // 3. Command: STATUS / ANTREAN / DAFTAR
-    if (normalizedCmd === 'STATUS' || normalizedCmd === 'ANTREAN' || normalizedCmd === 'DAFTAR') {
+    if (['STATUS', 'ANTREAN', 'DAFTAR', 'JADWAL', 'REKAP', 'HARI INI', 'LIST'].includes(normalizedCmd)) {
       return this.handleQueueStatus(tenant);
     }
 
@@ -87,8 +87,8 @@ class DoctorCopilotEngine {
         `----------------------------------------`,
         `👉 *NEXT* : Panggil pasien antrean berikutnya`,
         `👉 *DONE* : Selesaikan pasien yang sedang diperiksa`,
-        `👉 *STATUS* : Lihat daftar antrean pasien hari ini`,
-        `👉 *DASHBOARD* : Ringkasan statistik & estimasi pendapatan`,
+        `👉 *STATUS* atau *JADWAL* : Lihat semua jadwal pasien hari ini`,
+        `👉 *DASHBOARD* atau *REKAP* : Ringkasan statistik & omset hari ini`,
         `👉 *TUTUP* : Hentikan sementara reservasi baru`,
         `👉 *BUKA* : Aktifkan kembali reservasi baru`,
         `----------------------------------------`
