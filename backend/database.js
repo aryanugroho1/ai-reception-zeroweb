@@ -28,13 +28,400 @@ class DatabaseEngine {
     this.idempotencyRecords = new Map();
     this.userSessions = new Map();
 
+    this.databaseUrl = process.env.DATABASE_URL || null;
+    this.pgPool = null;
+
     if (storagePath === false || process.env.NODE_ENV === 'test') {
       this.storagePath = null;
       this.seedSampleData();
     } else {
       this.storagePath = storagePath || process.env.DB_STORAGE_PATH || path.join(__dirname, '../data/app_database.json');
       this.loadFromFile();
+      if (this.databaseUrl) {
+        this.setupPostgres();
+      }
     }
+  }
+
+  setupPostgres() {
+    if (!this.databaseUrl) return;
+    try {
+      const { Pool } = require('pg');
+      const isLocal = this.databaseUrl.includes('localhost') || this.databaseUrl.includes('127.0.0.1');
+      this.pgPool = new Pool({
+        connectionString: this.databaseUrl,
+        ssl: isLocal ? false : { rejectUnauthorized: false }
+      });
+      console.log('[DatabaseEngine] Menginisialisasi koneksi PostgreSQL Cloud Database...');
+      this.initPostgres().catch(err => {
+        console.warn('[DatabaseEngine] PostgreSQL Init Notice:', err.message);
+      });
+    } catch (e) {
+      console.warn('[DatabaseEngine] PostgreSQL setup error:', e.message);
+    }
+  }
+
+  async initPostgres() {
+    if (!this.pgPool) return;
+    try {
+      const client = await this.pgPool.connect();
+      try {
+        console.log('[DatabaseEngine] Terhubung ke PostgreSQL!');
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS app_kv_store (
+            key TEXT PRIMARY KEY,
+            data JSONB NOT NULL,
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS tenants (
+            id TEXT PRIMARY KEY,
+            slug TEXT UNIQUE,
+            name TEXT,
+            owner_phone TEXT,
+            category TEXT,
+            subscription_plan TEXT,
+            subscription_until TIMESTAMPTZ,
+            whatsapp_connected_phone TEXT,
+            owner_email TEXT,
+            is_accepting_patients BOOLEAN DEFAULT true,
+            data JSONB,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS services (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT,
+            name TEXT,
+            duration_minutes INT,
+            price NUMERIC,
+            is_active BOOLEAN DEFAULT true,
+            data JSONB,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS appointments (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT,
+            service_id TEXT,
+            customer_phone TEXT,
+            customer_name TEXT,
+            status TEXT,
+            start_time TIMESTAMPTZ,
+            end_time TIMESTAMPTZ,
+            data JSONB,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS subscription_invoices (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT,
+            plan_tier TEXT,
+            amount NUMERIC,
+            status TEXT,
+            data JSONB,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+        `);
+
+        // Load existing records from Postgres into memory
+        const { rows: tenantRows } = await client.query('SELECT * FROM tenants');
+        if (tenantRows.length > 0) {
+          console.log(`[DatabaseEngine] ✅ Berhasil memuat ${tenantRows.length} tenant dari PostgreSQL Cloud`);
+          for (const row of tenantRows) {
+            const tData = row.data || {};
+            this.tenants.set(row.id, {
+              ...tData,
+              id: row.id,
+              slug: row.slug || tData.slug,
+              name: row.name || tData.name,
+              owner_phone: row.owner_phone || tData.owner_phone,
+              category: row.category || tData.category,
+              subscription_plan: row.subscription_plan || tData.subscription_plan,
+              subscription_until: row.subscription_until ? new Date(row.subscription_until).toISOString() : tData.subscription_until,
+              whatsapp_connected_phone: row.whatsapp_connected_phone || tData.whatsapp_connected_phone,
+              owner_email: row.owner_email || tData.owner_email,
+              is_accepting_patients: row.is_accepting_patients !== undefined ? row.is_accepting_patients : tData.is_accepting_patients,
+              created_at: row.created_at ? new Date(row.created_at).toISOString() : tData.created_at,
+              updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : tData.updated_at
+            });
+          }
+        } else {
+          for (const tenant of this.tenants.values()) {
+            await this.pgUpsertTenant(tenant, client);
+          }
+        }
+
+        const { rows: serviceRows } = await client.query('SELECT * FROM services');
+        if (serviceRows.length > 0) {
+          for (const row of serviceRows) {
+            const sData = row.data || {};
+            this.services.set(row.id, {
+              ...sData,
+              id: row.id,
+              tenant_id: row.tenant_id,
+              name: row.name || sData.name,
+              duration_minutes: row.duration_minutes || sData.duration_minutes,
+              price: Number(row.price || sData.price),
+              is_active: row.is_active !== false,
+              created_at: row.created_at ? new Date(row.created_at).toISOString() : sData.created_at,
+              updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : sData.updated_at
+            });
+          }
+        } else {
+          for (const service of this.services.values()) {
+            await this.pgUpsertService(service, client);
+          }
+        }
+
+        const { rows: aptRows } = await client.query('SELECT * FROM appointments');
+        if (aptRows.length > 0) {
+          for (const row of aptRows) {
+            const aData = row.data || {};
+            this.appointments.set(row.id, {
+              ...aData,
+              id: row.id,
+              tenant_id: row.tenant_id,
+              service_id: row.service_id,
+              customer_phone: row.customer_phone,
+              customer_name: row.customer_name,
+              status: row.status,
+              start_time: row.start_time ? new Date(row.start_time).toISOString() : aData.start_time,
+              end_time: row.end_time ? new Date(row.end_time).toISOString() : aData.end_time
+            });
+          }
+        } else {
+          for (const apt of this.appointments.values()) {
+            await this.pgUpsertAppointment(apt, client);
+          }
+        }
+
+        const { rows: invRows } = await client.query('SELECT * FROM subscription_invoices');
+        if (invRows.length > 0) {
+          for (const row of invRows) {
+            const iData = row.data || {};
+            this.subscriptionInvoices.set(row.id, {
+              ...iData,
+              id: row.id,
+              tenant_id: row.tenant_id,
+              plan_tier: row.plan_tier,
+              amount: Number(row.amount),
+              status: row.status
+            });
+          }
+        } else {
+          for (const inv of this.subscriptionInvoices.values()) {
+            await this.pgUpsertInvoice(inv, client);
+          }
+        }
+
+        console.log('[DatabaseEngine] ✅ Sinkronisasi PostgreSQL Cloud aktif & data terjamin aman!');
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.warn('[DatabaseEngine] Koneksi PostgreSQL dilewati / gagal:', err.message);
+    }
+  }
+
+  async pgUpsertTenant(tenant, optionalClient = null) {
+    if (!this.pgPool) return;
+    try {
+      const client = optionalClient || await this.pgPool.connect();
+      try {
+        await client.query(`
+          INSERT INTO tenants (id, slug, name, owner_phone, category, subscription_plan, subscription_until, whatsapp_connected_phone, owner_email, is_accepting_patients, data, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            slug = EXCLUDED.slug,
+            name = EXCLUDED.name,
+            owner_phone = EXCLUDED.owner_phone,
+            category = EXCLUDED.category,
+            subscription_plan = EXCLUDED.subscription_plan,
+            subscription_until = EXCLUDED.subscription_until,
+            whatsapp_connected_phone = EXCLUDED.whatsapp_connected_phone,
+            owner_email = EXCLUDED.owner_email,
+            is_accepting_patients = EXCLUDED.is_accepting_patients,
+            data = EXCLUDED.data,
+            updated_at = NOW()
+        `, [
+          tenant.id,
+          tenant.slug,
+          tenant.name,
+          tenant.owner_phone,
+          tenant.category,
+          tenant.subscription_plan,
+          tenant.subscription_until ? new Date(tenant.subscription_until) : null,
+          tenant.whatsapp_connected_phone,
+          tenant.owner_email,
+          tenant.is_accepting_patients !== false,
+          JSON.stringify(tenant)
+        ]);
+      } finally {
+        if (!optionalClient) client.release();
+      }
+    } catch (e) {
+      console.warn(`[DatabaseEngine] PostgreSQL upsert tenant error (${tenant.id}):`, e.message);
+    }
+  }
+
+  async pgDeleteTenant(tenantId) {
+    if (!this.pgPool) return;
+    try {
+      const client = await this.pgPool.connect();
+      try {
+        await client.query('DELETE FROM services WHERE tenant_id = $1', [tenantId]);
+        await client.query('DELETE FROM appointments WHERE tenant_id = $1', [tenantId]);
+        await client.query('DELETE FROM subscription_invoices WHERE tenant_id = $1', [tenantId]);
+        await client.query('DELETE FROM tenants WHERE id = $1 OR slug = $1', [tenantId]);
+      } finally {
+        client.release();
+      }
+    } catch (e) {
+      console.warn(`[DatabaseEngine] PostgreSQL delete tenant error:`, e.message);
+    }
+  }
+
+  async pgUpsertService(service, optionalClient = null) {
+    if (!this.pgPool) return;
+    try {
+      const client = optionalClient || await this.pgPool.connect();
+      try {
+        await client.query(`
+          INSERT INTO services (id, tenant_id, name, duration_minutes, price, is_active, data, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            duration_minutes = EXCLUDED.duration_minutes,
+            price = EXCLUDED.price,
+            is_active = EXCLUDED.is_active,
+            data = EXCLUDED.data,
+            updated_at = NOW()
+        `, [
+          service.id,
+          service.tenant_id,
+          service.name,
+          service.duration_minutes,
+          service.price,
+          service.is_active !== false,
+          JSON.stringify(service)
+        ]);
+      } finally {
+        if (!optionalClient) client.release();
+      }
+    } catch (e) {
+      console.warn(`[DatabaseEngine] PostgreSQL upsert service error:`, e.message);
+    }
+  }
+
+  async pgDeleteService(serviceId) {
+    if (!this.pgPool) return;
+    try {
+      const client = await this.pgPool.connect();
+      try {
+        await client.query('DELETE FROM services WHERE id = $1', [serviceId]);
+      } finally {
+        client.release();
+      }
+    } catch (e) {}
+  }
+
+  async pgUpsertAppointment(apt, optionalClient = null) {
+    if (!this.pgPool) return;
+    try {
+      const client = optionalClient || await this.pgPool.connect();
+      try {
+        await client.query(`
+          INSERT INTO appointments (id, tenant_id, service_id, customer_phone, customer_name, status, start_time, end_time, data, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            status = EXCLUDED.status,
+            start_time = EXCLUDED.start_time,
+            end_time = EXCLUDED.end_time,
+            data = EXCLUDED.data,
+            updated_at = NOW()
+        `, [
+          apt.id,
+          apt.tenant_id,
+          apt.service_id,
+          apt.customer_phone,
+          apt.customer_name,
+          apt.status,
+          apt.start_time ? new Date(apt.start_time) : null,
+          apt.end_time ? new Date(apt.end_time) : null,
+          JSON.stringify(apt)
+        ]);
+      } finally {
+        if (!optionalClient) client.release();
+      }
+    } catch (e) {
+      console.warn(`[DatabaseEngine] PostgreSQL upsert appointment error:`, e.message);
+    }
+  }
+
+  async pgDeleteAppointment(aptId) {
+    if (!this.pgPool) return;
+    try {
+      const client = await this.pgPool.connect();
+      try {
+        await client.query('DELETE FROM appointments WHERE id = $1', [aptId]);
+      } finally {
+        client.release();
+      }
+    } catch (e) {}
+  }
+
+  async pgUpsertInvoice(inv, optionalClient = null) {
+    if (!this.pgPool) return;
+    try {
+      const client = optionalClient || await this.pgPool.connect();
+      try {
+        await client.query(`
+          INSERT INTO subscription_invoices (id, tenant_id, plan_tier, amount, status, data, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            status = EXCLUDED.status,
+            data = EXCLUDED.data,
+            updated_at = NOW()
+        `, [
+          inv.id,
+          inv.tenant_id,
+          inv.plan_tier,
+          inv.amount,
+          inv.status,
+          JSON.stringify(inv)
+        ]);
+      } finally {
+        if (!optionalClient) client.release();
+      }
+    } catch (e) {
+      console.warn(`[DatabaseEngine] PostgreSQL upsert invoice error:`, e.message);
+    }
+  }
+
+  async pgSaveSnapshot() {
+    if (!this.pgPool) return;
+    try {
+      const client = await this.pgPool.connect();
+      try {
+        await client.query(`
+          INSERT INTO app_kv_store (key, data, updated_at)
+          VALUES ('full_backup_snapshot', $1, NOW())
+          ON CONFLICT (key) DO UPDATE SET data = $1, updated_at = NOW()
+        `, [JSON.stringify({
+          tenants: Array.from(this.tenants.entries()),
+          services: Array.from(this.services.entries()),
+          appointments: Array.from(this.appointments.entries()),
+          subscriptionInvoices: Array.from(this.subscriptionInvoices.entries())
+        })]);
+      } finally {
+        client.release();
+      }
+    } catch (e) {}
   }
 
   saveToFile() {
@@ -81,6 +468,7 @@ class DatabaseEngine {
         console.error('[DatabaseEngine] Emergency database backup write failed:', emergencyErr.message);
       }
     }
+    this.pgSaveSnapshot();
   }
 
   save() {
@@ -512,6 +900,7 @@ class DatabaseEngine {
     };
     this.tenants.set(id, tenant);
     this.saveToFile();
+    this.pgUpsertTenant(tenant);
     return tenant;
   }
 
@@ -556,6 +945,7 @@ class DatabaseEngine {
 
     this.tenants.delete(actualId);
     this.saveToFile();
+    this.pgDeleteTenant(actualId);
     return true;
   }
 
@@ -589,6 +979,7 @@ class DatabaseEngine {
     };
     this.services.set(id, service);
     this.saveToFile();
+    this.pgUpsertService(service);
     return service;
   }
 
@@ -604,6 +995,7 @@ class DatabaseEngine {
 
     this.services.set(serviceId, service);
     this.saveToFile();
+    this.pgUpsertService(service);
     return service;
   }
 
@@ -611,6 +1003,7 @@ class DatabaseEngine {
     if (!this.services.has(serviceId)) return false;
     this.services.delete(serviceId);
     this.saveToFile();
+    this.pgDeleteService(serviceId);
     return true;
   }
 
@@ -746,6 +1139,7 @@ class DatabaseEngine {
 
     this.appointments.set(id, apt);
     this.saveToFile();
+    this.pgUpsertAppointment(apt);
     return apt;
   }
 
@@ -772,6 +1166,7 @@ class DatabaseEngine {
     };
     this.subscriptionInvoices.set(id, invoice);
     this.saveToFile();
+    this.pgUpsertInvoice(invoice);
     return invoice;
   }
 
