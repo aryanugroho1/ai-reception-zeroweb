@@ -16,6 +16,7 @@ auth_baileys/
 data/*.bak
 data/*.tmp
 data/admin_sessions.json
+data/connect_tokens.json
 *.log
 
 # OS & IDE files

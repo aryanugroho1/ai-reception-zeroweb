@@ -47,10 +47,15 @@ class DatabaseEngine {
     if (!this.databaseUrl) return;
     try {
       const { Pool } = require('pg');
-      const isLocal = this.databaseUrl.includes('localhost') || this.databaseUrl.includes('127.0.0.1');
+      const isInternal = this.databaseUrl.includes('localhost') || 
+                         this.databaseUrl.includes('127.0.0.1') ||
+                         this.databaseUrl.includes('postgres') ||
+                         this.databaseUrl.includes('tailscale') ||
+                         this.databaseUrl.includes('sslmode=disable') ||
+                         process.env.PGSSL === 'false';
       this.pgPool = new Pool({
         connectionString: this.databaseUrl,
-        ssl: isLocal ? false : { rejectUnauthorized: false }
+        ssl: isInternal ? false : { rejectUnauthorized: false }
       });
       console.log('[DatabaseEngine] Menginisialisasi koneksi PostgreSQL Cloud Database...');
       this.initPostgres().catch(err => {
