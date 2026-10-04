@@ -992,8 +992,65 @@ GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code>
     </div>
   </div>
 
+  <!-- MODAL 5: Konfirmasi Hapus Akun Tenant -->
+  <div class="admin-modal" id="modalDeleteTenantRow" style="z-index: 10500;">
+    <div class="modal-dialog" style="max-width: 480px; border: 1px solid rgba(248, 113, 113, 0.4); box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(248, 113, 113, 0.2);">
+        <h3 style="color: #f87171; display: flex; align-items: center; gap: 8px;">
+          <span>🗑️</span> Hapus Akun Dokter / Partner
+        </h3>
+        <button class="btn-close-modal" id="btnCloseModalDeleteRow">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <p style="font-size: 0.95rem; color: #e2e8f0; line-height: 1.6; margin-top: 0;">
+          Apakah Anda yakin ingin menghapus akun <strong id="deleteTargetDoctorName" style="color: #38bdf8;">--</strong>?
+        </p>
+        <div style="background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; padding: 10px 14px; border-radius: 4px; font-size: 0.82rem; color: #fca5a5; margin-bottom: 16px;">
+          ⚠️ <strong>Peringatan Permanen:</strong> Seluruh riwayat jadwal, pendaftaran pasien, konfigurasi tarif, dan sesi WhatsApp terkait akan dihapus secara tuntas dari basis data PostgreSQL.
+        </div>
+        <input type="hidden" id="deleteTargetTenantId">
+        <input type="hidden" id="deleteTargetTenantSlug">
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-secondary" id="btnCancelDeleteRow">Batal</button>
+        <button type="button" class="btn btn-danger" id="btnConfirmDeleteRow" style="background: #dc2626; color: #fff; border: none; font-weight: 700; padding: 8px 18px; border-radius: 6px;">
+          Ya, Hapus Sekarang
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 6: Konfirmasi Bersihkan Semua Akun Sample Demo -->
+  <div class="admin-modal" id="modalPurgeDemoTenants" style="z-index: 10500;">
+    <div class="modal-dialog" style="max-width: 500px; border: 1px solid rgba(251, 191, 36, 0.4); box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(251, 191, 36, 0.2);">
+        <h3 style="color: #fbbf24; display: flex; align-items: center; gap: 8px;">
+          <span>🧹</span> Bersihkan Akun Sample Demo
+        </h3>
+        <button class="btn-close-modal" id="btnCloseModalPurgeDemo">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <p style="font-size: 0.95rem; color: #e2e8f0; line-height: 1.6; margin-top: 0;">
+          Apakah Anda ingin membersihkan <strong>semua akun dokter sample demo bawaan</strong> (drg. Maya, dr. Rian, dr. Budi, dll) untuk persiapan rilis / Go-Live?
+        </p>
+        <div style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; padding: 10px 14px; border-radius: 4px; font-size: 0.82rem; color: #93c5fd; margin-bottom: 16px;">
+          ℹ️ <strong>Aman:</strong> Hanya akun demo bawaan sistem yang dibersihkan. Akun dokter asli yang Anda daftarkan sendiri tidak akan tersentuh.
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-secondary" id="btnCancelPurgeDemo">Batal</button>
+        <button type="button" class="btn btn-danger" id="btnConfirmPurgeDemo" style="background: #dc2626; color: #fff; border: none; font-weight: 700; padding: 8px 18px; border-radius: 6px;">
+          Ya, Bersihkan Semua Sample
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Toast Notifications Container -->
+  <div id="adminToastContainer" style="position: fixed; top: 20px; right: 20px; z-index: 999999; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
+
   </div> <!-- /#adminMainApp -->
 
-  <script src="admin.js"></script>
+  <script src="admin.js?v=3.0.4"></script>
 </body>
 </html>

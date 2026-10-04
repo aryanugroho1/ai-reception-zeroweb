@@ -435,6 +435,37 @@ class SuperadminController {
     return headers;
   }
 
+  showToast(type, message) {
+    const container = document.getElementById('adminToastContainer');
+    if (!container) {
+      console.log(`[Toast ${type}] ${message}`);
+      return;
+    }
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+      pointer-events: auto;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      background: ${type === 'success' ? 'rgba(16, 185, 129, 0.95)' : 'rgba(239, 68, 68, 0.95)'};
+      border: 1px solid ${type === 'success' ? '#34d399' : '#f87171'};
+      transition: all 0.3s ease;
+    `;
+    toast.innerHTML = `<span>${type === 'success' ? '✅' : '❌'}</span> <span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(20px)';
+      setTimeout(() => toast.remove(), 300);
+    }, 4500);
+  }
+
   showLoginGate() {
     const gate = document.getElementById('adminLoginGate');
     const app = document.getElementById('adminMainApp');
@@ -772,7 +803,7 @@ class SuperadminController {
             <button class="tbl-btn" style="border-color:#38bdf8; color:#38bdf8;" onclick="window.adminCtrl.openEditModal('${t.id}')" title="Edit Data & Whitelist Dokter">✏️ Whitelist</button>
             <button class="tbl-btn" style="border-color:#10b981; color:#34d399;" onclick="window.adminCtrl.openServicesModal('${t.id}')" title="Kelola Layanan & Tarif">💰 Tarif</button>
             <button class="tbl-btn" onclick="window.adminCtrl.testLink('${t.slug}', '${t.botPhone || t.ownerPhone || ''}')" title="Buka Link WhatsApp Pasien">Link</button>
-            <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.deleteTenant('${t.id}', '${t.slug || ''}', '${(t.name || '').replace(/'/g, "\\'")}')" title="Hapus Akun Dokter / Partner">🗑️</button>
+            <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" data-id="${t.id}" data-slug="${t.slug}" data-name="${(t.name || '').replace(/"/g, '&quot;')}" onclick="window.adminCtrl.openDeleteRowModal(this.dataset.id, this.dataset.slug, this.dataset.name)" title="Hapus Akun Dokter / Partner">🗑️</button>
           </div>
         </td>
       `;
@@ -918,10 +949,43 @@ class SuperadminController {
       });
     }
 
-    // Purge Sample Demo Tenants Button
-    const purgeBtn = document.getElementById('btnPurgeSamples');
-    if (purgeBtn) {
-      purgeBtn.addEventListener('click', () => this.purgeSampleTenants());
+    // Purge Sample Demo Tenants Modal & Button Listeners
+    const btnOpenPurge = document.getElementById('btnPurgeSamples');
+    const btnClosePurge = document.getElementById('btnCloseModalPurgeDemo');
+    const btnCancelPurge = document.getElementById('btnCancelPurgeDemo');
+    const btnConfirmPurge = document.getElementById('btnConfirmPurgeDemo');
+    const modalPurge = document.getElementById('modalPurgeDemoTenants');
+
+    if (btnOpenPurge) btnOpenPurge.onclick = (e) => { e.preventDefault(); this.openPurgeDemoModal(); };
+    if (btnClosePurge) btnClosePurge.onclick = () => this.closePurgeDemoModal();
+    if (btnCancelPurge) btnCancelPurge.onclick = () => this.closePurgeDemoModal();
+    if (btnConfirmPurge) btnConfirmPurge.onclick = () => this.executePurgeSampleTenants();
+    if (modalPurge) {
+      modalPurge.addEventListener('click', (e) => {
+        if (e.target === modalPurge) this.closePurgeDemoModal();
+      });
+    }
+
+    // Delete Row Modal Event Listeners
+    const btnCloseDelRow = document.getElementById('btnCloseModalDeleteRow');
+    const btnCancelDelRow = document.getElementById('btnCancelDeleteRow');
+    const btnConfirmDelRow = document.getElementById('btnConfirmDeleteRow');
+    const modalDelRow = document.getElementById('modalDeleteTenantRow');
+
+    if (btnCloseDelRow) btnCloseDelRow.onclick = () => this.closeDeleteRowModal();
+    if (btnCancelDelRow) btnCancelDelRow.onclick = () => this.closeDeleteRowModal();
+    if (btnConfirmDelRow) {
+      btnConfirmDelRow.onclick = () => {
+        const id = document.getElementById('deleteTargetTenantId')?.value;
+        const slug = document.getElementById('deleteTargetTenantSlug')?.value;
+        const name = document.getElementById('deleteTargetDoctorName')?.textContent;
+        this.executeDeleteTenant(id, slug, name);
+      };
+    }
+    if (modalDelRow) {
+      modalDelRow.addEventListener('click', (e) => {
+        if (e.target === modalDelRow) this.closeDeleteRowModal();
+      });
     }
 
     // Refresh WhatsApp Sessions Button
@@ -1249,15 +1313,66 @@ class SuperadminController {
     window.open(link, '_blank');
   }
 
-  async deleteTenant(tenantId, tenantSlug = '', tenantName = '') {
+  openDeleteRowModal(tenantId, tenantSlug = '', tenantName = '') {
     if (!tenantId) return;
     const target = (Array.isArray(SAAS_TENANTS) ? SAAS_TENANTS : []).find(t => t.id === tenantId || t.slug === tenantId);
     const resolvedName = tenantName || (target ? target.name : tenantId);
     const resolvedSlug = tenantSlug || (target ? target.slug : '');
 
-    if (!confirm(`⚠️ HAPUS AKUN DOKTER / PARTNER:\n\nApakah Anda yakin ingin menghapus akun "${resolvedName}" (${tenantId})?\n\nSemua riwayat booking, layanan, invoice, dan sesi WhatsApp terkait akan dihapus secara permanen.`)) {
-      return;
+    const modal = document.getElementById('modalDeleteTenantRow');
+    if (!modal) {
+      return this.executeDeleteTenant(tenantId, resolvedSlug, resolvedName);
     }
+
+    const nameEl = document.getElementById('deleteTargetDoctorName');
+    const idEl = document.getElementById('deleteTargetTenantId');
+    const slugEl = document.getElementById('deleteTargetTenantSlug');
+
+    if (nameEl) nameEl.textContent = resolvedName;
+    if (idEl) idEl.value = tenantId;
+    if (slugEl) slugEl.value = resolvedSlug;
+
+    modal.classList.add('active');
+  }
+
+  closeDeleteRowModal() {
+    const modal = document.getElementById('modalDeleteTenantRow');
+    if (modal) modal.classList.remove('active');
+  }
+
+  openPurgeDemoModal() {
+    const modal = document.getElementById('modalPurgeDemoTenants');
+    if (!modal) {
+      return this.executePurgeSampleTenants();
+    }
+    modal.classList.add('active');
+  }
+
+  closePurgeDemoModal() {
+    const modal = document.getElementById('modalPurgeDemoTenants');
+    if (modal) modal.classList.remove('active');
+  }
+
+  deleteTenant(tenantId, tenantSlug = '', tenantName = '') {
+    this.openDeleteRowModal(tenantId, tenantSlug, tenantName);
+  }
+
+  purgeSampleTenants() {
+    this.openPurgeDemoModal();
+  }
+
+  async executeDeleteTenant(tenantId, tenantSlug = '', tenantName = '') {
+    if (!tenantId) return;
+    const target = (Array.isArray(SAAS_TENANTS) ? SAAS_TENANTS : []).find(t => t.id === tenantId || t.slug === tenantId);
+    const resolvedName = tenantName || (target ? target.name : tenantId);
+    const resolvedSlug = tenantSlug || (target ? target.slug : '');
+
+    const btn = document.getElementById('btnConfirmDeleteRow');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Menghapus...';
+    }
+
     try {
       const endpoint = `/api/tenants/${encodeURIComponent(tenantId)}`;
       let res = await fetch(endpoint, {
@@ -1266,15 +1381,11 @@ class SuperadminController {
       });
       
       let data = {};
-      try {
-        data = await res.json();
-      } catch (e) {
-        data = { error: 'Gagal membaca respon server' };
-      }
+      try { data = await res.json(); } catch (e) { data = {}; }
 
       if (!res.ok) {
         if (res.status === 401) {
-          alert('⚠️ Sesi login admin telah kedaluwarsa. Silakan masuk kembali.');
+          this.showToast('danger', 'Sesi login admin telah kedaluwarsa. Silakan masuk kembali.');
           this.clearAuthToken();
           this.showLoginGate();
           return;
@@ -1302,19 +1413,28 @@ class SuperadminController {
       }
       this.renderTenantsTable();
       this.renderMetrics();
+      this.closeDeleteRowModal();
 
-      alert(`✅ ${data.message || `Akun ${resolvedName} berhasil dihapus permanen.`}`);
+      this.showToast('success', data.message || `Akun ${resolvedName} berhasil dihapus permanen.`);
       this.logAudit('warning', `Tenant deleted: ${resolvedName} (${tenantId})`);
       await this.loadBackendData();
     } catch (err) {
-      alert('❌ Error: ' + err.message);
+      this.showToast('danger', err.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Ya, Hapus Sekarang';
+      }
     }
   }
 
-  async purgeSampleTenants() {
-    if (!confirm('⚠️ BERSIHKAN DATA SAMPLE DEMO:\n\nApakah Anda yakin ingin menghapus semua akun dokter sample bawaan demo (drg. Maya, dr. Rian, dll) untuk persiapan Go-Live / Production?')) {
-      return;
+  async executePurgeSampleTenants() {
+    const btn = document.getElementById('btnConfirmPurgeDemo');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Membersihkan...';
     }
+
     try {
       const res = await fetch('/api/tenants/purge-samples', {
         method: 'POST',
@@ -1323,7 +1443,7 @@ class SuperadminController {
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 401) {
-          alert('⚠️ Sesi login admin telah kedaluwarsa. Silakan masuk kembali.');
+          this.showToast('danger', 'Sesi login admin telah kedaluwarsa. Silakan masuk kembali.');
           this.clearAuthToken();
           this.showLoginGate();
           return;
@@ -1345,12 +1465,18 @@ class SuperadminController {
       }
       this.renderTenantsTable();
       this.renderMetrics();
+      this.closePurgeDemoModal();
 
-      alert(`✅ ${data.message}`);
+      this.showToast('success', data.message || `Berhasil membersihkan ${data.deleted_count} akun dokter sample demo.`);
       this.logAudit('success', `Cleaned ${data.deleted_count} sample tenants for production`);
       await this.loadBackendData();
     } catch (err) {
-      alert('❌ Error: ' + err.message);
+      this.showToast('danger', err.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Ya, Bersihkan Semua Sample';
+      }
     }
   }
 
