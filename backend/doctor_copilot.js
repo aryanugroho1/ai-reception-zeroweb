@@ -92,8 +92,90 @@ class DoctorCopilotEngine {
       return this.handleDashboardInsight(tenant);
     }
 
-    // 5A. Command: BESOK TUTUP / TUTUP BESOK / BESOK LIBUR / LIBUR BESOK
-    if (/^\s*(?:BESOK\s+TUTUP|TUTUP\s+BESOK|BESOK\s+LIBUR|LIBUR\s+BESOK)(?:\s+.*)?$/i.test(normalizedCmd)) {
+    // 5AA. Command: Multi-day close (e.g. "besok tutup 3 hari", "tanggal 15 Oktober tutup selama 3 hari", "tutup besok selama 3 hari", "tutup 3 hari")
+    const multiDayCloseMatch = rawCmd.match(/(?:mulai\s+)?(besok|hari\s+ini|tanggal\s+[^\s]+(?:\s+[a-zA-Z]+)?)\s+(?:tutup|libur)\s+(?:selama\s+)?(\d+)\s*hari/i)
+      || rawCmd.match(/(?:tutup|libur)\s+(?:mulai\s+)?(besok|hari\s+ini|tanggal\s+[^\s]+(?:\s+[a-zA-Z]+)?)\s+(?:selama\s+)?(\d+)\s*hari/i)
+      || rawCmd.match(/(?:tutup|libur)\s+(?:selama\s+)?(\d+)\s*hari/i);
+    if (multiDayCloseMatch) {
+      const tz = tenant.timezone || 'Asia/Jakarta';
+      let tzOffsetStr = '+07:00';
+      if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+      else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
+
+      const durationDays = parseInt(multiDayCloseMatch[2], 10) || 1;
+      const datePart = (multiDayCloseMatch[1] || '').trim().toLowerCase();
+
+      let startDateStr = '';
+      if (datePart.includes('besok')) {
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        try {
+          startDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(tomorrow);
+        } catch (e) {
+          startDateStr = tomorrow.toISOString().slice(0, 10);
+        }
+      } else if (datePart.includes('hari ini') || !datePart) {
+        const today = new Date();
+        try {
+          startDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(today);
+        } catch (e) {
+          startDateStr = today.toISOString().slice(0, 10);
+        }
+      } else {
+        const cleanRaw = datePart.replace(/^tanggal\s+/i, '').trim();
+        startDateStr = this.parseIndoDate(cleanRaw, tz);
+      }
+
+      if (!startDateStr) {
+        return {
+          action: 'INVALID_DATE',
+          reply: `⚠️ Format tanggal tidak dikenali ("${multiDayCloseMatch[1]}").\nContoh: *BESOK TUTUP 3 HARI* atau *TANGGAL 15 OKTOBER TUTUP SELAMA 3 HARI*.`
+        };
+      }
+
+      const baseStart = new Date(`${startDateStr}T00:00:00${tzOffsetStr}`);
+      const datesToClose = [];
+      for (let i = 0; i < durationDays; i++) {
+        const d = new Date(baseStart.getTime() + i * 24 * 60 * 60 * 1000);
+        let dStr = '';
+        try {
+          dStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
+        } catch (e) {
+          dStr = d.toISOString().slice(0, 10);
+        }
+        datesToClose.push(dStr);
+      }
+
+      const cancelRes = this.cancelAppointmentsOnClosedDates(tenant, datesToClose);
+      const affectedCount = cancelRes.cancelledAppointments.length;
+      const affectedNotice = affectedCount > 0
+        ? `⚠️ *${affectedCount} jadwal pasien* yang sudah terdaftar pada rentang tanggal tersebut telah otomatis dibatalkan, dan sistem telah mengirimkan pesan pembatalan serta saran reservasi ulang (mulai H-2 sebelum buka) via WhatsApp ke masing-masing pasien.`
+        : `ℹ️ Tidak ada jadwal pasien yang terdampak pada rentang tanggal libur tersebut.`;
+
+      return {
+        action: 'CLOSE_DATE_RANGE',
+        start_date: startDateStr,
+        duration_days: durationDays,
+        closed_dates: datesToClose,
+        cancelled_appointments: cancelRes.cancelledAppointments,
+        notifications: cancelRes.notifications,
+        reply: [
+          `🛑 *PRAKTEK DITUTUP ${durationDays} HARI*`,
+          `----------------------------------------`,
+          `Praktek *${tenant.name}* ditandai libur/tutup mulai *${this.formatIndoDate(startDateStr, tz)}* selama *${durationDays} hari*.`,
+          ``,
+          `Daftar tanggal libur:`,
+          ...datesToClose.map(dt => `• *${this.formatIndoDate(dt, tz)}*`),
+          `----------------------------------------`,
+          affectedNotice,
+          ``,
+          `Pasien tidak akan dapat melakukan reservasi pada tanggal-tanggal tersebut.`,
+          `Ketik *BUKA TANGGAL [tanggal]* untuk mengaktifkan kembali tanggal tertentu.`
+        ].join('\n')
+      };
+    }
+
+    // 5A. Command: BESOK TUTUP / TUTUP BESOK / BESOK LIBUR / LIBUR BESOK (Single day)
+    if (/^\s*(?:BESOK\s+TUTUP|TUTUP\s+BESOK|BESOK\s+LIBUR|LIBUR\s+BESOK)\s*$/i.test(normalizedCmd)) {
       const tz = tenant.timezone || 'Asia/Jakarta';
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
       let tomorrowStr = '';
@@ -102,22 +184,25 @@ class DoctorCopilotEngine {
       } catch (e) {
         tomorrowStr = tomorrow.toISOString().slice(0, 10);
       }
-      tenant.closed_dates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates : [];
-      if (!tenant.closed_dates.includes(tomorrowStr)) {
-        tenant.closed_dates.push(tomorrowStr);
-      }
-      tenant.updated_at = new Date().toISOString();
-      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
-      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+      const cancelRes = this.cancelAppointmentsOnClosedDates(tenant, [tomorrowStr]);
+      const affectedCount = cancelRes.cancelledAppointments.length;
+      const affectedNotice = affectedCount > 0
+        ? `⚠️ *${affectedCount} jadwal pasien* untuk besok telah otomatis dibatalkan dan sistem telah mengirimkan notifikasi permohonan maaf serta saran reservasi ulang via WhatsApp ke masing-masing pasien.`
+        : `ℹ️ Tidak ada jadwal pasien terdaftar untuk besok.`;
 
       return {
         action: 'CLOSE_TOMORROW',
         date: tomorrowStr,
+        cancelled_appointments: cancelRes.cancelledAppointments,
+        notifications: cancelRes.notifications,
         reply: [
-          `🛑 *PRAKTEK TUTUP BESOK (${tomorrowStr})*`,
+          `🛑 *PRAKTEK TUTUP BESOK (${this.formatIndoDate(tomorrowStr, tz)})*`,
           `----------------------------------------`,
           `Praktek *${tenant.name}* telah ditandai libur/tutup untuk besok (${tomorrowStr}).`,
           `Pasien yang mencoba reservasi untuk besok akan otomatis diinformasikan bahwa praktek sedang libur dan diarahkan ke hari buka berikutnya.`,
+          `----------------------------------------`,
+          affectedNotice,
           ``,
           `Ketik *BESOK BUKA* untuk mengaktifkan kembali jadwal besok.`
         ].join('\n')
@@ -143,70 +228,9 @@ class DoctorCopilotEngine {
         action: 'OPEN_TOMORROW',
         date: tomorrowStr,
         reply: [
-          `🟢 *PRAKTEK BESOK DIBUKA KEMBALI (${tomorrowStr})*`,
+          `🟢 *PRAKTEK BESOK DIBUKA KEMBALI (${this.formatIndoDate(tomorrowStr, tz)})*`,
           `----------------------------------------`,
           `Jadwal reservasi untuk besok di *${tenant.name}* kini aktif kembali melayani pasien.`
-        ].join('\n')
-      };
-    }
-
-    // 5AA. Command: TANGGAL [xxx] TUTUP [SELAMA] [X] HARI / TUTUP TANGGAL [xxx] [SELAMA] [X] HARI
-    const multiDayCloseMatch = rawCmd.match(/(?:mulai\s+)?tanggal\s+([^\s]+(?:\s+[a-zA-Z]+)?)\s+tutup\s+(?:selama\s+)?(\d+)\s*hari/i)
-      || rawCmd.match(/tutup\s+(?:mulai\s+)?tanggal\s+([^\s]+(?:\s+[a-zA-Z]+)?)\s+(?:selama\s+)?(\d+)\s*hari/i);
-    if (multiDayCloseMatch) {
-      const tz = tenant.timezone || 'Asia/Jakarta';
-      const rawDate = multiDayCloseMatch[1].trim();
-      const durationDays = parseInt(multiDayCloseMatch[2], 10) || 1;
-      const startDateStr = this.parseIndoDate(rawDate, tz);
-
-      if (!startDateStr) {
-        return {
-          action: 'INVALID_DATE',
-          reply: `⚠️ Format tanggal tidak dikenali ("${rawDate}").\nContoh: *TANGGAL 15 OKTOBER TUTUP SELAMA 3 HARI* atau *TANGGAL 2026-10-15 TUTUP 3 HARI*.`
-        };
-      }
-
-      let tzOffsetStr = '+07:00';
-      if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
-      else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
-
-      const baseStart = new Date(`${startDateStr}T00:00:00${tzOffsetStr}`);
-      const datesToClose = [];
-      tenant.closed_dates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates : [];
-
-      for (let i = 0; i < durationDays; i++) {
-        const d = new Date(baseStart.getTime() + i * 24 * 60 * 60 * 1000);
-        let dStr = '';
-        try {
-          dStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
-        } catch (e) {
-          dStr = d.toISOString().slice(0, 10);
-        }
-        datesToClose.push(dStr);
-        if (!tenant.closed_dates.includes(dStr)) {
-          tenant.closed_dates.push(dStr);
-        }
-      }
-
-      tenant.updated_at = new Date().toISOString();
-      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
-      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
-
-      return {
-        action: 'CLOSE_DATE_RANGE',
-        start_date: startDateStr,
-        duration_days: durationDays,
-        closed_dates: datesToClose,
-        reply: [
-          `🛑 *PRAKTEK DITUTUP ${durationDays} HARI*`,
-          `----------------------------------------`,
-          `Praktek *${tenant.name}* ditandai libur/tutup mulai *${startDateStr}* selama *${durationDays} hari*.`,
-          ``,
-          `Daftar tanggal libur:`,
-          ...datesToClose.map(dt => `• *${dt}*`),
-          `----------------------------------------`,
-          `Pasien tidak akan dapat melakukan reservasi pada tanggal-tanggal tersebut.`,
-          `Ketik *BUKA TANGGAL [tanggal]* untuk mengaktifkan kembali tanggal tertentu.`
         ].join('\n')
       };
     }
@@ -224,21 +248,24 @@ class DoctorCopilotEngine {
           reply: `⚠️ Format tanggal tidak dikenali ("${rawDate}").\nContoh: *TANGGAL 15 OKTOBER TUTUP* atau *TANGGAL 2026-10-15 TUTUP*.`
         };
       }
-      tenant.closed_dates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates : [];
-      if (!tenant.closed_dates.includes(targetDateStr)) {
-        tenant.closed_dates.push(targetDateStr);
-      }
-      tenant.updated_at = new Date().toISOString();
-      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
-      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+      const cancelRes = this.cancelAppointmentsOnClosedDates(tenant, [targetDateStr]);
+      const affectedCount = cancelRes.cancelledAppointments.length;
+      const affectedNotice = affectedCount > 0
+        ? `⚠️ *${affectedCount} jadwal pasien* pada tanggal tersebut telah otomatis dibatalkan dan dinotifikasi via WhatsApp.`
+        : `ℹ️ Tidak ada jadwal pasien pada tanggal tersebut.`;
 
       return {
         action: 'CLOSE_DATE',
         date: targetDateStr,
+        cancelled_appointments: cancelRes.cancelledAppointments,
+        notifications: cancelRes.notifications,
         reply: [
-          `🛑 *PRAKTEK TUTUP PADA TANGGAL ${targetDateStr}*`,
+          `🛑 *PRAKTEK TUTUP PADA TANGGAL ${this.formatIndoDate(targetDateStr, tz)}*`,
           `----------------------------------------`,
           `Praktek *${tenant.name}* telah ditandai libur/tutup untuk tanggal *${targetDateStr}*.`,
+          `----------------------------------------`,
+          affectedNotice,
+          ``,
           `Ketik *BUKA TANGGAL ${targetDateStr}* untuk mengaktifkan kembali jadwal tanggal tersebut.`
         ].join('\n')
       };
@@ -266,7 +293,7 @@ class DoctorCopilotEngine {
         action: 'OPEN_DATE',
         date: targetDateStr,
         reply: [
-          `🟢 *PRAKTEK DIBUKA PADA TANGGAL ${targetDateStr}*`,
+          `🟢 *PRAKTEK DIBUKA PADA TANGGAL ${this.formatIndoDate(targetDateStr, tz)}*`,
           `----------------------------------------`,
           `Jadwal reservasi untuk tanggal *${targetDateStr}* di *${tenant.name}* kini telah dibuka kembali.`
         ].join('\n')
@@ -621,6 +648,172 @@ class DoctorCopilotEngine {
       remaining_count: remaining,
       reply: `✅ Pasien *${completedPatient.customer_name}* selesai diperiksa.\n\nSisa antrean hari ini: *${remaining} pasien*.\nKetik *NEXT* untuk memanggil antrean berikutnya.`,
       notifications
+    };
+  }
+
+  formatIndoDateTime(isoStr, tz = 'Asia/Jakarta') {
+    const d = new Date(isoStr);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+    let tzAbbr = 'WIB';
+    if (tz === 'Asia/Makassar') tzAbbr = 'WITA';
+    else if (tz === 'Asia/Jayapura') tzAbbr = 'WIT';
+
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: tz,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).formatToParts(d);
+
+      const getPart = (type) => parts.find(p => p.type === type)?.value || '';
+      const dayVal = parseInt(getPart('day'), 10);
+      const monthVal = parseInt(getPart('month'), 10) - 1;
+      const yearVal = getPart('year');
+      const hours = getPart('hour');
+      const mins = getPart('minute');
+
+      const dayOfWeek = new Intl.DateTimeFormat('id-ID', { timeZone: tz, weekday: 'long' }).format(d);
+      const monthName = months[monthVal] || '';
+
+      return `${dayOfWeek}, ${dayVal} ${monthName} ${yearVal} pukul ${hours}:${mins} ${tzAbbr}`;
+    } catch (e) {
+      return d.toLocaleString('id-ID', { timeZone: tz });
+    }
+  }
+
+  formatIndoDate(dateStr, tz = 'Asia/Jakarta') {
+    if (!dateStr) return '';
+    try {
+      let tzOffsetStr = '+07:00';
+      if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+      else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
+      const d = new Date(`${dateStr}T12:00:00${tzOffsetStr}`);
+      const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+      const dayName = days[d.getDay()];
+      const dayNum = d.getDate();
+      const monthName = months[d.getMonth()];
+      const year = d.getFullYear();
+      return `${dayName}, ${dayNum} ${monthName} ${year}`;
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
+  cancelAppointmentsOnClosedDates(tenant, datesToClose) {
+    const tz = tenant.timezone || 'Asia/Jakarta';
+    tenant.closed_dates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates : [];
+    for (const d of datesToClose) {
+      if (!tenant.closed_dates.includes(d)) {
+        tenant.closed_dates.push(d);
+      }
+    }
+
+    // Determine reopening date: first date after max(datesToClose) not in tenant.closed_dates
+    const sortedDates = [...datesToClose].sort();
+    const lastClosed = sortedDates[sortedDates.length - 1];
+    let tzOffsetStr = '+07:00';
+    if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+    else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
+
+    const lastClosedObj = new Date(`${lastClosed}T12:00:00${tzOffsetStr}`);
+    let reopenDateStr = '';
+    for (let day = 1; day <= 30; day++) {
+      const nextDate = new Date(lastClosedObj.getTime() + day * 24 * 60 * 60 * 1000);
+      let nextStr = '';
+      try {
+        nextStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(nextDate);
+      } catch (e) {
+        nextStr = nextDate.toISOString().slice(0, 10);
+      }
+      if (!tenant.closed_dates.includes(nextStr)) {
+        reopenDateStr = nextStr;
+        break;
+      }
+    }
+
+    let hMinus2DateStr = '';
+    if (reopenDateStr) {
+      const reopenObj = new Date(`${reopenDateStr}T12:00:00${tzOffsetStr}`);
+      const h2Obj = new Date(reopenObj.getTime() - 2 * 24 * 60 * 60 * 1000);
+      try {
+        hMinus2DateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(h2Obj);
+      } catch (e) {
+        hMinus2DateStr = h2Obj.toISOString().slice(0, 10);
+      }
+    }
+
+    const cancelledAppointments = [];
+    const notifications = [];
+
+    for (const appt of this.db.appointments.values()) {
+      if (appt.tenant_id !== tenant.id && appt.tenant_id !== tenant.slug) continue;
+      if (!['CONFIRMED', 'SCHEDULED'].includes(appt.status)) continue;
+
+      let apptDateStr = '';
+      try {
+        apptDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(appt.start_time));
+      } catch (e) {
+        apptDateStr = appt.start_time.slice(0, 10);
+      }
+
+      if (datesToClose.includes(apptDateStr)) {
+        appt.status = 'CANCELLED';
+        appt.cancelled_at = new Date().toISOString();
+        appt.cancelled_by = 'DOCTOR_CLOSURE';
+        appt.cancellation_reason = 'Praktek dokter tutup/libur mendadak';
+        appt.updated_at = new Date().toISOString();
+
+        if (this.db && typeof this.db.pgUpsertAppointment === 'function') {
+          this.db.pgUpsertAppointment(appt).catch(() => {});
+        }
+        cancelledAppointments.push(appt);
+
+        const reopenFormatted = reopenDateStr ? this.formatIndoDate(reopenDateStr, tz) : 'segera';
+        const h2Formatted = hMinus2DateStr ? this.formatIndoDate(hMinus2DateStr, tz) : 'H-2 sebelum buka';
+
+        const notifMsg = [
+          `📢 *PEMBERITAHUAN PEMBATALAN JADWAL*`,
+          `----------------------------------------`,
+          `Yth. Bapak/Ibu *${appt.customer_name}*,`,
+          ``,
+          `Mohon maaf yang sebesar-besarnya, jadwal reservasi Anda di *${tenant.name}* pada:`,
+          `⏰ *${this.formatIndoDateTime(appt.start_time, tz)}*`,
+          `terpaksa *DIBATALKAN* dikarenakan dokter berhalangan / praktek tutup sementara.`,
+          ``,
+          `🗓️ *Praktek Buka Kembali:*`,
+          `*${reopenFormatted}*`,
+          ``,
+          `💡 *Saran Reservasi Ulang:*`,
+          `Sesuai ketentuan, reservasi dibuka maksimal H+2. Silakan melakukan reservasi kembali mulai tanggal *${h2Formatted}* (H-2 sebelum praktek buka kembali).`,
+          `----------------------------------------`,
+          `Terima kasih atas pengertian dan kerjasamanya.`
+        ].join('\n');
+
+        notifications.push({
+          type: 'DOCTOR_CLOSURE_CANCEL',
+          phone: appt.customer_phone,
+          customer_name: appt.customer_name,
+          appointment_id: appt.id,
+          message: notifMsg
+        });
+      }
+    }
+
+    tenant.updated_at = new Date().toISOString();
+    if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
+    if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+    return {
+      cancelledAppointments,
+      notifications,
+      reopenDateStr,
+      hMinus2DateStr
     };
   }
 

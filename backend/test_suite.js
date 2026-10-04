@@ -972,6 +972,98 @@ async function runTestSuite() {
     });
     assert(reopenDateRes && reopenDateRes.action === 'OPEN_DATE' && !testTenant.closed_dates.includes('2026-10-15'), 'Doctor command "buka tanggal 15 Oktober" reopened date');
 
+    // --- VALIDATION OF 4 NEW ISSUES (OCTOBER BATCH 2) ---
+    const srv1 = app.db.getServicesByTenant(testTenant.id)[0];
+
+    // Issue 1: Patient rescheduling onto closed date is rejected
+    testTenant.closed_dates = [tomorrowDateStr];
+    const lusaObj = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const lusaStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(lusaObj);
+    const lusaStart = `${lusaStr}T10:00:00+07:00`;
+    const lusaEnd = `${lusaStr}T10:40:00+07:00`;
+    const patientLusaAppt = app.db.createAppointment({
+      tenant_id: testTenant.id,
+      service_id: srv1.id,
+      customer_name: 'Pasien Lusa',
+      customer_phone: '6287711223344',
+      start_time: lusaStart,
+      end_time: lusaEnd,
+      status: 'CONFIRMED'
+    });
+
+    const reschedBlocked = await app.ingressRouter.routeMessage({
+      from: '6287711223344@s.whatsapp.net',
+      text: `reschedule to besok jam 10:00`,
+      tenant_slug: testTenant.slug
+    });
+    assert(reschedBlocked && reschedBlocked.message.includes('MOHON MAAF, PRAKTEK LIBUR'), 'Patient reschedule to closed tomorrow date was blocked with PRAKTEK LIBUR notice');
+    assert(patientLusaAppt.status === 'CONFIRMED' && new Date(patientLusaAppt.start_time).getTime() === new Date(lusaStart).getTime(), 'Original appointment kept unchanged on lusa');
+
+    // Issue 2: Patient checking "STATUS" receives their own reservation status
+    const statusPatientRes = await app.ingressRouter.routeMessage({
+      from: '6287711223344@s.whatsapp.net',
+      text: 'STATUS',
+      tenant_slug: testTenant.slug
+    });
+    assert(statusPatientRes && statusPatientRes.message.includes('STATUS RESERVASI ANDA') && statusPatientRes.message.includes('Pasien Lusa'), 'Patient sending STATUS receives own active booking status');
+
+    const statusNoApptRes = await app.ingressRouter.routeMessage({
+      from: '6289999999999@s.whatsapp.net',
+      text: 'STATUS',
+      tenant_slug: testTenant.slug
+    });
+    assert(statusNoApptRes && statusNoApptRes.message.includes('TIDAK ADA RESERVASI AKTIF'), 'Patient with no booking receives TIDAK ADA RESERVASI AKTIF notice instead of new booking offer');
+
+    // Issue 3: Doctor command "besok tutup 3 hari" and patient booking during 3-day closure
+    const close3DaysRes = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: 'besok tutup 3 hari',
+      doctorPhone: testDocPhone
+    });
+    assert(close3DaysRes && close3DaysRes.action === 'CLOSE_DATE_RANGE' && close3DaysRes.closed_dates.length === 3, 'Doctor command "besok tutup 3 hari" closed 3 consecutive days');
+    
+    // When patient tries to book during complete closure across H+2
+    const bookingDuringClosure = await app.ingressRouter.routeMessage({
+      from: '6285556667778@s.whatsapp.net',
+      text: 'Andi 1',
+      tenant_slug: testTenant.slug
+    });
+    assert(bookingDuringClosure && bookingDuringClosure.message.includes('PRAKTEK SEDANG LIBUR') && bookingDuringClosure.message.includes('H-2 sebelum praktek buka'), 'Patient booking when clinic closed across H+2 gets advice to book again minimum H-2 before reopening');
+
+    // Issue 4: Sudden closure cancels existing confirmed bookings and creates notifications
+    // Create an active appointment on a target date
+    const targetSuddenDate = '2026-11-20';
+    const suddenAppt1 = app.db.createAppointment({
+      tenant_id: testTenant.id,
+      service_id: srv1.id,
+      customer_name: 'Budi Terdampak',
+      customer_phone: '6281234567890',
+      start_time: `${targetSuddenDate}T09:00:00+07:00`,
+      end_time: `${targetSuddenDate}T09:30:00+07:00`,
+      status: 'CONFIRMED'
+    });
+    const suddenAppt2 = app.db.createAppointment({
+      tenant_id: testTenant.id,
+      service_id: srv1.id,
+      customer_name: 'Siti Terdampak',
+      customer_phone: '6281298765432',
+      start_time: `${targetSuddenDate}T10:00:00+07:00`,
+      end_time: `${targetSuddenDate}T10:30:00+07:00`,
+      status: 'CONFIRMED'
+    });
+
+    const suddenCloseRes = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: `tanggal ${targetSuddenDate} tutup`,
+      doctorPhone: testDocPhone
+    });
+    assert(suddenCloseRes && suddenCloseRes.action === 'CLOSE_DATE', 'Doctor closed sudden date');
+    assert(suddenAppt1.status === 'CANCELLED' && suddenAppt1.cancelled_by === 'DOCTOR_CLOSURE', 'Sudden closure automatically cancelled affected appointment 1');
+    assert(suddenAppt2.status === 'CANCELLED' && suddenAppt2.cancelled_by === 'DOCTOR_CLOSURE', 'Sudden closure automatically cancelled affected appointment 2');
+    assert(Array.isArray(suddenCloseRes.notifications) && suddenCloseRes.notifications.length === 2, 'Cancellation notifications created for both affected patients');
+    assert(suddenCloseRes.notifications[0].message.includes('DIBATALKAN') && suddenCloseRes.notifications[0].message.includes('H-2 sebelum praktek buka'), 'Patient notification contains cancellation and H-2 re-booking advice');
+    assert(suddenCloseRes.reply.includes('2 jadwal pasien'), 'Doctor reply reports affected patients cancelled and notified');
+
     await app.close();
     assert(true, 'HTTP REST server gracefully closed');
   }

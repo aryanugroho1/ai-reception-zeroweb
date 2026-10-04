@@ -17,7 +17,7 @@ class RescheduleService {
    * @param {string} [params.customerPhone] Optional verification
    * @returns {Object} { success: boolean, originalAppointment, newAppointment }
    */
-  async rescheduleAppointment({ tenantId, appointmentId, newStartTime, customerPhone }) {
+  async rescheduleAppointment({ tenantId, appointmentId, newStartTime, customerPhone, enforceHorizonLimit = false }) {
     const tenant = this.db.tenants.get(tenantId);
     if (!tenant) {
       const err = new Error(`Tenant ${tenantId} not found`);
@@ -97,6 +97,44 @@ class RescheduleService {
       err.statusCode = 400;
       err.code = 'INVALID_TARGET_TIME';
       throw err;
+    }
+
+    // 3B. Closed dates check: cannot reschedule to a date when the clinic is closed
+    const tz = tenant.timezone || 'Asia/Jakarta';
+    let targetDateStr = '';
+    try {
+      targetDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(targetStart);
+    } catch (e) {
+      targetDateStr = targetStart.toISOString().slice(0, 10);
+    }
+
+    if (Array.isArray(tenant.closed_dates) && tenant.closed_dates.includes(targetDateStr)) {
+      const err = new Error(`Praktek tutup/libur pada tanggal ${targetDateStr}. Silakan pilih tanggal lain saat klinik buka kembali.`);
+      err.statusCode = 400;
+      err.code = 'CLINIC_CLOSED_ON_DATE';
+      throw err;
+    }
+
+    // 3C. Booking horizon check if requested or configured
+    const maxHorizonDays = tenant.booking_horizon_days !== undefined ? tenant.booking_horizon_days : (enforceHorizonLimit ? 2 : null);
+    if (maxHorizonDays !== null && maxHorizonDays !== undefined) {
+      let tzOffsetStr = '+07:00';
+      if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+      else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
+      const maxHorizonObj = new Date(now.getTime() + maxHorizonDays * 24 * 60 * 60 * 1000);
+      let maxHorizonDateStr = '';
+      try {
+        maxHorizonDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(maxHorizonObj);
+      } catch (e) {
+        maxHorizonDateStr = maxHorizonObj.toISOString().slice(0, 10);
+      }
+      const maxHorizonCutoff = new Date(`${maxHorizonDateStr}T23:59:59${tzOffsetStr}`);
+      if (targetStart.getTime() > maxHorizonCutoff.getTime()) {
+        const err = new Error(`Perubahan jadwal maksimal hingga H+${maxHorizonDays} (sampai ${maxHorizonDateStr}).`);
+        err.statusCode = 400;
+        err.code = 'RESCHEDULE_HORIZON_EXCEEDED';
+        throw err;
+      }
     }
 
     const targetEnd = new Date(targetStart.getTime() + duration * 60 * 1000);

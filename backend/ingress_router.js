@@ -288,6 +288,82 @@ class IngressRouter {
         };
       }
 
+      // If param specifies target time directly, e.g. "reschedule to besok jam 14:00" or "reschedule besok jam 10"
+      const cleanParamDate = param.replace(/^(?:ke|to)\s+/i, '').trim();
+      const directParsedTime = this.parseDateString(cleanParamDate, targetTenant.timezone || 'Asia/Jakarta');
+      if (directParsedTime) {
+        try {
+          const reschedResult = await this.rescheduleService.rescheduleAppointment({
+            tenantId: targetTenant.id,
+            appointmentId: targetAppt.id,
+            newStartTime: directParsedTime,
+            customerPhone: cleanPhone,
+            enforceHorizonLimit: true
+          });
+          const updatedAppt = reschedResult.new_appointment || reschedResult.newAppointment;
+          this.db.saveSession(cleanPhone, { step: null, target_reschedule_id: null });
+          return {
+            recipient_type: 'PATIENT',
+            tenant: targetTenant,
+            response_type: 'CONFIRMATION',
+            message: [
+              `✅ *JADWAL BERHASIL DIUBAH!*`,
+              `----------------------------------------`,
+              `🏥 *Klinik:* ${targetTenant.name}`,
+              `⏰ *Waktu Baru:* ${this.formatIndoDateTime(updatedAppt.start_time, targetTenant.timezone)}`,
+              `📌 *Kode Booking:* #${updatedAppt.id.slice(-8).toUpperCase()}`,
+              `----------------------------------------`,
+              `Terima kasih! Sampai jumpa di jadwal yang baru.`
+            ].join('\n')
+          };
+        } catch (reschedErr) {
+          if (reschedErr.code === 'CLINIC_CLOSED_ON_DATE') {
+            this.db.saveSession(cleanPhone, {
+              tenant_id: targetTenant.id,
+              step: 'AWAITING_RESCHEDULE_TIME',
+              target_reschedule_id: targetAppt.id,
+              last_activity: new Date().toISOString()
+            });
+            return {
+              recipient_type: 'PATIENT',
+              tenant: targetTenant,
+              response_type: 'TEXT',
+              message: [
+                `🛑 *MOHON MAAF, PRAKTEK LIBUR*`,
+                `----------------------------------------`,
+                `Praktek *${targetTenant.name}* sedang tutup/libur pada tanggal tersebut.`,
+                `Silakan balas dengan tanggal lain saat klinik buka kembali (contoh: *Lusa jam 10:00*), atau ketik *BATAL*.`
+              ].join('\n')
+            };
+          }
+          if (reschedErr.code === 'RESCHEDULE_HORIZON_EXCEEDED') {
+            this.db.saveSession(cleanPhone, {
+              tenant_id: targetTenant.id,
+              step: 'AWAITING_RESCHEDULE_TIME',
+              target_reschedule_id: targetAppt.id,
+              last_activity: new Date().toISOString()
+            });
+            return {
+              recipient_type: 'PATIENT',
+              tenant: targetTenant,
+              response_type: 'TEXT',
+              message: [
+                `⚠️ *BATAS PERUBAHAN JADWAL H+2*`,
+                `----------------------------------------`,
+                `Perubahan jadwal hanya dapat dilakukan maksimal hingga *H+2 (Hari ini, Besok, atau Lusa)*.`,
+                `Silakan ketik waktu yang sesuai dalam rentang H+2, atau ketik *BATAL*.`
+              ].join('\n')
+            };
+          }
+          return {
+            recipient_type: 'PATIENT',
+            tenant: targetTenant,
+            response_type: 'TEXT',
+            message: `⚠️ Gagal mengubah jadwal: ${reschedErr.message}. Silakan coba waktu lain atau ketik BATAL.`
+          };
+        }
+      }
+
       this.db.saveSession(cleanPhone, {
         tenant_id: targetTenant.id,
         step: 'AWAITING_RESCHEDULE_TIME',
@@ -388,19 +464,106 @@ class IngressRouter {
       };
     }
 
+    // Check Patient Status intent: STATUS, JADWAL, ANTREAN, CEK STATUS, etc.
+    const isPatientStatusCmd = /^(?:STATUS|CEK\s+STATUS|STATUS\s+SAYA|STATUS\s+RESERVASI|STATUS\s+ANTRIAN|STATUS\s+ANTREAN|JADWAL|JADWAL\s+SAYA|CEK\s+JADWAL|ANTRIAN|ANTREAN|ANTRIAN\s+SAYA|ANTREAN\s+SAYA|NOMOR\s+ANTRIAN|NOMOR\s+ANTREAN)(?:\s+.*)?$/i.test(cleanText);
+    if (isPatientStatusCmd) {
+      const normSender = this.normalizePhone(cleanPhone);
+      // Find active appointment for this patient
+      const activeAppt = Array.from(this.db.appointments.values()).find(a => {
+        if (a.tenant_id !== targetTenant.id) return false;
+        if (!['CONFIRMED', 'SCHEDULED', 'IN_CONSULTATION'].includes(a.status)) return false;
+        const normCustomer = this.normalizePhone(a.customer_phone);
+        return normCustomer === normSender || a.customer_phone === cleanPhone;
+      });
+
+      if (activeAppt) {
+        const svc = activeAppt.service_id ? this.db.services.get(activeAppt.service_id) : null;
+        const tz = targetTenant.timezone || 'Asia/Jakarta';
+
+        // Calculate queue position for that day
+        const apptDateStr = new Date(activeAppt.start_time).toISOString().slice(0, 10);
+        const dayQueue = Array.from(this.db.appointments.values())
+          .filter(a => a.tenant_id === targetTenant.id && ['CONFIRMED', 'SCHEDULED', 'IN_CONSULTATION'].includes(a.status) && a.start_time.startsWith(apptDateStr))
+          .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        const queueIdx = dayQueue.findIndex(a => a.id === activeAppt.id);
+        const queueNum = queueIdx >= 0 ? queueIdx + 1 : 1;
+
+        let statusDesc = '⏳ Menunggu Antrean';
+        if (activeAppt.status === 'IN_CONSULTATION') {
+          statusDesc = '🩺 Sedang Berkonsultasi (Di Ruang Periksa)';
+        }
+
+        return {
+          recipient_type: 'PATIENT',
+          tenant: targetTenant,
+          response_type: 'TEXT',
+          appointment: activeAppt,
+          message: [
+            `📋 *STATUS RESERVASI ANDA*`,
+            `----------------------------------------`,
+            `🏥 Klinik: *${targetTenant.name}*`,
+            `👤 Pasien: *${activeAppt.customer_name}*`,
+            `🩺 Layanan: *${svc ? svc.name : 'Pemeriksaan Medis'}*`,
+            `⏰ Waktu: *${this.formatIndoDateTime(activeAppt.start_time, tz)}*`,
+            `🔢 No. Antrean: *#${queueNum}* (Kode: \`#${activeAppt.id.slice(-8).toUpperCase()}\`)`,
+            `📌 Status: *${statusDesc}*`,
+            `----------------------------------------`,
+            `💡 *Informasi:*`,
+            `• Harap hadir 10 menit sebelum waktu reservasi.`,
+            `• Untuk ubah waktu: ketik *RESCHEDULE*`,
+            `• Untuk membatalkan: ketik *BATAL*`
+          ].join('\n')
+        };
+      }
+
+      // Check if patient recently cancelled
+      const lastCancelled = Array.from(this.db.appointments.values())
+        .filter(a => a.tenant_id === targetTenant.id && a.status === 'CANCELLED' && (this.normalizePhone(a.customer_phone) === normSender || a.customer_phone === cleanPhone))
+        .sort((a, b) => new Date(b.cancelled_at || b.updated_at) - new Date(a.cancelled_at || a.updated_at))[0];
+
+      if (lastCancelled) {
+        return {
+          recipient_type: 'PATIENT',
+          tenant: targetTenant,
+          response_type: 'TEXT',
+          message: [
+            `ℹ️ *TIDAK ADA RESERVASI AKTIF*`,
+            `----------------------------------------`,
+            `Reservasi terakhir Anda atas nama *${lastCancelled.customer_name}* telah *DIBATALKAN*.`,
+            ``,
+            `Untuk membuat reservasi baru, silakan ketik *Nama Lengkap <spasi> Nomor Layanan* (contoh: *Budi 1*) atau kirim pesan *MENU* untuk melihat daftar layanan.`
+          ].join('\n')
+        };
+      }
+
+      return {
+        recipient_type: 'PATIENT',
+        tenant: targetTenant,
+        response_type: 'TEXT',
+        message: [
+          `ℹ️ *TIDAK ADA RESERVASI AKTIF*`,
+          `----------------------------------------`,
+          `Anda belum memiliki jadwal reservasi aktif di *${targetTenant.name}*.`,
+          ``,
+          `Untuk membuat reservasi baru, silakan ketik *Nama Lengkap <spasi> Nomor Layanan* (contoh: *Budi 1*) atau kirim pesan *MENU* untuk melihat daftar layanan.`
+        ].join('\n')
+      };
+    }
+
     const services = this.db.getServicesByTenant(targetTenant.id);
     const existingSession = this.db.getSession(cleanPhone) || {};
 
     // Handle in-progress Reschedule
     if (existingSession.step === 'AWAITING_RESCHEDULE_TIME' && existingSession.target_reschedule_id) {
-      const parsedTime = this.parseDateString(cleanText);
+      const parsedTime = this.parseDateString(cleanText, targetTenant.timezone || 'Asia/Jakarta');
       if (parsedTime) {
         try {
           const reschedResult = await this.rescheduleService.rescheduleAppointment({
             tenantId: targetTenant.id,
             appointmentId: existingSession.target_reschedule_id,
             newStartTime: parsedTime,
-            customerPhone: cleanPhone
+            customerPhone: cleanPhone,
+            enforceHorizonLimit: true
           });
           const updatedAppt = reschedResult.new_appointment || reschedResult.newAppointment;
           this.db.saveSession(cleanPhone, { ...existingSession, step: null, target_reschedule_id: null });
@@ -412,13 +575,39 @@ class IngressRouter {
               `✅ *JADWAL BERHASIL DIUBAH!*`,
               `----------------------------------------`,
               `🏥 *Klinik:* ${targetTenant.name}`,
-              `⏰ *Waktu Baru:* ${this.formatIndoDateTime(updatedAppt.start_time)}`,
+              `⏰ *Waktu Baru:* ${this.formatIndoDateTime(updatedAppt.start_time, targetTenant.timezone)}`,
               `📌 *Kode Booking:* #${updatedAppt.id.slice(-8).toUpperCase()}`,
               `----------------------------------------`,
               `Terima kasih! Sampai jumpa di jadwal yang baru.`
             ].join('\n')
           };
         } catch (reschedErr) {
+          if (reschedErr.code === 'CLINIC_CLOSED_ON_DATE') {
+            return {
+              recipient_type: 'PATIENT',
+              tenant: targetTenant,
+              response_type: 'TEXT',
+              message: [
+                `🛑 *MOHON MAAF, PRAKTEK LIBUR*`,
+                `----------------------------------------`,
+                `Praktek *${targetTenant.name}* sedang tutup/libur pada tanggal tersebut.`,
+                `Silakan balas dengan tanggal lain saat klinik buka kembali (contoh: *Lusa jam 10:00*), atau ketik *BATAL*.`
+              ].join('\n')
+            };
+          }
+          if (reschedErr.code === 'RESCHEDULE_HORIZON_EXCEEDED') {
+            return {
+              recipient_type: 'PATIENT',
+              tenant: targetTenant,
+              response_type: 'TEXT',
+              message: [
+                `⚠️ *BATAS PERUBAHAN JADWAL H+2*`,
+                `----------------------------------------`,
+                `Perubahan jadwal hanya dapat dilakukan maksimal hingga *H+2 (Hari ini, Besok, atau Lusa)*.`,
+                `Silakan ketik waktu yang sesuai dalam rentang H+2, atau ketik *BATAL*.`
+              ].join('\n')
+            };
+          }
           return {
             recipient_type: 'PATIENT',
             tenant: targetTenant,
@@ -426,6 +615,13 @@ class IngressRouter {
             message: `⚠️ Gagal mengubah jadwal: ${reschedErr.message}. Silakan coba jam lain atau ketik BATAL.`
           };
         }
+      } else {
+        return {
+          recipient_type: 'PATIENT',
+          tenant: targetTenant,
+          response_type: 'TEXT',
+          message: `⚠️ Format waktu tidak dikenali. Silakan ketik waktu baru yang Anda inginkan (contoh: *Besok jam 14:00*, *Lusa jam 10:00*), atau ketik *BATAL*.`
+        };
       }
     }
 
@@ -618,6 +814,9 @@ class IngressRouter {
 
         if (prefDate.getTime() > maxH2Cutoff.getTime()) {
           const nextSlot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes);
+          if (!nextSlot) {
+            return this.buildClinicClosedOrFullResponse(targetTenant, selectedService);
+          }
           this.db.saveSession(cleanPhone, {
             ...existingSession,
             step: 'AWAITING_SLOT_CONFIRMATION',
@@ -646,6 +845,9 @@ class IngressRouter {
         // Check if preferred date is closed
         if (closedDates.includes(prefDateStr)) {
           const nextSlot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes);
+          if (!nextSlot) {
+            return this.buildClinicClosedOrFullResponse(targetTenant, selectedService);
+          }
           this.db.saveSession(cleanPhone, {
             ...existingSession,
             step: 'AWAITING_SLOT_CONFIRMATION',
@@ -692,6 +894,9 @@ class IngressRouter {
 
         if (isBeforeOpen || isAfterClose) {
           const nextSlot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes, preferredTime);
+          if (!nextSlot) {
+            return this.buildClinicClosedOrFullResponse(targetTenant, selectedService);
+          }
           this.db.saveSession(cleanPhone, {
             ...existingSession,
             step: 'AWAITING_SLOT_CONFIRMATION',
@@ -722,6 +927,9 @@ class IngressRouter {
         const overlap = this.db.checkSlotOverlap(targetTenant.id, prefDate.toISOString(), testEnd);
         if (overlap) {
           const nextSlot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes, preferredTime);
+          if (!nextSlot) {
+            return this.buildClinicClosedOrFullResponse(targetTenant, selectedService);
+          }
           this.db.saveSession(cleanPhone, {
             ...existingSession,
             step: 'AWAITING_SLOT_CONFIRMATION',
@@ -753,6 +961,9 @@ class IngressRouter {
         };
       } else {
         slot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes);
+        if (!slot) {
+          return this.buildClinicClosedOrFullResponse(targetTenant, selectedService);
+        }
       }
 
       // 3. Create appointment in database
@@ -877,19 +1088,7 @@ class IngressRouter {
       }
     }
 
-    const fallbackDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    let fallbackDateStr = '';
-    try {
-      fallbackDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(fallbackDate);
-    } catch (e) {
-      fallbackDateStr = fallbackDate.toISOString().slice(0, 10);
-    }
-    const fallbackIso = `${fallbackDateStr}T${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}:00${tzOffsetStr}`;
-    const fallbackStart = new Date(fallbackIso);
-    return {
-      startTime: fallbackStart.toISOString(),
-      endTime: new Date(fallbackStart.getTime() + durationMinutes * 60 * 1000).toISOString()
-    };
+    return null;
   }
 
   // --- HELPER: FORMAT INDONESIAN DATETIME ---
@@ -926,6 +1125,86 @@ class IngressRouter {
     } catch (e) {
       return d.toLocaleString('id-ID', { timeZone: tz });
     }
+  }
+
+  // --- HELPER: FORMAT INDONESIAN DATE ---
+  formatIndoDate(dateStr, tz = 'Asia/Jakarta') {
+    if (!dateStr) return '';
+    try {
+      let tzOffsetStr = '+07:00';
+      if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+      else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
+      const d = new Date(`${dateStr}T12:00:00${tzOffsetStr}`);
+      const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+      const dayName = days[d.getDay()];
+      const dayNum = d.getDate();
+      const monthName = months[d.getMonth()];
+      const year = d.getFullYear();
+      return `${dayName}, ${dayNum} ${monthName} ${year}`;
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
+  buildClinicClosedOrFullResponse(tenant, service = null) {
+    const tz = tenant.timezone || 'Asia/Jakarta';
+    const closedDates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates : [];
+    const now = new Date();
+
+    let tzOffsetStr = '+07:00';
+    if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+    else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
+
+    let reopenDateStr = '';
+    for (let day = 1; day <= 30; day++) {
+      const d = new Date(now.getTime() + day * 24 * 60 * 60 * 1000);
+      let dStr = '';
+      try {
+        dStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
+      } catch (e) {
+        dStr = d.toISOString().slice(0, 10);
+      }
+      if (!closedDates.includes(dStr)) {
+        reopenDateStr = dStr;
+        break;
+      }
+    }
+
+    let hMinus2Str = '';
+    if (reopenDateStr) {
+      const reopenObj = new Date(`${reopenDateStr}T12:00:00${tzOffsetStr}`);
+      const h2Obj = new Date(reopenObj.getTime() - 2 * 24 * 60 * 60 * 1000);
+      try {
+        hMinus2Str = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(h2Obj);
+      } catch (e) {
+        hMinus2Str = h2Obj.toISOString().slice(0, 10);
+      }
+    }
+
+    const reopenFormatted = reopenDateStr ? this.formatIndoDate(reopenDateStr, tz) : 'beberapa hari ke depan';
+    const hMinus2Formatted = hMinus2Str ? this.formatIndoDate(hMinus2Str, tz) : 'H-2 sebelum buka';
+
+    return {
+      recipient_type: 'PATIENT',
+      tenant,
+      response_type: 'TEXT',
+      message: [
+        `🛑 *MOHON MAAF, PRAKTEK SEDANG LIBUR*`,
+        `----------------------------------------`,
+        `Praktek *${tenant.name}* saat ini sedang tutup/libur untuk beberapa hari ke depan.`,
+        ``,
+        `🗓️ *Praktek Dijadwalkan Buka Kembali:*`,
+        `*${reopenFormatted}*`,
+        ``,
+        `💡 *Ketentuan Reservasi:*`,
+        `Sistem reservasi dibuka maksimal hingga *H+2*.`,
+        `Mohon melakukan reservasi kembali minimal pada tanggal:`,
+        `👉 *${hMinus2Formatted}* (H-2 sebelum praktek buka).`,
+        `----------------------------------------`,
+        `Terima kasih atas pengertian dan kerjasamanya.`
+      ].join('\n')
+    };
   }
 
   // --- HELPER: PARSE USER INPUT DATE STRING ---
