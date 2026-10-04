@@ -417,8 +417,51 @@ class DatabaseEngine {
     if (!phone) return '';
     const str = phone.toString().split('@')[0].split(':')[0];
     let clean = str.replace(/\D/g, '');
-    if (clean.startsWith('0')) clean = '62' + clean.slice(1);
-    else if (clean.startsWith('8')) clean = '62' + clean;
+    if (!clean) return '';
+
+    // Auto-repair accidentally double-prefixed Japanese numbers (62 + 8170/8180/8190 xxxxxxxx)
+    if (/^62(81[789]0\d{7,8})$/.test(clean)) {
+      return clean.slice(2);
+    }
+
+    // If starts with 081 followed by 70/80/90, it is Japanese international entered with leading 0 (0 + 8170...)
+    if (/^0(81[789]0\d{7,8})$/.test(clean)) {
+      return clean.slice(1);
+    }
+
+    // Japanese mobile numbers (+81 70/80/90 xxxx xxxx, 12 digits)
+    if (/^81[789]0\d{7,8}$/.test(clean)) {
+      return clean;
+    }
+
+    // Other Japanese phone numbers (+81 xxxxxxxxx)
+    if (/^81\d{9,10}$/.test(clean)) {
+      return clean;
+    }
+
+    // Other international country codes starting with 8 (Korea 82, Vietnam 84, China 86, HK 852, etc.)
+    if (/^(?:82|84|86|852|853|855|856|880|886)\d{7,}/.test(clean)) {
+      return clean;
+    }
+
+    // If starts with 0 (national Indonesian format e.g. 0812...), convert national 0 to 62
+    if (clean.startsWith('0')) {
+      return '62' + clean.slice(1);
+    }
+
+    // Already Indonesian international format (+62...)
+    if (clean.startsWith('62')) {
+      return clean;
+    }
+
+    // If Indonesian mobile shorthand without leading 0 (e.g. 811..., 812..., 857...)
+    // and NOT an international number
+    if (clean.startsWith('8') && !clean.startsWith('8170') && !clean.startsWith('8180') && !clean.startsWith('8190')) {
+      if (/^8(?:1[1-9]|2[1-3]|3[1-8]|5[1-9]|7[7-9]|8[1-9]|9[5-9])\d{6,9}$/.test(clean)) {
+        return '62' + clean;
+      }
+    }
+
     return clean;
   }
 

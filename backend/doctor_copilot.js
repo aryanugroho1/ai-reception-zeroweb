@@ -151,7 +151,15 @@ class DoctorCopilotEngine {
   }
 
   handleNextPatient(tenant) {
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const tz = tenant.timezone || 'Asia/Jakarta';
+    let todayLocal = '';
+    try {
+      todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+    } catch (e) {
+      todayLocal = now.toISOString().slice(0, 10);
+    }
+    const todayUtc = now.toISOString().slice(0, 10);
 
     // Check if there is currently someone in consultation, mark them completed
     let previousPatient = null;
@@ -165,14 +173,29 @@ class DoctorCopilotEngine {
     }
 
     // Find next confirmed appointment for today sorted by start_time
-    const queue = Array.from(this.db.appointments.values())
-      .filter(a => a.tenant_id === tenant.id && a.status === 'CONFIRMED' && a.start_time.startsWith(today))
+    let queue = Array.from(this.db.appointments.values())
+      .filter(a => {
+        if (a.tenant_id !== tenant.id || a.status !== 'CONFIRMED') return false;
+        try {
+          const apptDateLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(a.start_time));
+          return apptDateLocal === todayLocal || a.start_time.startsWith(todayUtc);
+        } catch (e) {
+          return a.start_time.startsWith(todayUtc);
+        }
+      })
       .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
+    // Fallback: If no appointments strictly match today, but there are CONFIRMED appointments, take the earliest confirmed!
+    if (queue.length === 0) {
+      queue = Array.from(this.db.appointments.values())
+        .filter(a => a.tenant_id === tenant.id && a.status === 'CONFIRMED')
+        .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+    }
 
     if (queue.length === 0) {
       return {
         action: 'QUEUE_EMPTY',
-        reply: `✅ *ANTREAN HARI INI HABIS!*\n\nTidak ada pasien menunggu lagi untuk hari ini (${today}). Kerja bagus, Dok!`
+        reply: `✅ *ANTREAN HARI INI HABIS!*\n\nTidak ada antrean menunggu lagi untuk saat ini. Kerja bagus!`
       };
     }
 
@@ -181,36 +204,63 @@ class DoctorCopilotEngine {
     nextPatient.consultation_started_at = new Date().toISOString();
     nextPatient.updated_at = new Date().toISOString();
 
+    // Normalize phone number to repair any double-prefixed records and ensure correct international routing
+    const cleanCustomerPhone = this.db.normalizePhone
+      ? this.db.normalizePhone(nextPatient.customer_phone)
+      : nextPatient.customer_phone.replace(/\D/g, '');
+    nextPatient.customer_phone = cleanCustomerPhone;
+
+    if (this.db && typeof this.db.saveToFile === 'function') {
+      this.db.saveToFile();
+    }
+
     const service = this.db.services.get(nextPatient.service_id);
-    const serviceName = service ? service.name : 'Pemeriksaan Umum';
+    const serviceName = service ? service.name : 'Layanan Utama';
+
+    const isBarber = tenant.category === 'BARBER';
+    const isSalon = tenant.category === 'SALON';
+    const isSpa = tenant.category === 'SPA';
+
+    const personLabel = isBarber ? 'Pelanggan' : (isSalon ? 'Klien' : (isSpa ? 'Tamu' : 'Pasien'));
+    const staffLabel = isBarber ? 'Capster' : (isSalon ? 'Stylist' : (isSpa ? 'Terapis' : 'Dokter'));
 
     const reply = [
-      `🔔 *PASIEN BERIKUTNYA DIPANGGIL*`,
+      `🔔 *${personLabel.toUpperCase()} BERIKUTNYA DIPANGGIL*`,
       `----------------------------------------`,
-      `👤 Pasien : *${nextPatient.customer_name}*`,
-      `📱 Telepon : ${nextPatient.customer_phone}`,
-      `🩺 Layanan : *${serviceName}*`,
+      `👤 ${personLabel} : *${nextPatient.customer_name}*`,
+      `📱 Telepon : ${cleanCustomerPhone}`,
+      `✂️ Layanan : *${serviceName}*`,
       `⏰ Jadwal : ${new Date(nextPatient.start_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`,
       `🔢 ID Reservasi : \`${nextPatient.id.slice(0, 8)}\``,
-      previousPatient ? `\n*(Pasien sebelumnya ${previousPatient.customer_name} telah ditandai SELESAI)*` : '',
-      `\nKetik *DONE* bila pemeriksaan selesai, atau *NEXT* untuk langsung panggil pasien selanjutnya.`
+      previousPatient ? `\n*(${personLabel} sebelumnya ${previousPatient.customer_name} telah ditandai SELESAI)*` : '',
+      `\nKetik *DONE* bila selesai, atau *NEXT* untuk langsung panggil antrean selanjutnya.`
     ].filter(Boolean).join('\n');
 
     const notifications = [];
 
     // 1. Direct notification to the patient being called
-    if (nextPatient.customer_phone) {
+    if (cleanCustomerPhone) {
+      const headerTitle = isBarber ? '💈 *GILIRAN POTONG RAMBUT ANDA TIBA!*'
+        : (isSalon ? '💇‍♀️ *GILIRAN PERAWATAN SALON ANDA TIBA!*'
+        : (isSpa ? '🧖‍♀️ *GILIRAN TREATMENT SPA ANDA TIBA!*'
+        : '🔔 *PANGGILAN PEMERIKSAAN DOKTER*'));
+
+      const actionCall = isBarber ? 'Silakan langsung menuju ke kursi pangkas rambut sekarang. Terima kasih! 💈✂️'
+        : (isSalon ? 'Silakan langsung menuju ke kursi perawatan salon Anda. Terima kasih! 💇‍♀️'
+        : (isSpa ? 'Silakan langsung menuju ke ruang treatment Anda. Terima kasih! 🧖‍♀️'
+        : 'Silakan langsung masuk ke ruang praktek dokter sekarang. Terima kasih! 🙏'));
+
       notifications.push({
-        phone: nextPatient.customer_phone,
+        phone: cleanCustomerPhone,
         type: 'PATIENT_CALLED',
         message: [
-          `🔔 *PANGGILAN PEMERIKSAAN DOKTER*`,
+          headerTitle,
           `----------------------------------------`,
           `Halo *${nextPatient.customer_name}*,`,
-          `Giliran pemeriksaan/konsultasi Anda di *${tenant.name}* telah tiba! 🩺`,
+          `Giliran reservasi Anda di *${tenant.name}* telah tiba!`,
           ``,
           `📋 Layanan: *${serviceName}*`,
-          `Silakan langsung masuk ke ruang praktek dokter sekarang. Terima kasih! 🙏`
+          actionCall
         ].join('\n')
       });
     }
@@ -218,15 +268,19 @@ class DoctorCopilotEngine {
     // 2. Queue nudge to the upcoming patient in line (if any)
     if (queue.length > 1) {
       const upcoming = queue[1];
-      if (upcoming && upcoming.customer_phone) {
+      const cleanUpcomingPhone = this.db.normalizePhone
+        ? this.db.normalizePhone(upcoming.customer_phone)
+        : (upcoming.customer_phone ? upcoming.customer_phone.replace(/\D/g, '') : null);
+
+      if (cleanUpcomingPhone) {
         notifications.push({
-          phone: upcoming.customer_phone,
+          phone: cleanUpcomingPhone,
           type: 'UPCOMING_NUDGE',
           message: [
-            `⏳ *PENGINGAT ANTREAN PRAKTEK*`,
+            `⏳ *PENGINGAT ANTREAN ${tenant.name.toUpperCase()}*`,
             `----------------------------------------`,
             `Halo *${upcoming.customer_name}*,`,
-            `Pasien sebelum Anda saat ini sedang masuk ke ruang periksa di *${tenant.name}*.`,
+            `${personLabel} sebelum Anda saat ini sedang dilayani di *${tenant.name}*.`,
             ``,
             `Mohon dapat bersiap-siap di ruang tunggu, giliran Anda akan dipanggil berikutnya! 🙏`
           ].join('\n')
