@@ -466,23 +466,42 @@ class AppServer {
         if (!this.validateAdminSession(req)) {
           return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
         }
-        const sampleSlugs = [
+        const sampleSlugs = new Set([
           'drg_maya', 'dr_rian_dalam', 'dr_budi_umum', 'drg_siti_ortho', 'dr_hendra_anak',
-          'dr_sarah_skin', 'drg_kevin_bali', 'dr_anton_jantung', 'dr_wahyu_paru', 'drg_linda_jogja',
-          'dr_fajar_ortho', 'dr_nadia_dermatology', 'dr_gunawan_mata', 'dr_lukman_obgyn',
-          'dr_melani_keluarga', 'drg_wawan_sby', 'klinik_estetika_ayra'
-        ];
-        let deletedCount = 0;
-        for (const slug of sampleSlugs) {
-          const t = this.db.getTenantBySlug(slug) || this.db.tenants.get(slug);
-          if (t) {
-            try {
-              await this.baileys.disconnectSession(t.id, true);
-            } catch (e) {}
-            this.db.deleteTenant(t.id);
-            deletedCount++;
+          'dr_sarah_skin', 'drg_kevin_bali', 'dr_dimas_tht', 'drg_anita_gigi', 'dr_faisal_akupunktur',
+          'dr_ratna_mata', 'dr_yudi_umum', 'drg_fajar_perio', 'dr_lukman_obgyn',
+          'dr_melani_keluarga', 'drg_wawan_sby', 'dr_anton_jantung', 'dr_wahyu_paru', 'drg_linda_jogja',
+          'dr_fajar_ortho', 'dr_nadia_dermatology', 'dr_gunawan_mata', 'klinik_estetika_ayra'
+        ]);
+
+        const toDelete = [];
+        for (const [id, t] of this.db.tenants.entries()) {
+          const isSample = sampleSlugs.has(t.slug) || 
+                           (t.id && (t.id.startsWith('TNT-') || t.id.includes('-uuid'))) ||
+                           t.is_sample === true;
+          if (isSample) {
+            toDelete.push(t);
           }
         }
+
+        let deletedCount = 0;
+        for (const t of toDelete) {
+          try {
+            await this.baileys.disconnectSession(t.id, true).catch(() => {});
+          } catch (e) {}
+          if (this.baileys.sessions) {
+            this.baileys.sessions.delete(t.id);
+            this.baileys.sessions.delete(t.slug);
+          }
+          if (this.baileys.pendingRegistrations) {
+            this.baileys.pendingRegistrations.delete(t.id);
+            this.baileys.pendingRegistrations.delete(t.slug);
+          }
+          this.db.deleteTenant(t.id);
+          deletedCount++;
+        }
+
+        this.addAuditLog('warning', 'TENANT', `Berhasil membersihkan ${deletedCount} akun dokter sample demo.`);
         return this.sendJson(res, 200, {
           success: true,
           deleted_count: deletedCount,
@@ -496,20 +515,26 @@ class AppServer {
         if (!this.validateAdminSession(req)) {
           return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
         }
-        const tId = deleteTenantMatch[1];
+        const tId = decodeURIComponent(deleteTenantMatch[1]);
         const sampleIdMap = {
           'TNT-001': 'drg_maya', 'TNT-002': 'dr_rian_dalam', 'TNT-003': 'dr_budi_umum',
           'TNT-004': 'drg_siti_ortho', 'TNT-005': 'dr_hendra_anak', 'TNT-006': 'dr_sarah_skin',
-          'TNT-007': 'drg_kevin_bali', 'TNT-008': 'dr_anton_jantung', 'TNT-009': 'dr_wahyu_paru',
-          'TNT-010': 'drg_linda_jogja', 'TNT-011': 'dr_fajar_ortho', 'TNT-012': 'dr_nadia_dermatology',
-          'TNT-013': 'dr_gunawan_mata', 'TNT-014': 'dr_lukman_obgyn', 'TNT-015': 'dr_melani_keluarga',
+          'TNT-007': 'drg_kevin_bali', 'TNT-008': 'dr_dimas_tht', 'TNT-009': 'drg_anita_gigi',
+          'TNT-010': 'dr_faisal_akupunktur', 'TNT-011': 'dr_ratna_mata', 'TNT-012': 'dr_yudi_umum',
+          'TNT-013': 'drg_fajar_perio', 'TNT-014': 'dr_lukman_obgyn', 'TNT-015': 'dr_melani_keluarga',
           'TNT-016': 'drg_wawan_sby'
         };
         const resolvedSlug = sampleIdMap[tId] || tId;
         const tenant = this.db.tenants.get(tId) || 
                        this.db.getTenantBySlug(tId) || 
                        this.db.getTenantBySlug(resolvedSlug) ||
-                       Array.from(this.db.tenants.values()).find(t => t.id === tId || t.slug === tId || t.slug === resolvedSlug);
+                       Array.from(this.db.tenants.values()).find(t => 
+                         t.id === tId || 
+                         t.slug === tId || 
+                         t.slug === resolvedSlug ||
+                         (t.id && tId && t.id.toLowerCase() === tId.toLowerCase()) ||
+                         (t.slug && tId && t.slug.toLowerCase() === tId.toLowerCase())
+                       );
         
         if (!tenant) {
           // If only pending in Baileys, clean it up

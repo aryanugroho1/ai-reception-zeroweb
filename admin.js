@@ -772,7 +772,7 @@ class SuperadminController {
             <button class="tbl-btn" style="border-color:#38bdf8; color:#38bdf8;" onclick="window.adminCtrl.openEditModal('${t.id}')" title="Edit Data & Whitelist Dokter">✏️ Whitelist</button>
             <button class="tbl-btn" style="border-color:#10b981; color:#34d399;" onclick="window.adminCtrl.openServicesModal('${t.id}')" title="Kelola Layanan & Tarif">💰 Tarif</button>
             <button class="tbl-btn" onclick="window.adminCtrl.testLink('${t.slug}', '${t.botPhone || t.ownerPhone || ''}')" title="Buka Link WhatsApp Pasien">Link</button>
-            <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.deleteTenant('${t.id}')" title="Hapus Akun Dokter / Partner">🗑️</button>
+            <button class="tbl-btn danger" style="background:rgba(248,113,113,0.15); color:#f87171; border-color:rgba(248,113,113,0.3);" onclick="window.adminCtrl.deleteTenant('${t.id}', '${t.slug || ''}', '${(t.name || '').replace(/'/g, "\\'")}')" title="Hapus Akun Dokter / Partner">🗑️</button>
           </div>
         </td>
       `;
@@ -1249,18 +1249,18 @@ class SuperadminController {
     window.open(link, '_blank');
   }
 
-  async deleteTenant(tenantId) {
+  async deleteTenant(tenantId, tenantSlug = '', tenantName = '') {
     if (!tenantId) return;
     const target = (Array.isArray(SAAS_TENANTS) ? SAAS_TENANTS : []).find(t => t.id === tenantId || t.slug === tenantId);
-    const tenantName = target ? target.name : tenantId;
-    const tenantSlug = target ? target.slug : '';
+    const resolvedName = tenantName || (target ? target.name : tenantId);
+    const resolvedSlug = tenantSlug || (target ? target.slug : '');
 
-    if (!confirm(`⚠️ HAPUS AKUN DOKTER / PARTNER:\n\nApakah Anda yakin ingin menghapus akun "${tenantName}" (${tenantId})?\n\nSemua riwayat booking, layanan, invoice, dan sesi WhatsApp terkait akan dihapus secara permanen.`)) {
+    if (!confirm(`⚠️ HAPUS AKUN DOKTER / PARTNER:\n\nApakah Anda yakin ingin menghapus akun "${resolvedName}" (${tenantId})?\n\nSemua riwayat booking, layanan, invoice, dan sesi WhatsApp terkait akan dihapus secara permanen.`)) {
       return;
     }
     try {
       const endpoint = `/api/tenants/${encodeURIComponent(tenantId)}`;
-      const res = await fetch(endpoint, {
+      let res = await fetch(endpoint, {
         method: 'DELETE',
         headers: this.getAuthHeaders()
       });
@@ -1273,9 +1273,15 @@ class SuperadminController {
       }
 
       if (!res.ok) {
-        // Fallback: If 404 and tenantSlug is available, try deleting by slug
-        if (res.status === 404 && tenantSlug && tenantSlug !== tenantId) {
-          const fallbackRes = await fetch(`/api/tenants/${encodeURIComponent(tenantSlug)}`, {
+        if (res.status === 401) {
+          alert('⚠️ Sesi login admin telah kedaluwarsa. Silakan masuk kembali.');
+          this.clearAuthToken();
+          this.showLoginGate();
+          return;
+        }
+        // Fallback: If 404 and resolvedSlug is available, try deleting by slug
+        if (res.status === 404 && resolvedSlug && resolvedSlug !== tenantId) {
+          const fallbackRes = await fetch(`/api/tenants/${encodeURIComponent(resolvedSlug)}`, {
             method: 'DELETE',
             headers: this.getAuthHeaders()
           });
@@ -1292,13 +1298,13 @@ class SuperadminController {
 
       // Optimistically remove from local state immediately
       if (Array.isArray(SAAS_TENANTS)) {
-        SAAS_TENANTS = SAAS_TENANTS.filter(t => t.id !== tenantId && t.slug !== tenantId && (!tenantSlug || t.slug !== tenantSlug));
+        SAAS_TENANTS = SAAS_TENANTS.filter(t => t.id !== tenantId && t.slug !== tenantId && (!resolvedSlug || t.slug !== resolvedSlug));
       }
       this.renderTenantsTable();
       this.renderMetrics();
 
-      alert(`✅ ${data.message || `Akun ${tenantName} berhasil dihapus permanen.`}`);
-      this.logAudit('warning', `Tenant deleted: ${tenantName} (${tenantId})`);
+      alert(`✅ ${data.message || `Akun ${resolvedName} berhasil dihapus permanen.`}`);
+      this.logAudit('warning', `Tenant deleted: ${resolvedName} (${tenantId})`);
       await this.loadBackendData();
     } catch (err) {
       alert('❌ Error: ' + err.message);
@@ -1315,7 +1321,31 @@ class SuperadminController {
         headers: this.getAuthHeaders()
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal membersihkan data sample');
+      if (!res.ok) {
+        if (res.status === 401) {
+          alert('⚠️ Sesi login admin telah kedaluwarsa. Silakan masuk kembali.');
+          this.clearAuthToken();
+          this.showLoginGate();
+          return;
+        }
+        throw new Error(data.error || 'Gagal membersihkan data sample');
+      }
+
+      // Optimistically filter known demo slugs from SAAS_TENANTS
+      const sampleSlugs = new Set([
+        'drg_maya', 'dr_rian_dalam', 'dr_budi_umum', 'drg_siti_ortho', 'dr_hendra_anak',
+        'dr_sarah_skin', 'drg_kevin_bali', 'dr_dimas_tht', 'drg_anita_gigi', 'dr_faisal_akupunktur',
+        'dr_ratna_mata', 'dr_yudi_umum', 'drg_fajar_perio', 'dr_lukman_obgyn',
+        'dr_melani_keluarga', 'drg_wawan_sby', 'dr_anton_jantung', 'dr_wahyu_paru',
+        'drg_linda_jogja', 'dr_fajar_ortho', 'dr_nadia_dermatology', 'dr_gunawan_mata',
+        'klinik_estetika_ayra'
+      ]);
+      if (Array.isArray(SAAS_TENANTS)) {
+        SAAS_TENANTS = SAAS_TENANTS.filter(t => !sampleSlugs.has(t.slug) && !t.id?.startsWith('TNT-') && !t.id?.includes('-uuid'));
+      }
+      this.renderTenantsTable();
+      this.renderMetrics();
+
       alert(`✅ ${data.message}`);
       this.logAudit('success', `Cleaned ${data.deleted_count} sample tenants for production`);
       await this.loadBackendData();
@@ -1890,8 +1920,16 @@ class SuperadminController {
   }
 }
 
-// Bootstrap
-document.addEventListener('DOMContentLoaded', () => {
-  window.adminCtrl = new SuperadminController();
-  window.adminCtrl.init();
-});
+// Bootstrap with state check
+function bootAdmin() {
+  if (!window.adminCtrl) {
+    window.adminCtrl = new SuperadminController();
+    window.adminCtrl.init();
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootAdmin);
+} else {
+  bootAdmin();
+}

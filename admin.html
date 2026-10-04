@@ -239,7 +239,7 @@
           </div>
 
           <div style="display:flex; gap:10px;">
-            <button class="btn btn-secondary" id="btnPurgeSamples" style="border-color:#f87171; color:#f87171; display:inline-flex; align-items:center; gap:6px;" title="Hapus semua akun sample demo agar bersih saat Go-Live">
+            <button class="btn btn-secondary" id="btnPurgeSamples" onclick="window.adminCtrl ? window.adminCtrl.purgeSampleTenants() : null" style="border-color:#f87171; color:#f87171; display:inline-flex; align-items:center; gap:6px;" title="Hapus semua akun sample demo agar bersih saat Go-Live">
               🗑️ <span>Hapus Akun Sample</span>
             </button>
             <button class="btn btn-primary" id="btnPaneAddTenant">+ Tambah Dokter</button>
