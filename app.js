@@ -1055,7 +1055,16 @@ class MayarPaymentModal {
 
     // Step 1 -> Step 2 (Next Button)
     if (this.btnMayarNext) {
-      this.btnMayarNext.addEventListener('click', () => {
+      this.btnMayarNext.addEventListener('click', async () => {
+        const rawCoupon = (this.couponInput ? this.couponInput.value : '').trim().toUpperCase();
+        if (rawCoupon) {
+          if (!this.activeCoupon || this.activeCoupon !== rawCoupon) {
+            await this.applyCoupon();
+            if (!this.activeCoupon) {
+              return;
+            }
+          }
+        }
         this.goToStep2();
       });
     }
@@ -1694,16 +1703,17 @@ class FreeTrialModal {
     }
 
     // Live interactive coupon feedback
+    const validTrialCoupons = ['PILOTPRO', 'FREEPRO', 'FREEPRO1M', 'PILOTLIFETIME', 'LIFETIMEFREE'];
     if (this.couponInput) {
       this.couponInput.addEventListener('input', () => {
         const val = this.couponInput.value.trim().toUpperCase();
-        if (val === 'PILOTPRO' || val === 'FREEPRO') {
+        if (val === 'PILOTPRO' || val === 'FREEPRO' || val === 'FREEPRO1M') {
           if (this.couponAlert) {
             this.couponAlert.style.display = 'block';
             this.couponAlert.style.color = '#15803d';
             this.couponAlert.style.background = '#dcfce7';
             this.couponAlert.style.borderColor = '#86efac';
-            this.couponAlert.innerHTML = 'Kupon Valid: Upgrade ke Paket PRO (1 Tahun Penuh) aktif.';
+            this.couponAlert.innerHTML = 'Kupon Valid: Upgrade ke Paket PRO aktif.';
           }
           if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
         } else if (val === 'PILOTLIFETIME' || val === 'LIFETIMEFREE') {
@@ -1715,13 +1725,13 @@ class FreeTrialModal {
             this.couponAlert.innerHTML = 'Kupon Valid: Akses Lifetime Partner (Unlimited Booking) aktif.';
           }
           if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
-        } else if (val.length > 3) {
+        } else if (val.length > 0) {
           if (this.couponAlert) {
             this.couponAlert.style.display = 'block';
             this.couponAlert.style.color = '#b91c1c';
             this.couponAlert.style.background = '#fee2e2';
             this.couponAlert.style.borderColor = '#fca5a5';
-            this.couponAlert.innerHTML = 'Kode kupon tidak valid. Pendaftaran tetap dapat dilanjutkan dengan paket Free 25 booking.';
+            this.couponAlert.innerHTML = '❌ Kode kupon / promo tidak valid.';
           }
         } else {
           if (this.couponAlert) this.couponAlert.style.display = 'none';
@@ -1752,6 +1762,12 @@ class FreeTrialModal {
         const category = document.getElementById('trialCategory')?.value || 'GENERAL';
         const phone = (document.getElementById('trialPhone')?.value || '').trim();
         const coupon = (this.couponInput?.value || '').trim().toUpperCase();
+
+        if (coupon && !validTrialCoupons.includes(coupon)) {
+          alert('Kode kupon / promo tidak valid. Mohon periksa kembali kode promo Anda atau kosongkan kolom jika tidak memiliki kode promo.');
+          this.couponInput?.focus();
+          return;
+        }
 
         const cleanPhone = phone.replace(/[^0-9]/g, '');
         if (!cleanPhone || cleanPhone.length < 9) {

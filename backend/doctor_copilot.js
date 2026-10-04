@@ -92,6 +92,157 @@ class DoctorCopilotEngine {
       return this.handleDashboardInsight(tenant);
     }
 
+    // 5A. Command: BESOK TUTUP / TUTUP BESOK / BESOK LIBUR / LIBUR BESOK
+    if (/^\s*(?:BESOK\s+TUTUP|TUTUP\s+BESOK|BESOK\s+LIBUR|LIBUR\s+BESOK)(?:\s+.*)?$/i.test(normalizedCmd)) {
+      const tz = tenant.timezone || 'Asia/Jakarta';
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      let tomorrowStr = '';
+      try {
+        tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(tomorrow);
+      } catch (e) {
+        tomorrowStr = tomorrow.toISOString().slice(0, 10);
+      }
+      tenant.closed_dates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates : [];
+      if (!tenant.closed_dates.includes(tomorrowStr)) {
+        tenant.closed_dates.push(tomorrowStr);
+      }
+      tenant.updated_at = new Date().toISOString();
+      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+      return {
+        action: 'CLOSE_TOMORROW',
+        date: tomorrowStr,
+        reply: [
+          `🛑 *PRAKTEK TUTUP BESOK (${tomorrowStr})*`,
+          `----------------------------------------`,
+          `Praktek *${tenant.name}* telah ditandai libur/tutup untuk besok (${tomorrowStr}).`,
+          `Pasien yang mencoba reservasi untuk besok akan otomatis diinformasikan bahwa praktek sedang libur dan diarahkan ke hari buka berikutnya.`,
+          ``,
+          `Ketik *BESOK BUKA* untuk mengaktifkan kembali jadwal besok.`
+        ].join('\n')
+      };
+    }
+
+    // 5B. Command: BESOK BUKA / BUKA BESOK
+    if (/^\s*(?:BESOK\s+BUKA|BUKA\s+BESOK)(?:\s+.*)?$/i.test(normalizedCmd)) {
+      const tz = tenant.timezone || 'Asia/Jakarta';
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      let tomorrowStr = '';
+      try {
+        tomorrowStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(tomorrow);
+      } catch (e) {
+        tomorrowStr = tomorrow.toISOString().slice(0, 10);
+      }
+      tenant.closed_dates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates.filter(d => d !== tomorrowStr) : [];
+      tenant.updated_at = new Date().toISOString();
+      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+      return {
+        action: 'OPEN_TOMORROW',
+        date: tomorrowStr,
+        reply: [
+          `🟢 *PRAKTEK BESOK DIBUKA KEMBALI (${tomorrowStr})*`,
+          `----------------------------------------`,
+          `Jadwal reservasi untuk besok di *${tenant.name}* kini aktif kembali melayani pasien.`
+        ].join('\n')
+      };
+    }
+
+    // 5C. Command: JAM BUKA / JAM OPERASIONAL [HH:MM] - [HH:MM] (Setting Operating Hours)
+    const jamRangeMatch = rawCmd.match(/^\s*(?:JAM\s+BUKA|JAM\s+OPERASIONAL|JAM\s+KERJA)\s+(\d{1,2}[:.]\d{2})\s*(?:-|SAMPAI|SD|HINGGA)\s*(\d{1,2}[:.]\d{2})\s*$/i);
+    if (jamRangeMatch) {
+      const openH = jamRangeMatch[1].replace('.', ':').padStart(5, '0');
+      const closeH = jamRangeMatch[2].replace('.', ':').padStart(5, '0');
+      tenant.open_hour = openH;
+      tenant.close_hour = closeH;
+      tenant.operating_hours = { open: openH, close: closeH };
+      tenant.updated_at = new Date().toISOString();
+      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+      return {
+        action: 'SET_OPERATING_HOURS',
+        operating_hours: tenant.operating_hours,
+        reply: [
+          `⏰ *JAM OPERASIONAL BERHASIL DIATUR*`,
+          `----------------------------------------`,
+          `Praktek: *${tenant.name}*`,
+          `Jam Buka: *${openH}*`,
+          `Jam Tutup: *${closeH}*`,
+          `----------------------------------------`,
+          `ZeroWeb AI Receptionist akan mengalokasikan slot reservasi pasien hanya di antara jam *${openH}* hingga *${closeH}*.`
+        ].join('\n')
+      };
+    }
+
+    // 5D. Command: JAM BUKA [HH:MM] (Set Open Hour only)
+    const jamBukaSingleMatch = rawCmd.match(/^\s*JAM\s+BUKA\s+(\d{1,2}[:.]\d{2})\s*$/i);
+    if (jamBukaSingleMatch) {
+      const openH = jamBukaSingleMatch[1].replace('.', ':').padStart(5, '0');
+      const closeH = tenant.close_hour || (tenant.operating_hours && tenant.operating_hours.close) || '17:00';
+      tenant.open_hour = openH;
+      tenant.close_hour = closeH;
+      tenant.operating_hours = { open: openH, close: closeH };
+      tenant.updated_at = new Date().toISOString();
+      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+      return {
+        action: 'SET_OPEN_HOUR',
+        open_hour: openH,
+        reply: `⏰ Jam buka praktek *${tenant.name}* diatur ke pukul *${openH}* (Tutup: ${closeH}).`
+      };
+    }
+
+    // 5E. Command: JAM TUTUP [HH:MM] (Set Close Hour only)
+    const jamTutupSingleMatch = rawCmd.match(/^\s*JAM\s+TUTUP\s+(\d{1,2}[:.]\d{2})\s*$/i);
+    if (jamTutupSingleMatch) {
+      const closeH = jamTutupSingleMatch[1].replace('.', ':').padStart(5, '0');
+      const openH = tenant.open_hour || (tenant.operating_hours && tenant.operating_hours.open) || '09:00';
+      tenant.open_hour = openH;
+      tenant.close_hour = closeH;
+      tenant.operating_hours = { open: openH, close: closeH };
+      tenant.updated_at = new Date().toISOString();
+      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+      return {
+        action: 'SET_CLOSE_HOUR',
+        close_hour: closeH,
+        reply: `⏰ Jam tutup praktek *${tenant.name}* diatur ke pukul *${closeH}* (Buka: ${openH}).`
+      };
+    }
+
+    // 5F. Command: JAM BUKA / JAM OPERASIONAL / JAM KERJA (Query Operating Hours)
+    if (/^\s*(?:JAM\s+BUKA|JAM\s+OPERASIONAL|JAM\s+KERJA|JAM\s+TUTUP)\s*$/i.test(normalizedCmd)) {
+      const openH = tenant.open_hour || (tenant.operating_hours && tenant.operating_hours.open) || '09:00';
+      const closeH = tenant.close_hour || (tenant.operating_hours && tenant.operating_hours.close) || '17:00';
+      const closedList = Array.isArray(tenant.closed_dates) && tenant.closed_dates.length > 0
+        ? tenant.closed_dates.join(', ')
+        : 'Tidak ada (Buka setiap hari operasional)';
+
+      return {
+        action: 'GET_OPERATING_HOURS',
+        operating_hours: { open: openH, close: closeH },
+        closed_dates: tenant.closed_dates || [],
+        reply: [
+          `⏰ *INFORMASI JAM OPERASIONAL*`,
+          `----------------------------------------`,
+          `Praktek: *${tenant.name}*`,
+          `Jam Buka: *${openH}* WIB`,
+          `Jam Tutup: *${closeH}* WIB`,
+          `Tanggal Libur / Tutup: *${closedList}*`,
+          `----------------------------------------`,
+          `💡 *Contoh Perintah Pengaturan:*`,
+          `• *JAM BUKA 08:00 - 20:00*`,
+          `• *BESOK TUTUP* (Tandai libur besok)`,
+          `• *BESOK BUKA* (Buka kembali besok)`
+        ].join('\n')
+      };
+    }
+
     // 5. Command: TUTUP / ISTIRAHAT / PAUSE
     if (/^\s*(?:TUTUP|ISTIRAHAT|PAUSE)(?:\s+.*)?$/i.test(normalizedCmd)) {
       tenant.is_accepting_patients = false;
@@ -143,6 +294,10 @@ class DoctorCopilotEngine {
         `👉 *DASHBOARD* atau *CHART* : 3 Visual Chart (Hari Ini, Week Daily, Month Weekly)`,
         `👉 *TARIF* : Cek & kelola harga layanan praktek`,
         `👉 *TARIF [nomor] [harga]* : Ubah harga layanan langsung`,
+        `👉 *BESOK TUTUP* : Tandai praktek besok libur / tutup`,
+        `👉 *BESOK BUKA* : Buka kembali jadwal praktek besok`,
+        `👉 *JAM BUKA 08:00 - 20:00* : Atur jam operasional praktek`,
+        `👉 *JAM BUKA* : Cek jam buka & tutup operasional saat ini`,
         `👉 *TUTUP* : Hentikan sementara reservasi baru`,
         `👉 *BUKA* : Aktifkan kembali reservasi baru`,
         `----------------------------------------`
@@ -344,35 +499,67 @@ class DoctorCopilotEngine {
   }
 
   handleQueueStatus(tenant) {
-    const today = new Date().toISOString().slice(0, 10);
-    const todayAppts = Array.from(this.db.appointments.values())
-      .filter(a => a.tenant_id === tenant.id && a.start_time.startsWith(today))
+    const now = new Date();
+    const tz = tenant.timezone || 'Asia/Jakarta';
+    let todayLocal = '';
+    try {
+      todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+    } catch (e) {
+      todayLocal = now.toISOString().slice(0, 10);
+    }
+    const todayUtc = now.toISOString().slice(0, 10);
+
+    let todayAppts = Array.from(this.db.appointments.values())
+      .filter(a => {
+        if (a.tenant_id !== tenant.id) return false;
+        try {
+          const apptDateLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(a.start_time));
+          return apptDateLocal === todayLocal || a.start_time.startsWith(todayUtc);
+        } catch (e) {
+          return a.start_time.startsWith(todayUtc);
+        }
+      })
       .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
+    // Fallback: If no appointments match today, show any recent appointments
+    if (todayAppts.length === 0) {
+      todayAppts = Array.from(this.db.appointments.values())
+        .filter(a => a.tenant_id === tenant.id)
+        .sort((a, b) => new Date(b.start_time) - new Date(a.start_time))
+        .slice(0, 10)
+        .reverse();
+    }
 
     if (todayAppts.length === 0) {
       return {
         action: 'STATUS',
         count: 0,
-        reply: `📅 Belum ada jadwal pasien untuk hari ini (${today}).`
+        reply: `📅 Belum ada jadwal pasien untuk hari ini (${todayLocal || todayUtc}).`
       };
     }
 
     const lines = todayAppts.map((a, idx) => {
-      const timeStr = new Date(a.start_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      const timeStr = new Date(a.start_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: tz });
       const statusIcon = a.status === 'COMPLETED' ? '✅' : a.status === 'IN_CONSULTATION' ? '🩺' : a.status === 'CANCELLED' ? '❌' : '⏳';
-      return `${idx + 1}. [${timeStr}] ${statusIcon} *${a.customer_name}* (${a.status})`;
+      const statusLabel = a.status === 'CANCELLED' ? 'BATAL' : (a.status === 'IN_CONSULTATION' ? 'KONSULTASI' : (a.status === 'CONFIRMED' ? 'MENUNGGU' : a.status));
+      return `${idx + 1}. [${timeStr}] ${statusIcon} *${a.customer_name}* (${statusLabel})`;
     });
+
+    const waiting = todayAppts.filter(a => a.status === 'CONFIRMED').length;
+    const inConsult = todayAppts.filter(a => a.status === 'IN_CONSULTATION').length;
+    const completed = todayAppts.filter(a => a.status === 'COMPLETED').length;
+    const cancelled = todayAppts.filter(a => a.status === 'CANCELLED').length;
 
     return {
       action: 'STATUS',
       count: todayAppts.length,
       reply: [
-        `📋 *DAFTAR ANTREAN HARI INI (${today})*`,
+        `📋 *DAFTAR ANTREAN HARI INI (${todayLocal || todayUtc})*`,
         `Praktek: *${tenant.name}*`,
         `----------------------------------------`,
         ...lines,
         `----------------------------------------`,
-        `Keterangan: 🩺 Sedang Konsultasi | ⏳ Menunggu | ✅ Selesai`
+        `⏳ Menunggu: ${waiting} | 🩺 Konsultasi: ${inConsult} | ✅ Selesai: ${completed} | ❌ Batal: ${cancelled}`
       ].join('\n')
     };
   }

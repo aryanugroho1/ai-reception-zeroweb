@@ -796,6 +796,122 @@ async function runTestSuite() {
     const logoutRes = await makeRequest('POST', '/api/auth/logout', null, { 'Authorization': `Bearer ${adminToken}` });
     assert(logoutRes.statusCode === 200 && logoutRes.body.success === true, 'Super Admin Logout successful');
 
+    // -------------------------------------------------------------
+    // TEST GROUP 11: Validation of 4 User Issues
+    // -------------------------------------------------------------
+    console.log(bold('\n--- TEST SUITE 11: Validation of 4 User Issues ---'));
+
+    // 1. Issue 1: Invalid Coupon in Checkout and Trial forms rejected with 400 & INVALID_COUPON
+    const badCouponCheckout = await makeRequest('POST', '/api/subscriptions/checkout', {
+      business_name: 'Klinik Promo Test',
+      phone: '081299112233',
+      coupon: 'SALAHKODEXYZ'
+    });
+    assert(badCouponCheckout.statusCode === 400 && badCouponCheckout.body.code === 'INVALID_COUPON', 'HTTP POST /api/subscriptions/checkout rejected invalid promo code');
+
+    const badCouponTrial = await makeRequest('POST', '/api/trial/register', {
+      business_name: 'Klinik Trial Test',
+      phone: '081299112244',
+      coupon: 'SALAHKODETRIAL'
+    });
+    assert(badCouponTrial.statusCode === 400 && badCouponTrial.body.code === 'INVALID_COUPON', 'HTTP POST /api/trial/register rejected invalid promo code');
+
+    const goodCouponTrial = await makeRequest('POST', '/api/trial/register', {
+      business_name: 'Klinik Valid Coupon',
+      phone: '081299112255',
+      coupon: 'PILOTLIFETIME'
+    });
+    assert(goodCouponTrial.statusCode === 200 && goodCouponTrial.body.success === true, 'HTTP POST /api/trial/register accepted valid PILOTLIFETIME coupon');
+
+    // 2. Issue 2: Patient Cancellation Sync (BATAL JADWAL -> CANCELLED in DB & excluded from NEXT)
+    const testDocPhone = '62817090934764';
+    const testPatientPhone = '628188887777';
+    let testTenant = app.db.getTenantBySlug('drg_maya');
+    if (!testTenant) {
+      testTenant = app.db.createTenant({
+        name: 'drg. Maya Dental Care',
+        slug: 'drg_maya',
+        owner_phone: testDocPhone,
+        subscription_plan: 'PRO'
+      });
+    } else {
+      testTenant.owner_phone = testDocPhone;
+    }
+    const testService = app.db.getServicesByTenant(testTenant.id)[0] || app.db.createService({ tenant_id: testTenant.id, name: 'Konsultasi Gigi', duration_minutes: 30, price: 100000 });
+
+    const apptToCancel = app.db.createAppointment({
+      tenant_id: testTenant.id,
+      service_id: testService.id,
+      customer_name: 'Pasien Batal Test',
+      customer_phone: testPatientPhone,
+      start_time: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      end_time: new Date(Date.now() + 2.5 * 60 * 60 * 1000).toISOString(),
+      status: 'CONFIRMED'
+    });
+
+    // Patient sends BATAL JADWAL
+    const cancelMsgRes = await app.ingressRouter.routeMessage({
+      from: `${testPatientPhone}@s.whatsapp.net`,
+      text: 'BATAL JADWAL',
+      tenant_slug: testTenant.slug
+    });
+    assert(cancelMsgRes && cancelMsgRes.message && cancelMsgRes.message.includes('DIBATALKAN'), 'Patient cancellation acknowledged with DIBATALKAN message');
+    assert(apptToCancel.status === 'CANCELLED' && apptToCancel.cancelled_by === 'PATIENT', 'Active appointment marked CANCELLED in DB with cancelled_by: PATIENT');
+
+    // Doctor checks STATUS
+    const statusCheck = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: 'STATUS',
+      doctorPhone: testDocPhone
+    });
+    assert(statusCheck && statusCheck.reply && (statusCheck.reply.includes('BATAL') || statusCheck.reply.includes('❌')), 'Doctor STATUS command reflects cancelled patient status');
+
+    // Doctor sends NEXT -> must NOT call the cancelled patient!
+    const nextCheck = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: 'NEXT',
+      doctorPhone: testDocPhone
+    });
+    assert(!nextCheck.current_patient || nextCheck.current_patient.id !== apptToCancel.id, 'Doctor NEXT command does NOT call cancelled patient');
+
+    // 3. Issue 3: Operating Hours via Copilot text & Super Admin
+    const setHoursRes = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: 'JAM BUKA 08:00 - 20:00',
+      doctorPhone: testDocPhone
+    });
+    assert(setHoursRes && setHoursRes.action === 'SET_OPERATING_HOURS' && testTenant.open_hour === '08:00' && testTenant.close_hour === '20:00', 'Doctor Copilot JAM BUKA 08:00 - 20:00 updated tenant operating hours');
+
+    // Login super admin to test PUT /api/tenants/:id
+    const admLogin = await makeRequest('POST', '/api/auth/login', { username: 'admin', password: app.adminPassword });
+    const admTok = admLogin.body.token;
+    const putHourRes = await makeRequest('PUT', `/api/tenants/${testTenant.id}`, {
+      open_hour: '07:30',
+      close_hour: '21:30'
+    }, { 'Authorization': `Bearer ${admTok}` });
+    assert(putHourRes.statusCode === 200 && testTenant.open_hour === '07:30' && testTenant.close_hour === '21:30', 'Super Admin PUT /api/tenants/:id updated open and close hours');
+
+    // 4. Issue 4: Command "Besok Tutup" and "Besok Buka"
+    const besokTutupRes = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: 'besok tutup',
+      doctorPhone: testDocPhone
+    });
+    assert(besokTutupRes && besokTutupRes.action === 'CLOSE_TOMORROW' && Array.isArray(testTenant.closed_dates) && testTenant.closed_dates.length > 0, 'Doctor command "besok tutup" marked tomorrow as closed in closed_dates');
+
+    // Verify findNextAvailableSlot skips tomorrow when tomorrow is closed
+    const tomorrowSlot = app.ingressRouter.findNextAvailableSlot(testTenant.id, 30);
+    const tomorrowDateStr = besokTutupRes.date;
+    const slotDateInTz = new Intl.DateTimeFormat('en-CA', { timeZone: testTenant.timezone || 'Asia/Jakarta' }).format(new Date(tomorrowSlot.startTime));
+    assert(slotDateInTz !== tomorrowDateStr, 'findNextAvailableSlot correctly skipped closed tomorrow date');
+
+    const besokBukaRes = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: 'besok buka',
+      doctorPhone: testDocPhone
+    });
+    assert(besokBukaRes && besokBukaRes.action === 'OPEN_TOMORROW' && !testTenant.closed_dates.includes(tomorrowDateStr), 'Doctor command "besok buka" reopened tomorrow');
+
     await app.close();
     assert(true, 'HTTP REST server gracefully closed');
   }

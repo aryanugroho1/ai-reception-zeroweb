@@ -765,7 +765,7 @@ class BaileysManager {
               if (cleanMsg.length > 60 || cleanMsg.includes('\n') || /^[📅✅🛑🟢🩺ℹ️👋🔢⚠️📋]/.test(cleanMsg)) {
                 continue;
               }
-              const isCopilotCmd = /^\s*(?:NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI\s+INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|CHART|GRAFIK|TARIF|LAYANAN|HARGA|TAMBAH|UBAH|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN)(?:\s+.*)?$/i.test(cleanMsg);
+              const isCopilotCmd = /^\s*(?:NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI\s+INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|CHART|GRAFIK|TARIF|LAYANAN|HARGA|TAMBAH|UBAH|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN|BESOK|LIBUR|JAM|OPERASIONAL)(?:\s+.*)?$/i.test(cleanMsg);
               if (!isCopilotCmd) continue;
             }
 

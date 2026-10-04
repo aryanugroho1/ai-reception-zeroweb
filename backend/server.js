@@ -333,6 +333,10 @@ class AppServer {
             subscriptionUntil: t.subscription_until ? t.subscription_until.slice(0, 10) : '2026-10-31',
             isActive: true,
             isAccepting: t.is_accepting_patients,
+            openHour: t.open_hour || (t.operating_hours && t.operating_hours.open) || '09:00',
+            closeHour: t.close_hour || (t.operating_hours && t.operating_hours.close) || '17:00',
+            operatingHours: t.operating_hours || { open: t.open_hour || '09:00', close: t.close_hour || '17:00' },
+            closedDates: t.closed_dates || [],
             mrr: mrrMap[t.subscription_plan] || 0
           };
         });
@@ -437,6 +441,17 @@ class AppServer {
         }
         if (body.category) tenant.category = body.category;
         if (body.subscription_plan) tenant.subscription_plan = body.subscription_plan;
+        if (body.open_hour || body.close_hour || body.operating_hours) {
+          const openH = body.open_hour || (body.operating_hours && body.operating_hours.open) || tenant.open_hour || '09:00';
+          const closeH = body.close_hour || (body.operating_hours && body.operating_hours.close) || tenant.close_hour || '17:00';
+          tenant.open_hour = openH;
+          tenant.close_hour = closeH;
+          tenant.operating_hours = { open: openH, close: closeH };
+          this.addAuditLog('info', 'TENANT', `Jam operasional ${tenant.name} (${tenant.slug}) diperbarui: ${openH} - ${closeH}`);
+        }
+        if (Array.isArray(body.closed_dates)) {
+          tenant.closed_dates = body.closed_dates;
+        }
         tenant.updated_at = new Date().toISOString();
 
         if (this.db && typeof this.db.saveToFile === 'function') {
@@ -678,53 +693,58 @@ class AppServer {
         const rawCoupon = (body.coupon || '').toUpperCase().trim();
         if (rawCoupon) {
           const couponConfig = this.couponConfigs[rawCoupon];
-          if (couponConfig) {
-            const quotaKey = (rawCoupon === 'LIFETIMEFREE' || rawCoupon === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
-            const redeemedSet = this.getCouponRedemptions(quotaKey);
-            if (!redeemedSet.has(rawPhone) && redeemedSet.size >= couponConfig.maxCapacity) {
-              return this.sendJson(res, 400, {
-                error: `Mohon maaf, kuota kupon ${rawCoupon} telah penuh (${redeemedSet.size}/${couponConfig.maxCapacity} nomor terdaftar).`,
-                code: 'COUPON_QUOTA_EXCEEDED'
-              });
-            }
-
-            const subUntil = new Date(Date.now() + couponConfig.durationDays * 24 * 60 * 60 * 1000).toISOString();
-
-            // Register as pending staging ONLY - DO NOT save to database until QR is scanned & connected!
-            const pending = this.baileys.registerPendingTenant({
-              business_name: bizName,
-              slug: uniqueSlug,
-              rawPhone: rawPhone,
-              owner_phone: doctorPhone || rawPhone,
-              email: ownerEmail,
-              category: category,
-              plan: couponConfig.plan,
-              subUntil: subUntil,
-              coupon_code: rawCoupon,
-              coupon_key: quotaKey,
-              invoice: {
-                id: `inv-${crypto.randomUUID().slice(0, 8)}`,
-                invoice_number: `INV-COUPON-${Date.now()}`,
-                amount: 0,
-                plan_tier: couponConfig.plan,
-                status: 'PAID',
-                paid_at: new Date().toISOString()
-              }
-            });
-
-            // Auto-start Baileys WhatsApp pairing socket for real QR generation
-            this.baileys.ensureSessionStarted(pending.pendingId).catch(() => {});
-
-            return this.sendJson(res, 200, {
-              success: true,
-              free: true,
-              message: `Kupon ${rawCoupon} valid! Pembayaran dilewati (100% Free).`,
-              plan: couponConfig.plan,
-              token: pending.token,
-              connect_url: `/connect?token=${pending.token}`,
-              qr_image: null
+          if (!couponConfig) {
+            return this.sendJson(res, 400, {
+              success: false,
+              error: `Kode promo / kupon "${rawCoupon}" tidak valid.`,
+              code: 'INVALID_COUPON'
             });
           }
+          const quotaKey = (rawCoupon === 'LIFETIMEFREE' || rawCoupon === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
+          const redeemedSet = this.getCouponRedemptions(quotaKey);
+          if (!redeemedSet.has(rawPhone) && redeemedSet.size >= couponConfig.maxCapacity) {
+            return this.sendJson(res, 400, {
+              error: `Mohon maaf, kuota kupon ${rawCoupon} telah penuh (${redeemedSet.size}/${couponConfig.maxCapacity} nomor terdaftar).`,
+              code: 'COUPON_QUOTA_EXCEEDED'
+            });
+          }
+
+          const subUntil = new Date(Date.now() + couponConfig.durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+          // Register as pending staging ONLY - DO NOT save to database until QR is scanned & connected!
+          const pending = this.baileys.registerPendingTenant({
+            business_name: bizName,
+            slug: uniqueSlug,
+            rawPhone: rawPhone,
+            owner_phone: doctorPhone || rawPhone,
+            email: ownerEmail,
+            category: category,
+            plan: couponConfig.plan,
+            subUntil: subUntil,
+            coupon_code: rawCoupon,
+            coupon_key: quotaKey,
+            invoice: {
+              id: `inv-${crypto.randomUUID().slice(0, 8)}`,
+              invoice_number: `INV-COUPON-${Date.now()}`,
+              amount: 0,
+              plan_tier: couponConfig.plan,
+              status: 'PAID',
+              paid_at: new Date().toISOString()
+            }
+          });
+
+          // Auto-start Baileys WhatsApp pairing socket for real QR generation
+          this.baileys.ensureSessionStarted(pending.pendingId).catch(() => {});
+
+          return this.sendJson(res, 200, {
+            success: true,
+            free: true,
+            message: `Kupon ${rawCoupon} valid! Pembayaran dilewati (100% Free).`,
+            plan: couponConfig.plan,
+            token: pending.token,
+            connect_url: `/connect?token=${pending.token}`,
+            qr_image: null
+          });
         }
 
         // Standard Paid Subscription Flow (Mayar.id Integration)
@@ -1117,17 +1137,28 @@ class AppServer {
         const validCoupons = {
           'PILOTPRO': { plan: 'PRO', durationDays: 365, label: 'Free Pro Tier 1 Tahun (Pilot Project)' },
           'PILOTLIFETIME': { plan: 'LIFETIME_PARTNER', durationDays: 36500, label: 'Free Lifetime Partner Selamanya (Pilot Project)' },
-          'FREEPRO': { plan: 'PRO', durationDays: 365, label: 'Free Pro Tier 1 Tahun' }
+          'LIFETIMEFREE': { plan: 'LIFETIME_PARTNER', durationDays: 36500, label: 'Free Lifetime Partner Selamanya (Pilot Project)' },
+          'FREEPRO': { plan: 'PRO', durationDays: 365, label: 'Free Pro Tier 1 Tahun' },
+          'FREEPRO1M': { plan: 'PRO', durationDays: 30, label: 'Free Pro Tier 1 Bulan' }
         };
+
+        if (rawCoupon && !validCoupons[rawCoupon] && !this.couponConfigs[rawCoupon]) {
+          return this.sendJson(res, 400, {
+            success: false,
+            error: `Kode promo / kupon "${rawCoupon}" tidak valid.`,
+            code: 'INVALID_COUPON'
+          });
+        }
 
         let plan = 'STARTER';
         let durationDays = 30;
         let planLabel = 'Uji Coba 30 Hari Gratis (25 Kuota Booking/Bulan)';
 
-        if (rawCoupon && validCoupons[rawCoupon]) {
-          plan = validCoupons[rawCoupon].plan;
-          durationDays = validCoupons[rawCoupon].durationDays;
-          planLabel = validCoupons[rawCoupon].label;
+        const matchedCoupon = validCoupons[rawCoupon] || this.couponConfigs[rawCoupon];
+        if (rawCoupon && matchedCoupon) {
+          plan = matchedCoupon.plan;
+          durationDays = matchedCoupon.durationDays;
+          planLabel = matchedCoupon.label;
         }
 
         const subUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();

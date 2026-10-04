@@ -1042,6 +1042,8 @@ class SuperadminController {
         const phone = document.getElementById('editTenantPhone').value.trim().replace(/[^0-9,]/g, '');
         const category = document.getElementById('editTenantCategory').value;
         const plan = document.getElementById('editTenantPlan').value;
+        const openHour = document.getElementById('editTenantOpenHour')?.value || '09:00';
+        const closeHour = document.getElementById('editTenantCloseHour')?.value || '17:00';
 
         try {
           const res = await fetch(`/api/tenants/${id}`, {
@@ -1051,7 +1053,10 @@ class SuperadminController {
               name,
               owner_phone: phone,
               category,
-              subscription_plan: plan
+              subscription_plan: plan,
+              open_hour: openHour,
+              close_hour: closeHour,
+              operating_hours: { open: openHour, close: closeHour }
             })
           });
 
@@ -1060,8 +1065,8 @@ class SuperadminController {
 
           await this.loadBackendData();
           closeEdit();
-          this.logAudit('success', `Data tenant ${name} berhasil diubah. Nomor Whitelist Dokter: +${phone}`);
-          alert(`✅ Berhasil menyimpan!\n\nNomor WhatsApp Whitelist Dokter untuk ${name} kini telah diatur ke:\n+${phone}`);
+          this.logAudit('success', `Data tenant ${name} berhasil diubah. Jam Operasional: ${openHour} - ${closeHour}, Nomor Whitelist: +${phone}`);
+          alert(`✅ Berhasil menyimpan!\n\nData ${name} diperbarui:\n• Jam Operasional: ${openHour} - ${closeHour}\n• Whitelist Dokter: +${phone}`);
         } catch (err) {
           alert('❌ Gagal mengubah data: ' + err.message);
           this.logAudit('danger', `Gagal mengubah tenant: ${err.message}`);
@@ -1943,6 +1948,12 @@ class SuperadminController {
     }
     if (document.getElementById('editTenantPlan')) {
       document.getElementById('editTenantPlan').value = tenant.plan || 'PRO';
+    }
+    if (document.getElementById('editTenantOpenHour')) {
+      document.getElementById('editTenantOpenHour').value = tenant.openHour || (tenant.operatingHours && tenant.operatingHours.open) || '09:00';
+    }
+    if (document.getElementById('editTenantCloseHour')) {
+      document.getElementById('editTenantCloseHour').value = tenant.closeHour || (tenant.operatingHours && tenant.operatingHours.close) || '17:00';
     }
 
     modal.classList.add('active');

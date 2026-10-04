@@ -318,13 +318,68 @@ class IngressRouter {
     }
 
     // Cancel / Reset intent
-    if (['BATAL', 'CANCEL', 'RESET'].includes(cleanText.toUpperCase())) {
+    const upperText = cleanText.toUpperCase().trim();
+    const isCancelCmd = ['BATAL', 'CANCEL', 'RESET', 'BATALKAN'].includes(upperText) ||
+      upperText.startsWith('BATAL ') ||
+      upperText.startsWith('BATALKAN ') ||
+      upperText.startsWith('CANCEL ') ||
+      upperText.includes('BATAL JADWAL') ||
+      upperText.includes('BATALKAN JADWAL') ||
+      upperText.includes('BATAL JANJI') ||
+      upperText.includes('CANCEL JADWAL') ||
+      upperText.includes('CANCEL BOOKING');
+
+    if (isCancelCmd) {
       this.db.saveSession(cleanPhone, {
         tenant_id: targetTenant.id,
         step: null,
         selected_service_id: null,
+        target_reschedule_id: null,
         last_activity: new Date().toISOString()
       });
+
+      // Find active appointment(s) for this patient at this clinic
+      const normSender = this.normalizePhone(cleanPhone);
+      const activeAppts = Array.from(this.db.appointments.values()).filter(a => {
+        if (a.tenant_id !== targetTenant.id) return false;
+        if (!['CONFIRMED', 'SCHEDULED', 'IN_CONSULTATION'].includes(a.status)) return false;
+        const normCustomer = this.normalizePhone(a.customer_phone);
+        return normCustomer === normSender || a.customer_phone === cleanPhone;
+      }).sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+
+      if (activeAppts.length > 0) {
+        for (const appt of activeAppts) {
+          appt.status = 'CANCELLED';
+          appt.cancelled_at = new Date().toISOString();
+          appt.cancelled_by = 'PATIENT';
+          appt.updated_at = new Date().toISOString();
+          if (this.db && typeof this.db.pgUpsertAppointment === 'function') {
+            this.db.pgUpsertAppointment(appt).catch(() => {});
+          }
+        }
+        if (this.db && typeof this.db.saveToFile === 'function') {
+          this.db.saveToFile();
+        }
+
+        const cancelledAppt = activeAppts[0];
+        return {
+          recipient_type: 'PATIENT',
+          tenant: targetTenant,
+          response_type: 'TEXT',
+          message: [
+            `✅ *JADWAL RESERVASI DIBATALKAN*`,
+            `----------------------------------------`,
+            `🏥 Klinik: *${targetTenant.name}*`,
+            `👤 Pasien: *${cancelledAppt.customer_name}*`,
+            `⏰ Waktu: *${this.formatIndoDateTime(cancelledAppt.start_time)}*`,
+            `📌 Status: ❌ Dibatalkan`,
+            `----------------------------------------`,
+            `Jadwal Anda telah resmi dibatalkan dari sistem antrean dokter.`,
+            `Jika ingin membuat reservasi baru di kemudian hari, cukup kirim pesan kembali. Terima kasih!`
+          ].join('\n')
+        };
+      }
+
       return {
         recipient_type: 'PATIENT',
         tenant: targetTenant,
@@ -374,6 +429,56 @@ class IngressRouter {
       }
     }
 
+    // Handle confirmation of alternative offered slot
+    if (existingSession.step === 'AWAITING_SLOT_CONFIRMATION' && existingSession.pending_offered_slot) {
+      const isAffirmative = ['YA', 'OKE', 'OK', 'SETUJU', 'SIAP', 'DEAL', 'BISA', 'MAU', 'IYA'].includes(cleanText.toUpperCase().trim());
+      if (isAffirmative) {
+        const slot = existingSession.pending_offered_slot;
+        const selectedService = services.find(s => s.id === existingSession.selected_service_id) || services[0];
+        const customerName = existingSession.customer_name || 'Pasien';
+
+        const appt = this.db.createAppointment({
+          tenant_id: targetTenant.id,
+          service_id: selectedService ? selectedService.id : 'srv-default',
+          customer_name: customerName,
+          customer_phone: cleanPhone,
+          start_time: slot.startTime,
+          end_time: slot.endTime,
+          status: 'CONFIRMED'
+        });
+
+        this.db.saveSession(cleanPhone, {
+          tenant_id: targetTenant.id,
+          step: null,
+          selected_service_id: null,
+          pending_offered_slot: null,
+          last_appointment_id: appt.id,
+          last_activity: new Date().toISOString()
+        });
+
+        return {
+          recipient_type: 'PATIENT',
+          tenant: targetTenant,
+          response_type: 'CONFIRMATION',
+          appointment: appt,
+          message: [
+            `✅ *RESERVASI BERHASIL DIKONFIRMASI!*`,
+            `----------------------------------------`,
+            `🏥 *Tempat:* ${targetTenant.name}`,
+            `👤 *Nama Pasien:* ${customerName}`,
+            `📋 *Layanan:* ${selectedService.name}`,
+            `⏰ *Waktu:* ${this.formatIndoDateTime(appt.start_time)}`,
+            `⏱️ *Durasi:* ${selectedService.duration_minutes} menit`,
+            `💳 *Biaya:* Rp ${selectedService.price.toLocaleString('id-ID')} (Bayar di tempat)`,
+            `----------------------------------------`,
+            `📌 *Kode Reservasi:* #${appt.id.slice(-8).toUpperCase()}`,
+            `Mohon hadir 10 menit sebelum jadwal reservasi.`,
+            `Jika ingin membatalkan jadwal, cukup ketik: *BATAL*`
+          ].join('\n')
+        };
+      }
+    }
+
     // --- CONVERSATIONAL BOOKING PARSER ---
     let customerName = null;
     let selectedService = null;
@@ -381,8 +486,16 @@ class IngressRouter {
     // Pattern 1: Step AWAITING_NAME (Patient already picked service, now sending their name)
     if (existingSession.step === 'AWAITING_NAME' && existingSession.selected_service_id) {
       if (cleanText.length >= 2 && !/^[0-9]+$/.test(cleanText)) {
-        customerName = cleanText.trim();
         selectedService = services.find(s => s.id === existingSession.selected_service_id);
+        const parsedTime = this.parseDateString(cleanText, targetTenant.timezone || 'Asia/Jakarta');
+        if (parsedTime) {
+          existingSession.preferred_time = parsedTime;
+          let cleaned = cleanText.replace(/(?:hari ini|besok|lusa)?\s*(?:jam|pukul)?\s*(\d{1,2})[:.]?(\d{2})?/gi, '').trim();
+          cleaned = cleaned.replace(/\b(?:hari ini|besok|lusa)\b/gi, '').trim();
+          customerName = cleaned.length >= 2 ? cleaned : 'Pasien';
+        } else {
+          customerName = cleanText.trim();
+        }
       }
     }
 
@@ -437,7 +550,8 @@ class IngressRouter {
             `👍 Anda memilih layanan: *${s.name}*`,
             `⏱️ Durasi: ${s.duration_minutes} menit | 💳 Rp ${s.price.toLocaleString('id-ID')}`,
             `----------------------------------------`,
-            `Silakan balas pesan ini dengan *Nama Lengkap* Anda untuk konfirmasi jadwal.`
+            `Silakan balas pesan ini dengan *Nama Lengkap* Anda untuk konfirmasi jadwal.`,
+            `*(Contoh: Budi Santoso, atau sertakan waktu seperti "Budi besok jam 10")*`
           ].join('\n')
         };
       }
@@ -460,14 +574,141 @@ class IngressRouter {
             `👤 *Nama:* ${exist.customer_name}`,
             `⏰ *Waktu:* ${this.formatIndoDateTime(exist.start_time)}`,
             `----------------------------------------`,
-            `Untuk mengubah waktu, balas dengan:`,
-            `*RESCHEDULE* atau *RESCHEDULE_${exist.customer_name}*`
+            `Untuk membatalkan jadwal, ketik: *BATAL*`,
+            `Untuk mengubah waktu, ketik: *RESCHEDULE*`
           ].join('\n')
         };
       }
 
-      // 2. Find next available slot
-      const slot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes);
+      // 2. Determine slot respecting operating hours, closed dates, and preferred time
+      const openH = targetTenant.open_hour || (targetTenant.operating_hours && targetTenant.operating_hours.open) || '09:00';
+      const closeH = targetTenant.close_hour || (targetTenant.operating_hours && targetTenant.operating_hours.close) || '17:00';
+      const closedDates = Array.isArray(targetTenant.closed_dates) ? targetTenant.closed_dates : [];
+      const tz = targetTenant.timezone || 'Asia/Jakarta';
+
+      let preferredTime = this.parseDateString(cleanText, tz) || existingSession.preferred_time;
+      let slot = null;
+
+      if (preferredTime) {
+        const prefDate = new Date(preferredTime);
+        let prefDateStr = '';
+        try {
+          prefDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(prefDate);
+        } catch (e) {
+          prefDateStr = prefDate.toISOString().slice(0, 10);
+        }
+
+        // Check if preferred date is closed
+        if (closedDates.includes(prefDateStr)) {
+          const nextSlot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes);
+          this.db.saveSession(cleanPhone, {
+            ...existingSession,
+            step: 'AWAITING_SLOT_CONFIRMATION',
+            selected_service_id: selectedService.id,
+            customer_name: customerName,
+            pending_offered_slot: nextSlot,
+            last_activity: new Date().toISOString()
+          });
+          return {
+            recipient_type: 'PATIENT',
+            tenant: targetTenant,
+            response_type: 'TEXT',
+            message: [
+              `🛑 *MOHON MAAF, PRAKTEK LIBUR*`,
+              `----------------------------------------`,
+              `Praktek *${targetTenant.name}* sedang tutup/libur pada tanggal *${prefDateStr}*.`,
+              ``,
+              `Jadwal buka operasional terdekat:`,
+              `⏰ *${this.formatIndoDateTime(nextSlot.startTime)}*`,
+              `----------------------------------------`,
+              `Balas *YA* untuk konfirmasi jadwal ini, atau ketik waktu lain yang Anda inginkan.`
+            ].join('\n')
+          };
+        }
+
+        // Check operating hours
+        const openHourNum = parseInt(openH.split(':')[0], 10);
+        const openMinNum = parseInt(openH.split(':')[1] || '0', 10);
+        const closeHourNum = parseInt(closeH.split(':')[0], 10);
+        const closeMinNum = parseInt(closeH.split(':')[1] || '0', 10);
+
+        let prefHour = 0, prefMin = 0;
+        try {
+          const prefParts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(prefDate);
+          prefHour = parseInt(prefParts.find(p => p.type === 'hour')?.value || '0', 10);
+          prefMin = parseInt(prefParts.find(p => p.type === 'minute')?.value || '0', 10);
+        } catch (e) {
+          prefHour = prefDate.getHours();
+          prefMin = prefDate.getMinutes();
+        }
+
+        const isBeforeOpen = (prefHour < openHourNum) || (prefHour === openHourNum && prefMin < openMinNum);
+        const isAfterClose = (prefHour > closeHourNum) || (prefHour === closeHourNum && prefMin > closeMinNum);
+
+        if (isBeforeOpen || isAfterClose) {
+          const nextSlot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes, preferredTime);
+          this.db.saveSession(cleanPhone, {
+            ...existingSession,
+            step: 'AWAITING_SLOT_CONFIRMATION',
+            selected_service_id: selectedService.id,
+            customer_name: customerName,
+            pending_offered_slot: nextSlot,
+            last_activity: new Date().toISOString()
+          });
+          return {
+            recipient_type: 'PATIENT',
+            tenant: targetTenant,
+            response_type: 'TEXT',
+            message: [
+              `⏰ *DI LUAR JAM OPERASIONAL*`,
+              `----------------------------------------`,
+              `Jam operasional praktek *${targetTenant.name}* adalah pukul *${openH}* s/d *${closeH}* WIB.`,
+              ``,
+              `Rekomendasi jadwal terdekat di jam operasional:`,
+              `⏰ *${this.formatIndoDateTime(nextSlot.startTime)}*`,
+              `----------------------------------------`,
+              `Balas *YA* untuk konfirmasi jadwal ini, atau ketik jam lainnya.`
+            ].join('\n')
+          };
+        }
+
+        // Check slot overlap
+        const testEnd = new Date(prefDate.getTime() + selectedService.duration_minutes * 60 * 1000).toISOString();
+        const overlap = this.db.checkSlotOverlap(targetTenant.id, prefDate.toISOString(), testEnd);
+        if (overlap) {
+          const nextSlot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes, preferredTime);
+          this.db.saveSession(cleanPhone, {
+            ...existingSession,
+            step: 'AWAITING_SLOT_CONFIRMATION',
+            selected_service_id: selectedService.id,
+            customer_name: customerName,
+            pending_offered_slot: nextSlot,
+            last_activity: new Date().toISOString()
+          });
+          return {
+            recipient_type: 'PATIENT',
+            tenant: targetTenant,
+            response_type: 'TEXT',
+            message: [
+              `⚠️ *SLOT JAM SUDAH TERISI*`,
+              `----------------------------------------`,
+              `Jam yang Anda pilih sudah terisi oleh pasien lain.`,
+              ``,
+              `Rekomendasi slot kosong terdekat:`,
+              `⏰ *${this.formatIndoDateTime(nextSlot.startTime)}*`,
+              `----------------------------------------`,
+              `Balas *YA* untuk mengambil jadwal ini, atau ketik waktu lainnya.`
+            ].join('\n')
+          };
+        }
+
+        slot = {
+          startTime: prefDate.toISOString(),
+          endTime: testEnd
+        };
+      } else {
+        slot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes);
+      }
 
       // 3. Create appointment in database
       const appt = this.db.createAppointment({
@@ -535,21 +776,49 @@ class IngressRouter {
   }
 
   // --- HELPER: FIND NEXT AVAILABLE SLOT ---
-  findNextAvailableSlot(tenantId, durationMinutes = 30) {
+  findNextAvailableSlot(tenantId, durationMinutes = 30, preferredDateIso = null) {
+    const tenant = this.db.tenants.get(tenantId);
+    const tz = tenant?.timezone || 'Asia/Jakarta';
+    const openHStr = tenant?.open_hour || (tenant?.operating_hours && tenant?.operating_hours.open) || '09:00';
+    const closeHStr = tenant?.close_hour || (tenant?.operating_hours && tenant?.operating_hours.close) || '17:00';
+    const startHour = parseInt(openHStr.split(':')[0], 10) || 9;
+    const startMin = parseInt(openHStr.split(':')[1] || '0', 10) || 0;
+    const endHour = parseInt(closeHStr.split(':')[0], 10) || 17;
+    const closedDates = Array.isArray(tenant?.closed_dates) ? tenant.closed_dates : [];
+
     const now = new Date();
-    // Start at least 1 hour from now, rounded to :00 or :30
-    let candidate = new Date(now.getTime() + 60 * 60 * 1000);
+    let baseTime = preferredDateIso ? new Date(preferredDateIso) : new Date(now.getTime() + 60 * 60 * 1000);
+    if (baseTime.getTime() < now.getTime()) {
+      baseTime = new Date(now.getTime() + 60 * 60 * 1000);
+    }
 
-    for (let day = 0; day < 7; day++) {
-      const checkDate = new Date(now);
-      checkDate.setDate(now.getDate() + day);
+    let tzOffsetStr = '+07:00';
+    if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+    else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
 
-      for (let hour = 9; hour < 17; hour++) {
+    for (let day = 0; day < 14; day++) {
+      const checkDate = new Date(baseTime.getTime() + day * 24 * 60 * 60 * 1000);
+
+      let dateStr = '';
+      try {
+        dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(checkDate);
+      } catch (e) {
+        dateStr = checkDate.toISOString().slice(0, 10);
+      }
+
+      // Skip closed dates (e.g. "besok tutup")
+      if (closedDates.includes(dateStr)) {
+        continue;
+      }
+
+      for (let hour = startHour; hour < endHour; hour++) {
         for (const min of [0, 30]) {
-          const testStart = new Date(checkDate);
-          testStart.setHours(hour, min, 0, 0);
+          if (hour === startHour && min < startMin) continue;
 
-          if (testStart.getTime() < candidate.getTime()) continue;
+          const isoCandidate = `${dateStr}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00${tzOffsetStr}`;
+          const testStart = new Date(isoCandidate);
+
+          if (testStart.getTime() < now.getTime() + 30 * 60 * 1000) continue;
 
           const testEnd = new Date(testStart.getTime() + durationMinutes * 60 * 1000);
           const overlap = this.db.checkSlotOverlap(tenantId, testStart.toISOString(), testEnd.toISOString());
@@ -563,8 +832,15 @@ class IngressRouter {
       }
     }
 
-    const fallbackStart = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    fallbackStart.setHours(10, 0, 0, 0);
+    const fallbackDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    let fallbackDateStr = '';
+    try {
+      fallbackDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(fallbackDate);
+    } catch (e) {
+      fallbackDateStr = fallbackDate.toISOString().slice(0, 10);
+    }
+    const fallbackIso = `${fallbackDateStr}T${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}:00${tzOffsetStr}`;
+    const fallbackStart = new Date(fallbackIso);
     return {
       startTime: fallbackStart.toISOString(),
       endTime: new Date(fallbackStart.getTime() + durationMinutes * 60 * 1000).toISOString()
@@ -572,44 +848,78 @@ class IngressRouter {
   }
 
   // --- HELPER: FORMAT INDONESIAN DATETIME ---
-  formatIndoDateTime(isoStr) {
+  formatIndoDateTime(isoStr, tz = 'Asia/Jakarta') {
     const d = new Date(isoStr);
-    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    const dayName = days[d.getDay()];
-    const dateNum = d.getDate();
-    const monthName = months[d.getMonth()];
-    const year = d.getFullYear();
-    const hours = String(d.getHours()).padStart(2, '0');
-    const mins = String(d.getMinutes()).padStart(2, '0');
-    return `${dayName}, ${dateNum} ${monthName} ${year} pukul ${hours}:${mins} WIB`;
+
+    let tzAbbr = 'WIB';
+    if (tz === 'Asia/Makassar') tzAbbr = 'WITA';
+    else if (tz === 'Asia/Jayapura') tzAbbr = 'WIT';
+
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: tz,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).formatToParts(d);
+
+      const getPart = (type) => parts.find(p => p.type === type)?.value || '';
+      const dayVal = parseInt(getPart('day'), 10);
+      const monthVal = parseInt(getPart('month'), 10) - 1;
+      const yearVal = getPart('year');
+      const hours = getPart('hour');
+      const mins = getPart('minute');
+
+      const dayOfWeek = new Intl.DateTimeFormat('id-ID', { timeZone: tz, weekday: 'long' }).format(d);
+      const monthName = months[monthVal] || '';
+
+      return `${dayOfWeek}, ${dayVal} ${monthName} ${yearVal} pukul ${hours}:${mins} ${tzAbbr}`;
+    } catch (e) {
+      return d.toLocaleString('id-ID', { timeZone: tz });
+    }
   }
 
   // --- HELPER: PARSE USER INPUT DATE STRING ---
-  parseDateString(text) {
+  parseDateString(text, tz = 'Asia/Jakarta') {
     try {
       const clean = text.trim();
       const now = new Date();
+
+      let tzOffsetStr = '+07:00';
+      if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+      else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
 
       // Check natural language: "besok jam 14:00", "besok jam 14.00", "besok jam 10", "lusa jam 11", "hari ini jam 15"
       const naturalMatch = clean.match(/(hari ini|besok|lusa)?\s*(?:jam|pukul)?\s*(\d{1,2})[:.]?(\d{2})?/i);
       if (naturalMatch && naturalMatch[2]) {
         const dayWord = (naturalMatch[1] || '').toLowerCase();
-        let targetDate = new Date(now);
+        let dayOffset = 0;
         if (dayWord === 'besok') {
-          targetDate.setDate(targetDate.getDate() + 1);
+          dayOffset = 1;
         } else if (dayWord === 'lusa') {
-          targetDate.setDate(targetDate.getDate() + 2);
+          dayOffset = 2;
         } else if (!dayWord && clean.toLowerCase().includes('jam')) {
-          targetDate.setDate(targetDate.getDate() + 1);
+          dayOffset = 1;
         }
 
         const hour = parseInt(naturalMatch[2], 10);
         const min = parseInt(naturalMatch[3] || '0', 10);
         if (hour >= 0 && hour <= 23 && min >= 0 && min <= 59) {
-          targetDate.setHours(hour, min, 0, 0);
-          if (targetDate.getTime() > now.getTime()) {
-            return targetDate.toISOString();
+          const targetDateObj = new Date(now.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+          let targetDateStr = '';
+          try {
+            targetDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(targetDateObj);
+          } catch (e) {
+            targetDateStr = targetDateObj.toISOString().slice(0, 10);
+          }
+          const candidateIso = `${targetDateStr}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00${tzOffsetStr}`;
+          const parsed = new Date(candidateIso);
+          if (parsed.getTime() > now.getTime()) {
+            return parsed.toISOString();
           }
         }
       }
