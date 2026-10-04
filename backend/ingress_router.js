@@ -490,8 +490,11 @@ class IngressRouter {
         const parsedTime = this.parseDateString(cleanText, targetTenant.timezone || 'Asia/Jakarta');
         if (parsedTime) {
           existingSession.preferred_time = parsedTime;
-          let cleaned = cleanText.replace(/(?:hari ini|besok|lusa)?\s*(?:jam|pukul)?\s*(\d{1,2})[:.]?(\d{2})?/gi, '').trim();
-          cleaned = cleaned.replace(/\b(?:hari ini|besok|lusa)\b/gi, '').trim();
+          let cleaned = cleanText
+            .replace(/\d{4}-\d{2}-\d{2}/g, '')
+            .replace(/(?:hari ini|besok|lusa)?\s*(?:jam|pukul)?\s*(\d{1,2})[:.]?(\d{2})?/gi, '')
+            .replace(/\b(?:hari ini|besok|lusa)\b/gi, '')
+            .trim();
           customerName = cleaned.length >= 2 ? cleaned : 'Pasien';
         } else {
           customerName = cleanText.trim();
@@ -585,6 +588,7 @@ class IngressRouter {
       const closeH = targetTenant.close_hour || (targetTenant.operating_hours && targetTenant.operating_hours.close) || '17:00';
       const closedDates = Array.isArray(targetTenant.closed_dates) ? targetTenant.closed_dates : [];
       const tz = targetTenant.timezone || 'Asia/Jakarta';
+      const now = new Date();
 
       let preferredTime = this.parseDateString(cleanText, tz) || existingSession.preferred_time;
       let slot = null;
@@ -596,6 +600,47 @@ class IngressRouter {
           prefDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(prefDate);
         } catch (e) {
           prefDateStr = prefDate.toISOString().slice(0, 10);
+        }
+
+        // Check maximum booking horizon: strictly max H+2 (Today, Tomorrow, Day After Tomorrow)
+        let tzOffsetStr = '+07:00';
+        if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+        else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
+
+        const maxH2Obj = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+        let maxH2DateStr = '';
+        try {
+          maxH2DateStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(maxH2Obj);
+        } catch (e) {
+          maxH2DateStr = maxH2Obj.toISOString().slice(0, 10);
+        }
+        const maxH2Cutoff = new Date(`${maxH2DateStr}T23:59:59${tzOffsetStr}`);
+
+        if (prefDate.getTime() > maxH2Cutoff.getTime()) {
+          const nextSlot = this.findNextAvailableSlot(targetTenant.id, selectedService.duration_minutes);
+          this.db.saveSession(cleanPhone, {
+            ...existingSession,
+            step: 'AWAITING_SLOT_CONFIRMATION',
+            selected_service_id: selectedService.id,
+            customer_name: customerName,
+            pending_offered_slot: nextSlot,
+            last_activity: new Date().toISOString()
+          });
+          return {
+            recipient_type: 'PATIENT',
+            tenant: targetTenant,
+            response_type: 'TEXT',
+            message: [
+              `⚠️ *BATAS MAKSIMAL RESERVASI H+2*`,
+              `----------------------------------------`,
+              `Mohon maaf, sistem reservasi *${targetTenant.name}* saat ini hanya dibuka maksimal hingga *H+2 (Hari ini, Besok, dan Lusa)*.`,
+              ``,
+              `Rekomendasi jadwal terdekat yang tersedia:`,
+              `⏰ *${this.formatIndoDateTime(nextSlot.startTime, tz)}*`,
+              `----------------------------------------`,
+              `Balas *YA* untuk konfirmasi jadwal ini, atau ketik waktu lain dalam rentang H+2.`
+            ].join('\n')
+          };
         }
 
         // Check if preferred date is closed
@@ -796,7 +841,7 @@ class IngressRouter {
     if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
     else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
 
-    for (let day = 0; day < 14; day++) {
+    for (let day = 0; day < 3; day++) {
       const checkDate = new Date(baseTime.getTime() + day * 24 * 60 * 60 * 1000);
 
       let dateStr = '';
@@ -893,8 +938,18 @@ class IngressRouter {
       if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
       else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
 
-      // Check natural language: "besok jam 14:00", "besok jam 14.00", "besok jam 10", "lusa jam 11", "hari ini jam 15"
-      const naturalMatch = clean.match(/(hari ini|besok|lusa)?\s*(?:jam|pukul)?\s*(\d{1,2})[:.]?(\d{2})?/i);
+      // 1. Check standard ISO or YYYY-MM-DD [HH:mm]
+      const matchDate = clean.match(/(\d{4}-\d{2}-\d{2})(?:[T\s](?:jam|pukul)?\s*(\d{1,2})[:.](\d{2}))?/i);
+      if (matchDate) {
+        const hour = matchDate[2] !== undefined ? String(matchDate[2]).padStart(2, '0') : '09';
+        const min = matchDate[3] !== undefined ? String(matchDate[3]).padStart(2, '0') : '00';
+        const candidate = `${matchDate[1]}T${hour}:${min}:00${tzOffsetStr}`;
+        const d = new Date(candidate);
+        if (!isNaN(d.getTime())) return d.toISOString();
+      }
+
+      // 2. Check natural language: "besok jam 14:00", "besok jam 14.00", "besok jam 10", "lusa jam 11", "hari ini jam 15"
+      const naturalMatch = clean.match(/(?:(hari ini|besok|lusa)\s*(?:jam|pukul\s*)?|(?:jam|pukul)\s*)(\d{1,2})(?:[:.](\d{2}))?/i);
       if (naturalMatch && naturalMatch[2]) {
         const dayWord = (naturalMatch[1] || '').toLowerCase();
         let dayOffset = 0;
@@ -922,13 +977,6 @@ class IngressRouter {
             return parsed.toISOString();
           }
         }
-      }
-
-      // Check standard ISO or YYYY-MM-DD HH:mm
-      const matchDate = clean.match(/(\d{4}-\d{2}-\d{2})\s*(?:jam|pukul)?\s*(\d{1,2})[:.](\d{2})/);
-      if (matchDate) {
-        const d = new Date(`${matchDate[1]}T${String(matchDate[2]).padStart(2, '0')}:${matchDate[3]}:00.000Z`);
-        if (!isNaN(d.getTime())) return d.toISOString();
       }
 
       const direct = new Date(clean);

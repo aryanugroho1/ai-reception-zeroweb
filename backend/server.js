@@ -80,19 +80,27 @@ class AppServer {
     const redeemed = new Set();
     const targetKey = (quotaKey === 'LIFETIMEFREE' || quotaKey === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
     for (const tenant of this.db.tenants.values()) {
-      const isLifetime = tenant.subscription_plan === 'LIFETIME_PARTNER' || tenant.coupon_key === 'LIFETIMEFREE' || tenant.coupon_code === 'LIFETIMEFREE' || tenant.coupon_code === 'PILOTLIFETIME';
-      const isPro = tenant.coupon_key === 'FREEPRO' || tenant.coupon_code === 'FREEPRO' || tenant.coupon_code === 'FREEPRO1M' || tenant.coupon_code === 'PILOTPRO';
+      if (tenant.id === 't-budi-003-uuid' || tenant.slug === 'dr_budi_umum' || tenant.is_sample) {
+        continue;
+      }
+      const cCode = (tenant.coupon_code || '').toUpperCase();
+      const cKey = (tenant.coupon_key || '').toUpperCase();
+      const isLifetime = cKey === 'LIFETIMEFREE' || cCode === 'LIFETIMEFREE' || cCode === 'PILOTLIFETIME' ||
+                         (tenant.subscription_plan === 'LIFETIME_PARTNER' && !tenant.is_sample);
+      const isPro = cKey === 'FREEPRO' || cCode === 'FREEPRO' || cCode === 'FREEPRO1M' || cCode === 'PILOTPRO';
       if ((targetKey === 'LIFETIMEFREE' && isLifetime) || (targetKey === 'FREEPRO' && isPro)) {
-        const ph = (tenant.whatsapp_connected_phone || tenant.owner_phone || '').replace(/\D/g, '');
+        const ph = (tenant.whatsapp_connected_phone || tenant.owner_phone || tenant.slug || tenant.id || '').replace(/\D/g, '') || tenant.id;
         if (ph) redeemed.add(ph);
       }
     }
     if (this.baileys && this.baileys.pendingRegistrations) {
       for (const p of this.baileys.pendingRegistrations.values()) {
-        const isLifetime = p.plan === 'LIFETIME_PARTNER' || p.coupon_key === 'LIFETIMEFREE' || p.coupon_code === 'LIFETIMEFREE' || p.coupon_code === 'PILOTLIFETIME';
-        const isPro = p.coupon_key === 'FREEPRO' || p.coupon_code === 'FREEPRO' || p.coupon_code === 'FREEPRO1M' || p.coupon_code === 'PILOTPRO';
+        const cCode = (p.coupon_code || '').toUpperCase();
+        const cKey = (p.coupon_key || '').toUpperCase();
+        const isLifetime = cKey === 'LIFETIMEFREE' || cCode === 'LIFETIMEFREE' || cCode === 'PILOTLIFETIME' || p.plan === 'LIFETIME_PARTNER';
+        const isPro = cKey === 'FREEPRO' || cCode === 'FREEPRO' || cCode === 'FREEPRO1M' || cCode === 'PILOTPRO';
         if ((targetKey === 'LIFETIMEFREE' && isLifetime) || (targetKey === 'FREEPRO' && isPro)) {
-          const ph = (p.rawPhone || p.phone || '').replace(/\D/g, '');
+          const ph = (p.rawPhone || p.phone || p.owner_phone || p.slug || p.id || '').replace(/\D/g, '') || p.id;
           if (ph) redeemed.add(ph);
         }
       }
@@ -913,7 +921,7 @@ class AppServer {
         const couponConfig = this.couponConfigs[rawCode];
         if (!couponConfig) {
           return this.sendJson(res, 400, {
-            error: 'Kode kupon tidak valid. Gunakan kupon resmi: lifetimefree (3 nomor) atau freepro (5 bot)',
+            error: 'Kode kupon tidak valid.',
             code: 'INVALID_COUPON'
           });
         }
@@ -1016,11 +1024,11 @@ class AppServer {
         const rawCode = (query.coupon || '').toUpperCase().trim();
         const cfg = this.couponConfigs[rawCode];
         if (!cfg) {
-          return this.sendJson(res, 404, { valid: false, error: 'Kode kupon tidak valid. Gunakan kupon lifetimefree atau freepro' });
+          return this.sendJson(res, 404, { valid: false, error: 'Kode kupon tidak valid.' });
         }
         this.couponRedemptions = this.couponRedemptions || new Map();
         const quotaKey = (rawCode === 'LIFETIMEFREE' || rawCode === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
-        const redeemedSet = this.couponRedemptions.get(quotaKey) || new Set();
+        const redeemedSet = this.getCouponRedemptions(quotaKey);
         const remaining = Math.max(0, cfg.maxCapacity - redeemedSet.size);
         return this.sendJson(res, 200, {
           valid: true,
@@ -1039,8 +1047,8 @@ class AppServer {
         if (!this.validateAdminSession(req)) {
           return this.sendJson(res, 401, { error: 'Akses ditolak: Autentikasi Super Admin diperlukan', code: 'AUTH_REQUIRED' });
         }
-        const ltUsed = this.couponRedemptions.get('LIFETIMEFREE') || new Set();
-        const fpUsed = this.couponRedemptions.get('FREEPRO') || new Set();
+        const ltUsed = this.getCouponRedemptions('LIFETIMEFREE');
+        const fpUsed = this.getCouponRedemptions('FREEPRO');
         const ltCfg = this.couponConfigs['LIFETIMEFREE'];
         const fpCfg = this.couponConfigs['FREEPRO'];
 
@@ -1103,7 +1111,7 @@ class AppServer {
           this.couponConfigs['PILOTPRO'].maxCapacity = newCapacity;
         }
 
-        const usedSet = this.couponRedemptions.get(targetKey) || new Set();
+        const usedSet = this.getCouponRedemptions(targetKey);
 
         return this.sendJson(res, 200, {
           success: true,

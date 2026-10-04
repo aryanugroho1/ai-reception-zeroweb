@@ -84,7 +84,7 @@ class DoctorCopilotEngine {
 
     // 3. Command: STATUS / ANTREAN / DAFTAR / JADWAL / REKAP
     if (/^\s*(?:STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI\s+INI|LIST)(?:\s+.*)?$/i.test(normalizedCmd)) {
-      return this.handleQueueStatus(tenant);
+      return this.handleQueueStatus(tenant, rawCmd);
     }
 
     // 4. Command: DASHBOARD / RINGKASAN / INSIGHT / OMSET / CHART / GRAFIK
@@ -146,6 +146,129 @@ class DoctorCopilotEngine {
           `🟢 *PRAKTEK BESOK DIBUKA KEMBALI (${tomorrowStr})*`,
           `----------------------------------------`,
           `Jadwal reservasi untuk besok di *${tenant.name}* kini aktif kembali melayani pasien.`
+        ].join('\n')
+      };
+    }
+
+    // 5AA. Command: TANGGAL [xxx] TUTUP [SELAMA] [X] HARI / TUTUP TANGGAL [xxx] [SELAMA] [X] HARI
+    const multiDayCloseMatch = rawCmd.match(/(?:mulai\s+)?tanggal\s+([^\s]+(?:\s+[a-zA-Z]+)?)\s+tutup\s+(?:selama\s+)?(\d+)\s*hari/i)
+      || rawCmd.match(/tutup\s+(?:mulai\s+)?tanggal\s+([^\s]+(?:\s+[a-zA-Z]+)?)\s+(?:selama\s+)?(\d+)\s*hari/i);
+    if (multiDayCloseMatch) {
+      const tz = tenant.timezone || 'Asia/Jakarta';
+      const rawDate = multiDayCloseMatch[1].trim();
+      const durationDays = parseInt(multiDayCloseMatch[2], 10) || 1;
+      const startDateStr = this.parseIndoDate(rawDate, tz);
+
+      if (!startDateStr) {
+        return {
+          action: 'INVALID_DATE',
+          reply: `⚠️ Format tanggal tidak dikenali ("${rawDate}").\nContoh: *TANGGAL 15 OKTOBER TUTUP SELAMA 3 HARI* atau *TANGGAL 2026-10-15 TUTUP 3 HARI*.`
+        };
+      }
+
+      let tzOffsetStr = '+07:00';
+      if (tz === 'Asia/Makassar') tzOffsetStr = '+08:00';
+      else if (tz === 'Asia/Jayapura') tzOffsetStr = '+09:00';
+
+      const baseStart = new Date(`${startDateStr}T00:00:00${tzOffsetStr}`);
+      const datesToClose = [];
+      tenant.closed_dates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates : [];
+
+      for (let i = 0; i < durationDays; i++) {
+        const d = new Date(baseStart.getTime() + i * 24 * 60 * 60 * 1000);
+        let dStr = '';
+        try {
+          dStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
+        } catch (e) {
+          dStr = d.toISOString().slice(0, 10);
+        }
+        datesToClose.push(dStr);
+        if (!tenant.closed_dates.includes(dStr)) {
+          tenant.closed_dates.push(dStr);
+        }
+      }
+
+      tenant.updated_at = new Date().toISOString();
+      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+      return {
+        action: 'CLOSE_DATE_RANGE',
+        start_date: startDateStr,
+        duration_days: durationDays,
+        closed_dates: datesToClose,
+        reply: [
+          `🛑 *PRAKTEK DITUTUP ${durationDays} HARI*`,
+          `----------------------------------------`,
+          `Praktek *${tenant.name}* ditandai libur/tutup mulai *${startDateStr}* selama *${durationDays} hari*.`,
+          ``,
+          `Daftar tanggal libur:`,
+          ...datesToClose.map(dt => `• *${dt}*`),
+          `----------------------------------------`,
+          `Pasien tidak akan dapat melakukan reservasi pada tanggal-tanggal tersebut.`,
+          `Ketik *BUKA TANGGAL [tanggal]* untuk mengaktifkan kembali tanggal tertentu.`
+        ].join('\n')
+      };
+    }
+
+    // 5AB. Command: TANGGAL [xxx] TUTUP / TUTUP TANGGAL [xxx] (Single date close)
+    const singleDateCloseMatch = rawCmd.match(/^\s*(?:mulai\s+)?tanggal\s+([^\s]+(?:\s+[a-zA-Z]+)?)\s+tutup\s*$/i)
+      || rawCmd.match(/^\s*tutup\s+(?:mulai\s+)?tanggal\s+([^\s]+(?:\s+[a-zA-Z]+)?)\s*$/i);
+    if (singleDateCloseMatch) {
+      const tz = tenant.timezone || 'Asia/Jakarta';
+      const rawDate = singleDateCloseMatch[1].trim();
+      const targetDateStr = this.parseIndoDate(rawDate, tz);
+      if (!targetDateStr) {
+        return {
+          action: 'INVALID_DATE',
+          reply: `⚠️ Format tanggal tidak dikenali ("${rawDate}").\nContoh: *TANGGAL 15 OKTOBER TUTUP* atau *TANGGAL 2026-10-15 TUTUP*.`
+        };
+      }
+      tenant.closed_dates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates : [];
+      if (!tenant.closed_dates.includes(targetDateStr)) {
+        tenant.closed_dates.push(targetDateStr);
+      }
+      tenant.updated_at = new Date().toISOString();
+      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+      return {
+        action: 'CLOSE_DATE',
+        date: targetDateStr,
+        reply: [
+          `🛑 *PRAKTEK TUTUP PADA TANGGAL ${targetDateStr}*`,
+          `----------------------------------------`,
+          `Praktek *${tenant.name}* telah ditandai libur/tutup untuk tanggal *${targetDateStr}*.`,
+          `Ketik *BUKA TANGGAL ${targetDateStr}* untuk mengaktifkan kembali jadwal tanggal tersebut.`
+        ].join('\n')
+      };
+    }
+
+    // 5AC. Command: BUKA TANGGAL [xxx] / TANGGAL [xxx] BUKA (Reopen specific date)
+    const dateOpenMatch = rawCmd.match(/^\s*buka\s+tanggal\s+([^\s]+(?:\s+[a-zA-Z]+)?)\s*$/i)
+      || rawCmd.match(/^\s*tanggal\s+([^\s]+(?:\s+[a-zA-Z]+)?)\s+buka\s*$/i);
+    if (dateOpenMatch) {
+      const tz = tenant.timezone || 'Asia/Jakarta';
+      const rawDate = dateOpenMatch[1].trim();
+      const targetDateStr = this.parseIndoDate(rawDate, tz);
+      if (!targetDateStr) {
+        return {
+          action: 'INVALID_DATE',
+          reply: `⚠️ Format tanggal tidak dikenali ("${rawDate}").\nContoh: *BUKA TANGGAL 15 OKTOBER* atau *BUKA TANGGAL 2026-10-15*.`
+        };
+      }
+      tenant.closed_dates = Array.isArray(tenant.closed_dates) ? tenant.closed_dates.filter(d => d !== targetDateStr) : [];
+      tenant.updated_at = new Date().toISOString();
+      if (this.db && typeof this.db.saveToFile === 'function') this.db.saveToFile();
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
+
+      return {
+        action: 'OPEN_DATE',
+        date: targetDateStr,
+        reply: [
+          `🟢 *PRAKTEK DIBUKA PADA TANGGAL ${targetDateStr}*`,
+          `----------------------------------------`,
+          `Jadwal reservasi untuk tanggal *${targetDateStr}* di *${tenant.name}* kini telah dibuka kembali.`
         ].join('\n')
       };
     }
@@ -290,12 +413,15 @@ class DoctorCopilotEngine {
         `----------------------------------------`,
         `👉 *NEXT* : Panggil pasien antrean berikutnya`,
         `👉 *DONE* : Selesaikan pasien yang sedang diperiksa`,
-        `👉 *STATUS* atau *JADWAL* : Jadwal pasien hari ini`,
+        `👉 *STATUS* atau *JADWAL* : Jadwal pasien (Hari Ini s/d H+2)`,
+        `👉 *JADWAL BESOK* : Jadwal pasien besok saja`,
         `👉 *DASHBOARD* atau *CHART* : 3 Visual Chart (Hari Ini, Week Daily, Month Weekly)`,
         `👉 *TARIF* : Cek & kelola harga layanan praktek`,
         `👉 *TARIF [nomor] [harga]* : Ubah harga layanan langsung`,
         `👉 *BESOK TUTUP* : Tandai praktek besok libur / tutup`,
         `👉 *BESOK BUKA* : Buka kembali jadwal praktek besok`,
+        `👉 *TANGGAL [tgl] TUTUP SELAMA [x] HARI* : Libur multi-hari`,
+        `👉 *BUKA TANGGAL [tgl]* : Buka kembali tanggal tertentu`,
         `👉 *JAM BUKA 08:00 - 20:00* : Atur jam operasional praktek`,
         `👉 *JAM BUKA* : Cek jam buka & tutup operasional saat ini`,
         `👉 *TUTUP* : Hentikan sementara reservasi baru`,
@@ -498,69 +624,175 @@ class DoctorCopilotEngine {
     };
   }
 
-  handleQueueStatus(tenant) {
+  parseIndoDate(dateStr, tz = 'Asia/Jakarta') {
+    const now = new Date();
+    const clean = (dateStr || '').trim().toLowerCase();
+
+    // Check ISO: YYYY-MM-DD
+    const isoMatch = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (isoMatch) {
+      const y = isoMatch[1];
+      const m = String(isoMatch[2]).padStart(2, '0');
+      const d = String(isoMatch[3]).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    // Check DD/MM/YYYY or DD-MM-YYYY
+    const slashMatch = clean.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?$/);
+    if (slashMatch) {
+      const d = String(slashMatch[1]).padStart(2, '0');
+      const m = String(slashMatch[2]).padStart(2, '0');
+      const currentYear = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now).slice(0, 4);
+      let y = slashMatch[3] ? (slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3]) : currentYear;
+      return `${y}-${m}-${d}`;
+    }
+
+    // Check "15 Oktober" or "15 Okt" or "15 Oct"
+    const monthNames = {
+      'jan': '01', 'januari': '01', 'january': '01',
+      'feb': '02', 'februari': '02', 'february': '02',
+      'mar': '03', 'maret': '03', 'march': '03',
+      'apr': '04', 'april': '04',
+      'mei': '05', 'may': '05',
+      'jun': '06', 'juni': '06', 'june': '06',
+      'jul': '07', 'juli': '07', 'july': '07',
+      'agu': '08', 'agustus': '08', 'aug': '08', 'august': '08',
+      'sep': '09', 'september': '09',
+      'okt': '10', 'oktober': '10', 'oct': '10', 'october': '10',
+      'nov': '11', 'november': '11',
+      'des': '12', 'desember': '12', 'dec': '12', 'december': '12'
+    };
+
+    const textMonthMatch = clean.match(/^(\d{1,2})\s+([a-zA-Z]+)(?:\s+(\d{4}))?$/);
+    if (textMonthMatch) {
+      const dayNum = String(textMonthMatch[1]).padStart(2, '0');
+      const monthWord = textMonthMatch[2].toLowerCase();
+      const monthNum = monthNames[monthWord];
+      if (monthNum) {
+        const currentYear = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now).slice(0, 4);
+        const y = textMonthMatch[3] || currentYear;
+        return `${y}-${monthNum}-${dayNum}`;
+      }
+    }
+
+    // Just day number: "15"
+    const justDayMatch = clean.match(/^(\d{1,2})$/);
+    if (justDayMatch) {
+      const dayNum = parseInt(justDayMatch[1], 10);
+      const todayParts = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now).split('-');
+      const y = todayParts[0];
+      const m = todayParts[1];
+      return `${y}-${m}-${String(dayNum).padStart(2, '0')}`;
+    }
+
+    return null;
+  }
+
+  handleQueueStatus(tenant, rawCmd = '') {
     const now = new Date();
     const tz = tenant.timezone || 'Asia/Jakarta';
-    let todayLocal = '';
-    try {
-      todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
-    } catch (e) {
-      todayLocal = now.toISOString().slice(0, 10);
-    }
-    const todayUtc = now.toISOString().slice(0, 10);
+    const cleanCmd = (rawCmd || '').toUpperCase();
 
-    let todayAppts = Array.from(this.db.appointments.values())
-      .filter(a => {
-        if (a.tenant_id !== tenant.id) return false;
-        try {
-          const apptDateLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(a.start_time));
-          return apptDateLocal === todayLocal || a.start_time.startsWith(todayUtc);
-        } catch (e) {
-          return a.start_time.startsWith(todayUtc);
-        }
-      })
+    const isBesokOnly = cleanCmd.includes('BESOK');
+    const isLusaOnly = cleanCmd.includes('LUSA');
+    const isHariIniOnly = cleanCmd.includes('HARI INI');
+
+    // Dates for H+0, H+1, H+2 in tenant's timezone
+    const daysData = [];
+    const dayLabels = ['Hari Ini (H)', 'Besok (H+1)', 'Lusa (H+2)'];
+    for (let offset = 0; offset < 3; offset++) {
+      const d = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
+      let dStr = '';
+      try {
+        dStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
+      } catch (e) {
+        dStr = d.toISOString().slice(0, 10);
+      }
+      let dayFormatted = '';
+      try {
+        dayFormatted = new Intl.DateTimeFormat('id-ID', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'short' }).format(d);
+      } catch (e) {
+        dayFormatted = dStr;
+      }
+      daysData.push({ offset, dateStr: dStr, label: dayLabels[offset], formatted: dayFormatted });
+    }
+
+    const allTenantAppts = Array.from(this.db.appointments.values())
+      .filter(a => a.tenant_id === tenant.id)
       .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 
-    // Fallback: If no appointments match today, show any recent appointments
-    if (todayAppts.length === 0) {
-      todayAppts = Array.from(this.db.appointments.values())
-        .filter(a => a.tenant_id === tenant.id)
-        .sort((a, b) => new Date(b.start_time) - new Date(a.start_time))
-        .slice(0, 10)
-        .reverse();
+    let sections = [];
+    let totalWaiting = 0;
+    let totalInConsult = 0;
+    let totalCompleted = 0;
+    let totalCancelled = 0;
+    let totalCount = 0;
+
+    for (const day of daysData) {
+      if (isBesokOnly && day.offset !== 1) continue;
+      if (isLusaOnly && day.offset !== 2) continue;
+      if (isHariIniOnly && day.offset !== 0) continue;
+
+      const dayAppts = allTenantAppts.filter(a => {
+        try {
+          const apptDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(a.start_time));
+          return apptDate === day.dateStr;
+        } catch (e) {
+          return a.start_time.startsWith(day.dateStr);
+        }
+      });
+
+      totalWaiting += dayAppts.filter(a => a.status === 'CONFIRMED').length;
+      totalInConsult += dayAppts.filter(a => a.status === 'IN_CONSULTATION').length;
+      totalCompleted += dayAppts.filter(a => a.status === 'COMPLETED').length;
+      totalCancelled += dayAppts.filter(a => a.status === 'CANCELLED').length;
+      totalCount += dayAppts.length;
+
+      const lines = dayAppts.map((a, idx) => {
+        const timeStr = new Date(a.start_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+        const statusIcon = a.status === 'COMPLETED' ? '✅' : a.status === 'IN_CONSULTATION' ? '🩺' : a.status === 'CANCELLED' ? '❌' : '⏳';
+        const statusLabel = a.status === 'CANCELLED' ? 'BATAL' : (a.status === 'IN_CONSULTATION' ? 'KONSULTASI' : (a.status === 'CONFIRMED' ? 'MENUNGGU' : a.status));
+        return `${idx + 1}. [${timeStr}] ${statusIcon} *${a.customer_name}* (${statusLabel})`;
+      });
+
+      sections.push(`📅 *${day.label.toUpperCase()} (${day.formatted}):*`);
+      if (lines.length > 0) {
+        sections.push(...lines);
+      } else {
+        sections.push(`_Belum ada jadwal antrean_`);
+      }
+      sections.push(``);
     }
 
-    if (todayAppts.length === 0) {
-      return {
-        action: 'STATUS',
-        count: 0,
-        reply: `📅 Belum ada jadwal pasien untuk hari ini (${todayLocal || todayUtc}).`
-      };
+    if (totalCount === 0 && !isBesokOnly && !isLusaOnly) {
+      const recent = allTenantAppts.slice(-10);
+      if (recent.length > 0) {
+        sections = [
+          `ℹ️ _Tidak ada jadwal antrean untuk H s/d H+2. Menampilkan riwayat terbaru:_`,
+          ...recent.map((a, idx) => {
+            const timeStr = new Date(a.start_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+            const statusIcon = a.status === 'COMPLETED' ? '✅' : a.status === 'IN_CONSULTATION' ? '🩺' : a.status === 'CANCELLED' ? '❌' : '⏳';
+            const statusLabel = a.status === 'CANCELLED' ? 'BATAL' : (a.status === 'IN_CONSULTATION' ? 'KONSULTASI' : (a.status === 'CONFIRMED' ? 'MENUNGGU' : a.status));
+            return `${idx + 1}. [${timeStr}] ${statusIcon} *${a.customer_name}* (${statusLabel})`;
+          })
+        ];
+        totalCancelled += recent.filter(a => a.status === 'CANCELLED').length;
+      }
     }
 
-    const lines = todayAppts.map((a, idx) => {
-      const timeStr = new Date(a.start_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: tz });
-      const statusIcon = a.status === 'COMPLETED' ? '✅' : a.status === 'IN_CONSULTATION' ? '🩺' : a.status === 'CANCELLED' ? '❌' : '⏳';
-      const statusLabel = a.status === 'CANCELLED' ? 'BATAL' : (a.status === 'IN_CONSULTATION' ? 'KONSULTASI' : (a.status === 'CONFIRMED' ? 'MENUNGGU' : a.status));
-      return `${idx + 1}. [${timeStr}] ${statusIcon} *${a.customer_name}* (${statusLabel})`;
-    });
-
-    const waiting = todayAppts.filter(a => a.status === 'CONFIRMED').length;
-    const inConsult = todayAppts.filter(a => a.status === 'IN_CONSULTATION').length;
-    const completed = todayAppts.filter(a => a.status === 'COMPLETED').length;
-    const cancelled = todayAppts.filter(a => a.status === 'CANCELLED').length;
+    const title = (isBesokOnly ? 'JADWAL BESOK (H+1)' : (isLusaOnly ? 'JADWAL LUSA (H+2)' : (isHariIniOnly ? 'DAFTAR ANTREAN HARI INI' : 'JADWAL PRAKTEK (H s/d H+2)')));
 
     return {
       action: 'STATUS',
-      count: todayAppts.length,
+      count: totalCount,
       reply: [
-        `📋 *DAFTAR ANTREAN HARI INI (${todayLocal || todayUtc})*`,
+        `📋 *${title}*`,
         `Praktek: *${tenant.name}*`,
         `----------------------------------------`,
-        ...lines,
+        ...sections,
         `----------------------------------------`,
-        `⏳ Menunggu: ${waiting} | 🩺 Konsultasi: ${inConsult} | ✅ Selesai: ${completed} | ❌ Batal: ${cancelled}`
-      ].join('\n')
+        `⏳ Menunggu: ${totalWaiting} | 🩺 Konsultasi: ${totalInConsult} | ✅ Selesai: ${totalCompleted} | ❌ Batal: ${totalCancelled}`
+      ].filter(l => l !== null && l !== undefined).join('\n')
     };
   }
 

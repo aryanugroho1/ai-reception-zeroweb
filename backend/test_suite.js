@@ -823,6 +823,9 @@ async function runTestSuite() {
     });
     assert(goodCouponTrial.statusCode === 200 && goodCouponTrial.body.success === true, 'HTTP POST /api/trial/register accepted valid PILOTLIFETIME coupon');
 
+    const checkCouponRes = await makeRequest('GET', '/api/subscriptions/coupon-check?coupon=WRONGCODE');
+    assert(checkCouponRes.statusCode === 404 && checkCouponRes.body.error === 'Kode kupon tidak valid.', 'Coupon check returns clean error without leaking valid codes');
+
     // 2. Issue 2: Patient Cancellation Sync (BATAL JADWAL -> CANCELLED in DB & excluded from NEXT)
     const testDocPhone = '62817090934764';
     const testPatientPhone = '628188887777';
@@ -874,6 +877,41 @@ async function runTestSuite() {
     });
     assert(!nextCheck.current_patient || nextCheck.current_patient.id !== apptToCancel.id, 'Doctor NEXT command does NOT call cancelled patient');
 
+    // Patient re-books after cancellation
+    await app.ingressRouter.routeMessage({
+      from: `${testPatientPhone}@s.whatsapp.net`,
+      text: '1',
+      tenant_slug: testTenant.slug
+    });
+    const rebookNameRes = await app.ingressRouter.routeMessage({
+      from: `${testPatientPhone}@s.whatsapp.net`,
+      text: 'Pasien Batal Test',
+      tenant_slug: testTenant.slug
+    });
+    assert(rebookNameRes && rebookNameRes.response_type === 'CONFIRMATION', 'Patient successfully rebooked appointment after cancellation');
+
+    // Doctor checks JADWAL -> reflects rebooked patient in H s/d H+2 schedule!
+    const doctorJadwalRes = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: 'JADWAL',
+      doctorPhone: testDocPhone
+    });
+    assert(doctorJadwalRes && doctorJadwalRes.reply && doctorJadwalRes.reply.includes('Pasien Batal Test'), 'Doctor JADWAL reflects re-booked patient appointment in H s/d H+2 schedule');
+
+    // Attempt booking beyond H+2 (e.g. 5 days ahead) -> must be rejected with H+2 limit warning!
+    const farPhone = '628199990001';
+    await app.ingressRouter.routeMessage({
+      from: `${farPhone}@s.whatsapp.net`,
+      text: '1',
+      tenant_slug: testTenant.slug
+    });
+    const farDateRes = await app.ingressRouter.routeMessage({
+      from: `${farPhone}@s.whatsapp.net`,
+      text: 'Pasien Jauh 2026-12-25 jam 10:00',
+      tenant_slug: testTenant.slug
+    });
+    assert(farDateRes && farDateRes.message && farDateRes.message.includes('H+2'), 'Booking beyond H+2 rejected with H+2 limit warning');
+
     // 3. Issue 3: Operating Hours via Copilot text & Super Admin
     const setHoursRes = await app.doctorCopilot.handleCommand({
       tenantId: testTenant.id,
@@ -890,6 +928,12 @@ async function runTestSuite() {
       close_hour: '21:30'
     }, { 'Authorization': `Bearer ${admTok}` });
     assert(putHourRes.statusCode === 200 && testTenant.open_hour === '07:30' && testTenant.close_hour === '21:30', 'Super Admin PUT /api/tenants/:id updated open and close hours');
+
+    // Admin coupon counting verification (Issue 2)
+    const admCouponRes = await makeRequest('GET', '/api/admin/coupons', null, { 'Authorization': `Bearer ${admTok}` });
+    assert(admCouponRes.statusCode === 200 && admCouponRes.body.success && Array.isArray(admCouponRes.body.coupons), 'Admin coupons endpoint returns quota data');
+    const ltCoupon = admCouponRes.body.coupons.find(c => c.code === 'LIFETIMEFREE');
+    assert(ltCoupon && ltCoupon.quota_used >= 1, 'LIFETIMEFREE coupon is counted in admin coupons after registration');
 
     // 4. Issue 4: Command "Besok Tutup" and "Besok Buka"
     const besokTutupRes = await app.doctorCopilot.handleCommand({
@@ -911,6 +955,22 @@ async function runTestSuite() {
       doctorPhone: testDocPhone
     });
     assert(besokBukaRes && besokBukaRes.action === 'OPEN_TOMORROW' && !testTenant.closed_dates.includes(tomorrowDateStr), 'Doctor command "besok buka" reopened tomorrow');
+
+    // 5. Issue 5: Multi-day closure command (tanggal xxx tutup selama x hari)
+    const multiDayRes = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: 'tanggal 15 Oktober tutup selama 3 hari',
+      doctorPhone: testDocPhone
+    });
+    assert(multiDayRes && multiDayRes.action === 'CLOSE_DATE_RANGE' && multiDayRes.closed_dates.length === 3, 'Doctor command "tanggal 15 Oktober tutup selama 3 hari" added 3 closed dates');
+    assert(testTenant.closed_dates.includes('2026-10-15') && testTenant.closed_dates.includes('2026-10-16') && testTenant.closed_dates.includes('2026-10-17'), 'All 3 dates recorded in tenant.closed_dates');
+
+    const reopenDateRes = await app.doctorCopilot.handleCommand({
+      tenantId: testTenant.id,
+      commandText: 'buka tanggal 15 Oktober',
+      doctorPhone: testDocPhone
+    });
+    assert(reopenDateRes && reopenDateRes.action === 'OPEN_DATE' && !testTenant.closed_dates.includes('2026-10-15'), 'Doctor command "buka tanggal 15 Oktober" reopened date');
 
     await app.close();
     assert(true, 'HTTP REST server gracefully closed');

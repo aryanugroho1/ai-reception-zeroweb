@@ -297,6 +297,7 @@ class BaileysManager {
       }
       tenant.is_accepting_patients = true;
       tenant.updated_at = new Date().toISOString();
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') this.db.pgUpsertTenant(tenant).catch(() => {});
     } else {
       const rawSlug = (p.slug || p.business_name || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
       const uniqueSlug = p.slug || `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
@@ -306,6 +307,9 @@ class BaileysManager {
         slug: uniqueSlug,
         owner_phone: p.owner_phone || phone,
         owner_email: p.email,
+        whatsapp_connected_phone: phone,
+        coupon_code: p.coupon_code || null,
+        coupon_key: p.coupon_key || null,
         category: p.category || 'GENERAL',
         subscription_plan: p.plan || 'STARTER',
         subscription_until: p.subUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -317,6 +321,9 @@ class BaileysManager {
         tenant.coupon_key = p.coupon_key;
       }
       tenant.is_accepting_patients = true;
+      if (this.db && typeof this.db.pgUpsertTenant === 'function') {
+        this.db.pgUpsertTenant(tenant).catch(() => {});
+      }
 
       // Seed default starter services by category
       const starterServicesByCategory = {
@@ -762,10 +769,10 @@ class BaileysManager {
               const cleanMsg = text.trim();
               // Anti-loop defense: Doctor commands are short single-line inputs (e.g. "jadwal", "next").
               // Ignore bot response templates, status emojis, long formatted text, and multi-line summaries.
-              if (cleanMsg.length > 60 || cleanMsg.includes('\n') || /^[📅✅🛑🟢🩺ℹ️👋🔢⚠️📋]/.test(cleanMsg)) {
+              if (cleanMsg.length > 100 || cleanMsg.includes('\n') || /^[📅✅🛑🟢🩺ℹ️👋🔢⚠️📋]/.test(cleanMsg)) {
                 continue;
               }
-              const isCopilotCmd = /^\s*(?:NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI\s+INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|CHART|GRAFIK|TARIF|LAYANAN|HARGA|TAMBAH|UBAH|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN|BESOK|LIBUR|JAM|OPERASIONAL)(?:\s+.*)?$/i.test(cleanMsg);
+              const isCopilotCmd = /^\s*(?:NEXT|BERIKUTNYA|PANGGIL|DONE|SELESAI|STATUS|ANTREAN|DAFTAR|JADWAL|REKAP|HARI\s+INI|LIST|DASHBOARD|RINGKASAN|INSIGHT|CHART|GRAFIK|TARIF|LAYANAN|HARGA|TAMBAH|UBAH|TUTUP|ISTIRAHAT|PAUSE|BUKA|AKTIF|MENU|HELP|BANTUAN|BESOK|LIBUR|JAM|OPERASIONAL|TANGGAL)(?:\s+.*)?$/i.test(cleanMsg);
               if (!isCopilotCmd) continue;
             }
 

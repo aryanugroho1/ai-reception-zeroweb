@@ -1145,7 +1145,7 @@ class MayarPaymentModal {
       const data = await resp.json();
 
       if (!resp.ok || !data.valid) {
-        this.showLandingPromoAlert(data.error || '❌ Kode kupon tidak valid. Gunakan kupon resmi: <strong>lifetimefree</strong> atau <strong>freepro</strong>.', '#b91c1c', '#fee2e2');
+        this.showLandingPromoAlert(data.error || '❌ Kode kupon tidak valid.', '#b91c1c', '#fee2e2');
         return;
       }
 
@@ -1194,7 +1194,7 @@ class MayarPaymentModal {
       const data = await resp.json();
 
       if (!resp.ok || !data.valid) {
-        this.showCouponMsg(data.error || '❌ Kode kupon tidak valid. Gunakan kupon resmi: <strong>lifetimefree</strong> (3 nomor) atau <strong>freepro</strong> (5 bot).', '#b91c1c', '#fee2e2');
+        this.showCouponMsg(data.error || '❌ Kode kupon tidak valid.', '#b91c1c', '#fee2e2');
         return;
       }
 
