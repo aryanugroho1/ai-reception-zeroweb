@@ -452,6 +452,18 @@
           <span class="discount-tag">HEMAT 20%</span>
         </div>
 
+        <!-- Promo Code Input on Pricing Section -->
+        <div class="pricing-promo-bar" style="max-width: 520px; margin: 0 auto 2.5rem; background: rgba(255, 255, 255, 0.95); border: 1.5px dashed #0284c7; border-radius: 14px; padding: 14px 18px; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.08); text-align: center;">
+          <div style="font-size: 0.88rem; font-weight: 700; color: #0f172a; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>🎟️ Punya Kode Promo / Voucher Mitra?</span>
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: center;">
+            <input type="text" id="landingPromoCodeInput" placeholder="Masukkan kode promo (misal: LIFETIMEFREE / FREEPRO)" style="flex: 1; max-width: 320px; padding: 0.6rem 0.9rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.86rem; text-transform: uppercase; font-family: var(--font-mono); font-weight: 700;">
+            <button type="button" class="btn btn-primary" id="btnApplyLandingPromo" style="padding: 0.6rem 1.2rem; font-size: 0.86rem; font-weight: 700; white-space: nowrap;">Terapkan</button>
+          </div>
+          <div id="landingPromoAlert" style="font-size: 0.82rem; margin-top: 8px; display: none; padding: 6px 12px; border-radius: 6px;"></div>
+        </div>
+
         <div class="pricing-grid pricing-grid-4">
 
           <!-- Free Plan -->
@@ -763,12 +775,12 @@
     <div class="modal-card">
       <button class="modal-close-btn" id="closeMayarModal" aria-label="Tutup">&times;</button>
       
-      <!-- STEP 1: Rincian Paket Langganan -->
+      <!-- STEP 1: Rincian Paket Langganan & Kode Promo -->
       <div id="mayarStep1Package">
         <div class="qris-header">
           <div class="qris-badge">⭐ Rincian Langganan Bot WhatsApp</div>
           <h3 class="qris-title">Aktivasi Paket Layanan</h3>
-          <p style="font-size:0.85rem; color:#475569;">Periksa rincian paket langganan Anda di bawah, lalu klik Lanjut untuk mengisi data bisnis &amp; generate QRIS.</p>
+          <p style="font-size:0.85rem; color:#475569;">Periksa rincian paket langganan Anda di bawah, lalu klik Lanjut untuk mengisi data bisnis &amp; pembayaran.</p>
         </div>
 
         <div class="qris-invoice-summary">
@@ -790,8 +802,20 @@
           </div>
         </div>
 
+        <!-- Input Kode Promo di Modal -->
+        <div class="trial-field-group" style="margin-top: 1rem; margin-bottom: 1.2rem; background: #f8fafc; padding: 12px 14px; border-radius: 12px; border: 1.5px dashed #0284c7;">
+          <label class="trial-field-label" for="couponCodeInput" style="font-size: 0.82rem; font-weight: 700; color: #0369a1; margin-bottom: 6px; display: block;">
+            🎟️ Kode Promo / Voucher Diskon (Opsional)
+          </label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="couponCodeInput" class="trial-input" placeholder="Masukkan kode promo (misal: LIFETIMEFREE)" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700;">
+            <button type="button" class="btn btn-secondary" id="btnApplyCoupon" style="white-space:nowrap; padding:0.6rem 1.1rem; font-weight:700;">Gunakan</button>
+          </div>
+          <div id="couponStatusMsg" style="font-size:0.8rem; margin-top:6px; display:none; padding:6px 10px; border-radius:6px;"></div>
+        </div>
+
         <button type="button" class="trial-submit-btn" id="btnMayarNext">
-          <span>Lanjut ke Data Bisnis &amp; Pembayaran QRIS →</span>
+          <span>Lanjut ke Data Bisnis &amp; Pembayaran →</span>
         </button>
 
         <button type="button" class="btn btn-secondary" style="width:100%; margin-top:8px;" onclick="document.getElementById('mayarModal').classList.remove('active')">
@@ -802,7 +826,7 @@
       <!-- STEP 2: Input Info Lengkap Sesuai Kebutuhan Database -->
       <div id="mayarStep2Info" style="display:none;">
         <div class="trial-header">
-          <div class="trial-badge">📋 Langkah 2 dari 3 • Data Akun</div>
+          <div class="trial-badge">📋 Langkah 2 dari 4 • Data Akun</div>
           <h3 class="trial-title">Informasi Bisnis &amp; WhatsApp</h3>
           <p class="trial-subtitle">Lengkapi data di bawah untuk pencatatan database dan sinkronisasi bot WhatsApp bisnis Anda.</p>
         </div>
@@ -875,7 +899,7 @@
           </div>
 
           <button type="submit" class="trial-submit-btn" id="btnSubmitMayarInfo">
-            <span>Lanjut ke Scan QR WhatsApp →</span>
+            <span>Lanjut ke Pembayaran via Mayar →</span>
           </button>
 
           <button type="button" class="btn btn-secondary" id="btnBackToStep1" style="width:100%; margin-top:8px;">
@@ -884,13 +908,65 @@
         </form>
       </div>
 
-      <!-- STEP 3: Generate QR & Aktivasi WhatsApp (1 QR untuk 1 Nomor) -->
+      <!-- STEP 3: Pembayaran via Gateway Mayar.id (QRIS / Virtual Account) -->
+      <div id="mayarStepPayment" style="display:none;">
+        <div class="trial-header">
+          <div class="trial-badge" style="background:rgba(2,132,199,0.12); color:#0369a1; border-color:#0284c7;">
+            💳 Langkah 3 dari 4 • Pembayaran via Mayar.id
+          </div>
+          <h3 class="trial-title">Selesaikan Pembayaran Langganan</h3>
+          <p class="trial-subtitle">Klik tombol pembayaran di bawah untuk membayar melalui gateway resmi Mayar.id. Setelah sync pembayaran berhasil, QR code aktivasi WhatsApp bot akan langsung muncul otomatis.</p>
+        </div>
+
+        <div class="qris-invoice-summary" style="margin-bottom:1.2rem;">
+          <div class="invoice-row">
+            <span>No. Tagihan:</span>
+            <span style="font-family:var(--font-mono); color:#1e293b; font-weight:700;" id="payStepInvNo">-</span>
+          </div>
+          <div class="invoice-row">
+            <span>Paket Layanan:</span>
+            <span id="payStepPlanName" style="font-weight:700;">Pro Monthly</span>
+          </div>
+          <div class="invoice-row total">
+            <span>Total Tagihan:</span>
+            <span class="price-tag" id="payStepAmount" style="color:#0284c7;">Rp 199.000</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom:1.2rem;">
+          <a id="btnPayMayarLink" href="#" target="_blank" class="trial-submit-btn" style="text-decoration:none; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; font-weight:700; background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
+            <span>💳 Bayar Sekarang via Mayar.id (QRIS / VA) ↗</span>
+          </a>
+        </div>
+
+        <!-- Live Payment Sync Status Box -->
+        <div id="paymentSyncBox" style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:14px; padding:16px; margin-bottom:14px; text-align:center;">
+          <div id="paymentSyncStatus" style="font-size:0.88rem; font-weight:700; color:#b45309; display:flex; align-items:center; justify-content:center; gap:8px;">
+            <span style="font-size:1.1rem; animation:spin 2s linear infinite; display:inline-block;">🔄</span>
+            <span>Menunggu konfirmasi pembayaran dari Mayar.id...</span>
+          </div>
+          <p style="font-size:0.78rem; color:#78350f; margin-top:6px; margin-bottom:0; line-height:1.4;">
+            Sistem otomatis mendeteksi status pembayaran secara real-time. Begitu transaksi terverifikasi, layar ini otomatis beralih ke kode QR WhatsApp bot.
+          </p>
+        </div>
+
+        <!-- Sandbox Simulation Test Button -->
+        <button type="button" class="btn btn-secondary" id="btnSimulatePaymentSuccess" style="width:100%; border:1.5px dashed #0284c7; color:#0369a1; font-weight:700; margin-bottom:10px; padding:10px;">
+          🧪 Simulasi Pembayaran Berhasil (Test / Demo Mode)
+        </button>
+
+        <button type="button" class="btn btn-secondary" id="btnBackToStep2FromPay" style="width:100%; padding:10px;">
+          ← Kembali / Ubah Data Akun
+        </button>
+      </div>
+
+      <!-- STEP 4: Generate QR & Aktivasi WhatsApp (Setelah Sync Pembayaran Berhasil) -->
       <div id="mayarStep3Qr" style="display:none; text-align:center;">
         <div class="trial-badge" style="background:rgba(0,210,158,0.18); color:#008767; border-color:#00d29e;">
-          🟢 1 QR Code untuk 1 Nomor WhatsApp
+          🟢 Langkah 4 dari 4 • Pembayaran Terverifikasi • 1 QR untuk 1 Bot
         </div>
         <h3 class="trial-title" id="mayarQrTitle">Scan QR WhatsApp Bisnis Anda</h3>
-        <p class="trial-subtitle" id="mayarQrSubtitle">Pindai kode QR di bawah menggunakan WhatsApp di ponsel bisnis Anda untuk mengaktifkan asisten AI booking Anda.</p>
+        <p class="trial-subtitle" id="mayarQrSubtitle">Pembayaran berhasil diverifikasi! Pindai kode QR di bawah menggunakan WhatsApp di ponsel bisnis Anda untuk mengaktifkan asisten AI booking Anda.</p>
 
         <!-- QR Display Box -->
         <div style="background:#fff; border:2px solid #e2e8f0; border-radius:20px; padding:1.4rem; display:flex; flex-direction:column; align-items:center; margin:1.2rem auto; max-width:320px; box-shadow:0 10px 25px rgba(15,23,42,0.06);">

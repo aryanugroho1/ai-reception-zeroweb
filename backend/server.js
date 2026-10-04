@@ -570,7 +570,262 @@ class AppServer {
         });
       }
 
-      // 2H. Coupon Redemption Endpoint (Skips Mayar.id): POST /api/subscriptions/redeem-coupon
+      // 2G1. Paid Checkout & Invoice Creation: POST /api/subscriptions/checkout
+      if (pathname === '/api/subscriptions/checkout' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const bizName = (body.business_name || body.clinic_name || body.name || 'Bisnis Anda').trim();
+        const contactName = (body.contact_name || body.owner_name || body.name || '').trim();
+        const rawPhone = (body.phone || body.bot_phone || '').replace(/[^0-9]/g, '');
+        const doctorPhone = (body.doctor_phone || body.owner_phone || rawPhone).replace(/[^0-9]/g, '');
+        const ownerEmail = (body.email || '').trim();
+        const category = (body.category || 'GENERAL').toUpperCase();
+        let planTier = (body.plan_tier || body.plan || 'PRO').toUpperCase();
+        if (planTier === 'STARTER_MONTHLY') planTier = 'STARTER';
+        if (planTier === 'PRO_MONTHLY') planTier = 'PRO';
+        if (planTier === 'MULTI_SEAT' || planTier === 'BUSINESS') planTier = 'CLINIC';
+
+        if (!rawPhone || rawPhone.length < 9) {
+          return this.sendJson(res, 400, {
+            error: 'Nomor WhatsApp bisnis tidak valid (minimal 9 digit angka)',
+            code: 'INVALID_PHONE'
+          });
+        }
+
+        // Check if user submitted a valid 100% coupon (Free pass)
+        const rawCoupon = (body.coupon || '').toUpperCase().trim();
+        if (rawCoupon) {
+          const couponConfig = this.couponConfigs[rawCoupon];
+          if (couponConfig) {
+            this.couponRedemptions = this.couponRedemptions || new Map();
+            const quotaKey = (rawCoupon === 'LIFETIMEFREE' || rawCoupon === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
+            if (!this.couponRedemptions.has(quotaKey)) {
+              this.couponRedemptions.set(quotaKey, new Set());
+            }
+            const redeemedSet = this.couponRedemptions.get(quotaKey);
+            if (!redeemedSet.has(rawPhone) && redeemedSet.size >= couponConfig.maxCapacity) {
+              return this.sendJson(res, 400, {
+                error: `Mohon maaf, kuota kupon ${rawCoupon} telah penuh (${redeemedSet.size}/${couponConfig.maxCapacity} nomor terdaftar).`,
+                code: 'COUPON_QUOTA_EXCEEDED'
+              });
+            }
+            redeemedSet.add(rawPhone);
+
+            const subUntil = new Date(Date.now() + couponConfig.durationDays * 24 * 60 * 60 * 1000).toISOString();
+            let tenant = this.db.getTenantByPhone(rawPhone) || this.db.getTenantByPhone(doctorPhone);
+            if (tenant) {
+              tenant.name = bizName || tenant.name;
+              tenant.category = category || tenant.category;
+              if (ownerEmail) tenant.owner_email = ownerEmail;
+              tenant.subscription_plan = couponConfig.plan;
+              tenant.subscription_until = subUntil;
+              tenant.whatsapp_connected_phone = rawPhone;
+              if (doctorPhone) tenant.owner_phone = doctorPhone;
+              tenant.updated_at = new Date().toISOString();
+            } else {
+              const rawSlug = (bizName || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
+              const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
+              tenant = this.db.createTenant({
+                name: bizName,
+                slug: uniqueSlug,
+                owner_phone: doctorPhone || rawPhone,
+                owner_email: ownerEmail,
+                category: category,
+                subscription_plan: couponConfig.plan,
+                subscription_until: subUntil,
+                timezone: 'Asia/Jakarta'
+              });
+              tenant.whatsapp_connected_phone = rawPhone;
+            }
+
+            const token = this.baileys.generateConnectToken(tenant.id);
+            let qrImage = null;
+            try {
+              const QRCode = require('qrcode');
+              const qrPayload = `WA-CONNECT-BAILEYS:${tenant.id}:${rawPhone}:${token}`;
+              qrImage = await QRCode.toDataURL(qrPayload, { width: 280, margin: 2, color: { dark: '#0a0f1d', light: '#ffffff' } });
+            } catch (e) {}
+
+            return this.sendJson(res, 200, {
+              success: true,
+              free: true,
+              message: `Kupon ${rawCoupon} valid! Pembayaran dilewati (100% Free).`,
+              plan: couponConfig.plan,
+              token: token,
+              connect_url: `/connect?token=${token}`,
+              qr_image: qrImage
+            });
+          }
+        }
+
+        // Standard Paid Subscription Flow (Mayar.id Integration)
+        const planPrices = {
+          'STARTER': 99000,
+          'PRO': 199000,
+          'CLINIC': 349000
+        };
+        const amount = planPrices[planTier] || 199000;
+
+        let tenant = this.db.getTenantByPhone(rawPhone) || this.db.getTenantByPhone(doctorPhone);
+        if (tenant) {
+          tenant.name = bizName || tenant.name;
+          tenant.category = category || tenant.category;
+          if (ownerEmail) tenant.owner_email = ownerEmail;
+          tenant.whatsapp_connected_phone = rawPhone;
+          if (doctorPhone) tenant.owner_phone = doctorPhone;
+          tenant.updated_at = new Date().toISOString();
+        } else {
+          const rawSlug = (bizName || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
+          const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
+          tenant = this.db.createTenant({
+            name: bizName,
+            slug: uniqueSlug,
+            owner_phone: doctorPhone || rawPhone,
+            owner_email: ownerEmail,
+            category: category,
+            subscription_plan: planTier,
+            subscription_until: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+            timezone: 'Asia/Jakarta'
+          });
+          tenant.whatsapp_connected_phone = rawPhone;
+
+          // Seed default starter services
+          try {
+            this.db.createService({
+              tenant_id: tenant.id,
+              name: 'Layanan Utama / Reservasi Slot',
+              duration_minutes: 45,
+              price: 150000,
+              is_active: true
+            });
+            this.db.createService({
+              tenant_id: tenant.id,
+              name: 'Treatment Tambahan / Konsultasi',
+              duration_minutes: 30,
+              price: 100000,
+              is_active: true
+            });
+          } catch (e) {}
+        }
+
+        const crypto = require('crypto');
+        const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
+        const invoiceNumber = 'INV-MYR-' + Math.floor(100000 + Math.random() * 900000);
+        this.db.createSubscriptionInvoice({
+          id: invoiceId,
+          tenant_id: tenant.id,
+          amount: amount,
+          plan_tier: planTier,
+          status: 'PENDING'
+        });
+        this.db.saveToFile();
+
+        const token = this.baileys.generateConnectToken(tenant.id);
+        const paymentUrl = `https://pay.mayar.id/checkout/${invoiceId}?amount=${amount}&tenant=${tenant.slug}&name=${encodeURIComponent(bizName)}`;
+
+        return this.sendJson(res, 200, {
+          success: true,
+          free: false,
+          invoice_id: invoiceId,
+          invoice_number: invoiceNumber,
+          amount: amount,
+          plan: planTier,
+          payment_url: paymentUrl,
+          tenant_id: tenant.id,
+          token: token
+        });
+      }
+
+      // 2G2. Check Invoice Payment Status: GET /api/subscriptions/invoice-status
+      if (pathname === '/api/subscriptions/invoice-status' && method === 'GET') {
+        const invoiceId = query.invoice_id;
+        if (!invoiceId) {
+          return this.sendJson(res, 400, { error: 'invoice_id diperlukan' });
+        }
+        const invoice = this.db.subscriptionInvoices.get(invoiceId);
+        if (!invoice) {
+          return this.sendJson(res, 404, { error: 'Invoice tidak ditemukan' });
+        }
+
+        const isPaid = invoice.status === 'PAID';
+        const tenant = this.db.tenants.get(invoice.tenant_id);
+        let token = null;
+        let qrImage = null;
+
+        if (isPaid && tenant) {
+          token = this.baileys.generateConnectToken(tenant.id);
+          try {
+            const QRCode = require('qrcode');
+            const cleanPhone = tenant.whatsapp_connected_phone || tenant.owner_phone || '';
+            const qrPayload = `WA-CONNECT-BAILEYS:${tenant.id}:${cleanPhone}:${token}`;
+            qrImage = await QRCode.toDataURL(qrPayload, { width: 280, margin: 2, color: { dark: '#0a0f1d', light: '#ffffff' } });
+          } catch (e) {}
+        }
+
+        return this.sendJson(res, 200, {
+          success: true,
+          invoice_id: invoice.id,
+          status: invoice.status,
+          paid: isPaid,
+          plan: invoice.plan_tier,
+          amount: invoice.amount,
+          tenant_id: invoice.tenant_id,
+          token: token,
+          connect_url: token ? `/connect?token=${token}` : null,
+          qr_image: qrImage
+        });
+      }
+
+      // 2G3. Simulate Mayar Payment Success: POST /api/subscriptions/simulate-payment
+      if (pathname === '/api/subscriptions/simulate-payment' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const invoiceId = body.invoice_id;
+        if (!invoiceId) {
+          return this.sendJson(res, 400, { error: 'invoice_id diperlukan' });
+        }
+        const invoice = this.db.subscriptionInvoices.get(invoiceId);
+        if (!invoice) {
+          return this.sendJson(res, 404, { error: 'Invoice tidak ditemukan' });
+        }
+
+        invoice.status = 'PAID';
+        invoice.paid_at = new Date().toISOString();
+        invoice.updated_at = new Date().toISOString();
+        invoice.payment_provider = 'MAYAR_SIMULATION';
+
+        const tenant = this.db.tenants.get(invoice.tenant_id);
+        let token = null;
+        let qrImage = null;
+
+        if (tenant) {
+          const currentSubEnd = new Date(tenant.subscription_until || Date.now());
+          const baseDate = currentSubEnd > new Date() ? currentSubEnd : new Date();
+          baseDate.setDate(baseDate.getDate() + 30);
+          tenant.subscription_plan = invoice.plan_tier;
+          tenant.subscription_until = baseDate.toISOString();
+          tenant.updated_at = new Date().toISOString();
+
+          token = this.baileys.generateConnectToken(tenant.id);
+          try {
+            const QRCode = require('qrcode');
+            const cleanPhone = tenant.whatsapp_connected_phone || tenant.owner_phone || '';
+            const qrPayload = `WA-CONNECT-BAILEYS:${tenant.id}:${cleanPhone}:${token}`;
+            qrImage = await QRCode.toDataURL(qrPayload, { width: 280, margin: 2, color: { dark: '#0a0f1d', light: '#ffffff' } });
+          } catch (e) {}
+        }
+        this.db.saveToFile();
+
+        return this.sendJson(res, 200, {
+          success: true,
+          message: 'Simulasi pembayaran sukses! Status invoice sekarang PAID.',
+          invoice_id: invoice.id,
+          status: 'PAID',
+          paid: true,
+          token: token,
+          connect_url: token ? `/connect?token=${token}` : null,
+          qr_image: qrImage
+        });
+      }
+
       // 2H. Coupon Redemption Endpoint (Skips Mayar.id): POST /api/subscriptions/redeem-coupon
       if (pathname === '/api/subscriptions/redeem-coupon' && method === 'POST') {
         const body = await this.readRequestBody(req);
