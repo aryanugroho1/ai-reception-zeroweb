@@ -91,28 +91,44 @@ class BaileysManager {
   }
 
   loadTokens() {
-    const candidatePaths = [
-      this.tokensFilePath,
-      `${this.tokensFilePath}.bak`,
-      path.join(process.cwd(), 'data/connect_tokens.json')
-    ];
+    if (this.db && typeof this.db.kvGet === 'function') {
+      const storedTokens = this.db.kvGet('baileys_connect_tokens');
+      if (Array.isArray(storedTokens)) {
+        this.connectTokens = new Map(storedTokens);
+      }
+      const storedPending = this.db.kvGet('baileys_pending_registrations');
+      if (Array.isArray(storedPending)) {
+        this.pendingRegistrations = new Map(storedPending);
+      }
+    }
+    if (this.connectTokens.size === 0) {
+      const candidatePaths = [
+        this.tokensFilePath,
+        `${this.tokensFilePath}.bak`,
+        path.join(process.cwd(), 'data/connect_tokens.json')
+      ];
 
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        try {
-          const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
-          if (Array.isArray(raw)) {
-            this.connectTokens = new Map(raw);
-            break;
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
+          try {
+            const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+            if (Array.isArray(raw)) {
+              this.connectTokens = new Map(raw);
+              break;
+            }
+          } catch (e) {
+            console.warn(`[BaileysManager] Failed loading connect tokens from ${p}:`, e.message);
           }
-        } catch (e) {
-          console.warn(`[BaileysManager] Failed loading connect tokens from ${p}:`, e.message);
         }
       }
     }
   }
 
   saveTokens() {
+    if (this.db && typeof this.db.kvSet === 'function') {
+      this.db.kvSet('baileys_connect_tokens', Array.from(this.connectTokens.entries()));
+      this.db.kvSet('baileys_pending_registrations', Array.from(this.pendingRegistrations.entries()));
+    }
     try {
       const dir = path.dirname(this.tokensFilePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -154,49 +170,15 @@ class BaileysManager {
       }
     }
 
-    // 2. SELF-HEALING: Scan sessions directory on disk for any session folders not yet restored
+    // 2. Scan sessions directory on disk: log orphans, NEVER resurrect ghost tenants into DB!
     if (fs.existsSync(this.sessionsDir)) {
       try {
         const subDirs = fs.readdirSync(this.sessionsDir, { withFileTypes: true });
         for (const dirent of subDirs) {
           if (dirent.isDirectory()) {
             const folderName = dirent.name;
-            if (!restoredTenantIds.has(folderName) && this.hasExistingCredentials(folderName)) {
-              let tenant = this.resolveTenant(folderName);
-              if (!tenant) {
-                const credsPath = path.join(this.sessionsDir, folderName, 'creds.json');
-                try {
-                  const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-                  const phone = creds?.me?.id ? creds.me.id.split(':')[0].replace(/\D/g, '') : null;
-                  if (phone) {
-                    tenant = this.db.getTenantByPhone(phone);
-                  }
-                  if (!tenant) {
-                    const recoveredName = creds?.me?.name || `Partner WA (${folderName.slice(0, 10)})`;
-                    const recoveredSlug = `wa_${folderName.replace(/[^a-z0-9]/gi, '_').toLowerCase().slice(0, 20)}`;
-                    tenant = this.db.createTenant({
-                      id: folderName,
-                      name: recoveredName,
-                      slug: recoveredSlug,
-                      owner_phone: phone || '62800000000',
-                      subscription_plan: 'STARTER',
-                      timezone: 'Asia/Jakarta'
-                    });
-                    if (phone) tenant.whatsapp_connected_phone = phone;
-                    this.db.saveToFile();
-                    console.log(`[BaileysManager] SELF-HEALING: Berhasil memulihkan tenant ${tenant.name} dari folder sesi disk ${folderName}`);
-                  }
-                } catch (e) {}
-              }
-
-              if (tenant) {
-                console.log(`[BaileysManager] Memulihkan sesi WhatsApp dari disk untuk ${tenant.name} (${folderName})...`);
-                this.startSession(folderName).catch(err => {
-                  console.warn(`[BaileysManager] Background auto-restore warning for disk session ${folderName}:`, err.message);
-                });
-                restoredTenantIds.add(folderName);
-                restoredCount++;
-              }
+            if (!restoredTenantIds.has(folderName) && !this.db.tenants.has(folderName)) {
+              console.log(`[BaileysManager] Folder sesi disk tak bertuan diabaikan: ${folderName}`);
             }
           }
         }
@@ -270,8 +252,15 @@ class BaileysManager {
 
   // --- PENDING REGISTRATION STAGING ---
   registerPendingTenant(pendingData) {
-    const pendingId = `pending_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-    this.pendingRegistrations.set(pendingId, pendingData);
+    // Generate permanent-style tenant ID so session directory won't need to be moved upon commit
+    const pendingId = pendingData.id || `t-${crypto.randomUUID().slice(0, 8)}`;
+    const data = {
+      ...pendingData,
+      id: pendingId,
+      created_at: Date.now()
+    };
+    this.pendingRegistrations.set(pendingId, data);
+    this.saveTokens();
     const token = this.generateConnectToken(pendingId);
     return { pendingId, token };
   }
@@ -283,6 +272,7 @@ class BaileysManager {
   cancelPendingTenant(pendingId) {
     this.pendingRegistrations.delete(pendingId);
     this.sessions.delete(pendingId);
+    this.saveTokens();
     return true;
   }
 
@@ -291,28 +281,42 @@ class BaileysManager {
     const p = this.pendingRegistrations.get(pendingId);
     const phone = actualConnectedPhone || p.rawPhone || p.phone;
 
-    // Check if tenant with this phone already exists in DB
-    let tenant = this.db.getTenantByPhone(phone);
+    // Check if tenant with this phone or ID already exists in DB
+    let tenant = (phone ? this.db.getTenantByPhone(phone) : null) || this.db.tenants.get(p.id) || this.db.tenants.get(pendingId);
     if (tenant) {
       tenant.name = p.business_name || tenant.name;
+      tenant.category = p.category || tenant.category;
       tenant.subscription_plan = p.plan || tenant.subscription_plan;
       tenant.subscription_until = p.subUntil || tenant.subscription_until;
       tenant.whatsapp_connected_phone = phone;
       if (p.owner_phone) tenant.owner_phone = p.owner_phone;
+      if (p.email) tenant.owner_email = p.email;
+      if (p.coupon_code) {
+        tenant.coupon_code = p.coupon_code;
+        tenant.coupon_key = p.coupon_key;
+      }
+      tenant.is_accepting_patients = true;
       tenant.updated_at = new Date().toISOString();
     } else {
-      const rawSlug = (p.business_name || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
-      const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
+      const rawSlug = (p.slug || p.business_name || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
+      const uniqueSlug = p.slug || `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
       tenant = this.db.createTenant({
+        id: p.id || pendingId,
         name: p.business_name,
         slug: uniqueSlug,
         owner_phone: p.owner_phone || phone,
+        owner_email: p.email,
         category: p.category || 'GENERAL',
         subscription_plan: p.plan || 'STARTER',
         subscription_until: p.subUntil || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         timezone: 'Asia/Jakarta'
       });
       tenant.whatsapp_connected_phone = phone;
+      if (p.coupon_code) {
+        tenant.coupon_code = p.coupon_code;
+        tenant.coupon_key = p.coupon_key;
+      }
+      tenant.is_accepting_patients = true;
 
       // Seed default starter services by category
       const starterServicesByCategory = {
@@ -360,6 +364,25 @@ class BaileysManager {
       } catch (e) {}
     }
 
+    // Record invoice if attached to registration
+    if (p.invoice) {
+      try {
+        const invId = p.invoice.id || `inv-${crypto.randomUUID().slice(0, 8)}`;
+        this.db.subscriptionInvoices.set(invId, {
+          id: invId,
+          tenant_id: tenant.id,
+          invoice_number: p.invoice.invoice_number || invId,
+          plan_tier: p.invoice.plan_tier || tenant.subscription_plan,
+          amount: Number(p.invoice.amount || 0),
+          payment_provider: p.invoice.payment_provider || (p.coupon_code ? `COUPON_${p.coupon_code}` : 'MAYAR'),
+          status: 'PAID',
+          paid_at: p.invoice.paid_at || new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      } catch (invErr) {}
+    }
+
     // Move session to committed tenant ID & keep alias so immediate frontend poll doesn't fail
     const pendingSession = this.sessions.get(pendingId);
     if (pendingSession) {
@@ -368,7 +391,7 @@ class BaileysManager {
       this.sessions.set(pendingId, pendingSession);
     }
 
-    // Mirror session auth files to committed tenant ID folder for future restarts
+    // Mirror session auth files to committed tenant ID folder if different
     const pendingDir = this.getSessionDir(pendingId);
     const tenantDir = this.getSessionDir(tenant.id);
     if (fs.existsSync(pendingDir) && pendingDir !== tenantDir) {
@@ -377,6 +400,7 @@ class BaileysManager {
           fs.mkdirSync(tenantDir, { recursive: true });
         }
         fs.cpSync(pendingDir, tenantDir, { recursive: true });
+        try { fs.rmSync(pendingDir, { recursive: true, force: true }); } catch (rmErr) {}
       } catch (e) {
         console.warn('[BaileysManager] Failed copying session files to tenant dir:', e.message);
       }
@@ -390,10 +414,11 @@ class BaileysManager {
     }
 
     this.pendingRegistrations.delete(pendingId);
-    if (this.db && typeof this.db.save === 'function') {
-      this.db.save();
+    this.saveTokens();
+    if (this.db && typeof this.db.saveToFile === 'function') {
+      this.db.saveToFile();
     }
-    console.log(`[BaileysManager] Tenant officially COMMITTED to database after QR connection: ${tenant.name} (${tenant.id}) - Phone: ${tenant.owner_phone}`);
+    console.log(`[BaileysManager] ✅ Tenant RESMI MASUK DATABASE setelah scan QR berhasil: ${tenant.name} (${tenant.id}) - Bot: +${tenant.whatsapp_connected_phone}`);
     return tenant;
   }
 
@@ -456,12 +481,31 @@ class BaileysManager {
       const data = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
       return !!(
         (data && data.me && (data.me.id || data.me.jid)) ||
-        (data && data.registered === true) ||
-        (data && data.noiseKey && data.signedIdentityKey)
+        (data && data.registered === true)
       );
     } catch (e) {
       return false;
     }
+  }
+
+  async ensureSessionStarted(tenantId) {
+    if (!tenantId) return null;
+    let session = this.sessions.get(tenantId);
+    if (session && (session.status === 'CONNECTED' || (session.sock && session.status !== 'DISCONNECTED'))) {
+      return session;
+    }
+    this.startingPromises = this.startingPromises || new Map();
+    if (this.startingPromises.has(tenantId)) {
+      return this.startingPromises.get(tenantId);
+    }
+    const p = this.startSession(tenantId).catch(err => {
+      console.warn(`[BaileysManager] ensureSessionStarted notice for ${tenantId}:`, err.message);
+      return null;
+    }).finally(() => {
+      this.startingPromises.delete(tenantId);
+    });
+    this.startingPromises.set(tenantId, p);
+    return p;
   }
 
   // --- START OR GET SESSION FOR A TENANT ---
@@ -820,13 +864,17 @@ class BaileysManager {
   getSessionStatus(tenantIdentifier) {
     let tenant = this.resolveTenant(tenantIdentifier);
     if (!tenant) return null;
-    const session = this.sessions.get(tenant.id) || {
-      tenantId: tenant.id,
-      status: this.hasExistingCredentials(tenant.id) ? 'OFFLINE' : 'DISCONNECTED',
-      qrImage: null,
-      phone: tenant.whatsapp_connected_phone || tenant.owner_phone || null,
-      updatedAt: tenant.updated_at
-    };
+    let session = this.sessions.get(tenant.id);
+    if (!session || session.status === 'DISCONNECTED') {
+      this.ensureSessionStarted(tenant.id);
+      session = this.sessions.get(tenant.id) || {
+        tenantId: tenant.id,
+        status: this.hasExistingCredentials(tenant.id) ? 'OFFLINE' : 'STARTING',
+        qrImage: null,
+        phone: tenant.whatsapp_connected_phone || tenant.owner_phone || null,
+        updatedAt: tenant.updated_at
+      };
+    }
 
     // If connected and still pending, commit to DB
     if (session.status === 'CONNECTED' && this.pendingRegistrations && this.pendingRegistrations.has(tenant.id)) {

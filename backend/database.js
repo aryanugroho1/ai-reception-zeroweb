@@ -27,210 +27,339 @@ class DatabaseEngine {
     this.subscriptionInvoices = new Map();
     this.idempotencyRecords = new Map();
     this.userSessions = new Map();
+    this.kv = new Map();
 
     this.databaseUrl = process.env.DATABASE_URL || null;
     this.pgPool = null;
+    this.pgLoaded = false;
+    this.ready = Promise.resolve();
 
     if (storagePath === false || process.env.NODE_ENV === 'test') {
       this.storagePath = null;
       this.seedSampleData();
     } else {
       this.storagePath = storagePath || process.env.DB_STORAGE_PATH || path.join(__dirname, '../data/app_database.json');
-      this.loadFromFile();
       if (this.databaseUrl) {
         this.setupPostgres();
+      } else {
+        this.loadFromFile();
+        if (process.env.NODE_ENV === 'production') {
+          console.warn('[DatabaseEngine] PERINGATAN: DATABASE_URL tidak disetel. Menggunakan berkas lokal (data akan hilang saat redeploy jika volume tidak dimount)!');
+        }
       }
+      this.startAutoPersist();
     }
   }
 
-  setupPostgres() {
+setupPostgres() {
     if (!this.databaseUrl) return;
     try {
       const { Pool } = require('pg');
-      const isInternal = this.databaseUrl.includes('localhost') || 
-                         this.databaseUrl.includes('127.0.0.1') ||
-                         this.databaseUrl.includes('postgres') ||
-                         this.databaseUrl.includes('tailscale') ||
-                         this.databaseUrl.includes('sslmode=disable') ||
-                         process.env.PGSSL === 'false';
+      let host = '';
+      try { host = new URL(this.databaseUrl).hostname; } catch (e) {}
+      // Internal Docker / Coolify / Tailscale hosts do not use TLS; public cloud hosts do.
+      const isInternal = process.env.PGSSL !== 'true' && (
+        process.env.PGSSL === 'false' ||
+        /sslmode=disable/.test(this.databaseUrl) ||
+        host === 'localhost' || host.startsWith('127.') ||
+        !host.includes('.') ||
+        /^(10|192\.168|172\.(1[6-9]|2\d|3[01])|100)\./.test(host) ||
+        host.endsWith('.internal') || host.endsWith('.ts.net')
+      );
       this.pgPool = new Pool({
         connectionString: this.databaseUrl,
-        ssl: isInternal ? false : { rejectUnauthorized: false }
+        ssl: isInternal ? false : { rejectUnauthorized: false },
+        connectionTimeoutMillis: 10000,
+        max: 5
       });
-      console.log('[DatabaseEngine] Menginisialisasi koneksi PostgreSQL Cloud Database...');
-      this.initPostgres().catch(err => {
-        console.warn('[DatabaseEngine] PostgreSQL Init Notice:', err.message);
-      });
+      this.pgPool.on('error', (err) => console.warn('[DatabaseEngine] PostgreSQL pool notice:', err.message));
+      console.log('[DatabaseEngine] Menginisialisasi PostgreSQL sebagai sumber data utama...');
+      this.ready = this.initPostgres();
     } catch (e) {
       console.warn('[DatabaseEngine] PostgreSQL setup error:', e.message);
+      this.pgPool = null;
+      this.loadFromFile();
     }
   }
 
   async initPostgres() {
-    if (!this.pgPool) return;
+    if (!this.pgPool) return false;
+
+    // PostgreSQL container may still be booting on first deploy: retry a few times.
+    let client = null;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 6 && !client; attempt++) {
+      try {
+        client = await this.pgPool.connect();
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[DatabaseEngine] PostgreSQL belum siap (percobaan ${attempt}/6): ${err.message}`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+    if (!client) {
+      console.error('[DatabaseEngine] ❌ PostgreSQL tidak dapat dihubungi. Fallback ke berkas lokal (TIDAK PERMANEN saat redeploy):', lastErr && lastErr.message);
+      this.pgPool = null;
+      this.loadFromFile();
+      return false;
+    }
+
+    try {
+      console.log('[DatabaseEngine] Terhubung ke PostgreSQL!');
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS app_kv_store (
+          key TEXT PRIMARY KEY,
+          data JSONB NOT NULL,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS tenants (
+          id TEXT PRIMARY KEY,
+          slug TEXT UNIQUE,
+          name TEXT,
+          owner_phone TEXT,
+          category TEXT,
+          subscription_plan TEXT,
+          subscription_until TIMESTAMPTZ,
+          whatsapp_connected_phone TEXT,
+          owner_email TEXT,
+          is_accepting_patients BOOLEAN DEFAULT true,
+          data JSONB,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS services (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT,
+          name TEXT,
+          duration_minutes INT,
+          price NUMERIC,
+          is_active BOOLEAN DEFAULT true,
+          data JSONB,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS appointments (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT,
+          service_id TEXT,
+          customer_phone TEXT,
+          customer_name TEXT,
+          status TEXT,
+          start_time TIMESTAMPTZ,
+          end_time TIMESTAMPTZ,
+          data JSONB,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS subscription_invoices (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT,
+          plan_tier TEXT,
+          amount NUMERIC,
+          status TEXT,
+          data JSONB,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `);
+
+      // PostgreSQL is the SINGLE source of truth: never merge with stale local files.
+      this.tenants = new Map();
+      this.services = new Map();
+      this.appointments = new Map();
+      this.subscriptionInvoices = new Map();
+      this.userSessions = new Map();
+      this.kv = new Map();
+
+      const { rows: tenantRows } = await client.query('SELECT * FROM tenants');
+      for (const row of tenantRows) {
+        const tData = row.data || {};
+        this.tenants.set(row.id, {
+          ...tData,
+          id: row.id,
+          slug: row.slug || tData.slug,
+          name: row.name || tData.name,
+          owner_phone: row.owner_phone || tData.owner_phone,
+          category: row.category || tData.category,
+          subscription_plan: row.subscription_plan || tData.subscription_plan,
+          subscription_until: row.subscription_until ? new Date(row.subscription_until).toISOString() : tData.subscription_until,
+          whatsapp_connected_phone: row.whatsapp_connected_phone || tData.whatsapp_connected_phone,
+          owner_email: row.owner_email || tData.owner_email,
+          is_accepting_patients: row.is_accepting_patients !== undefined && row.is_accepting_patients !== null ? row.is_accepting_patients : tData.is_accepting_patients,
+          created_at: row.created_at ? new Date(row.created_at).toISOString() : tData.created_at,
+          updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : tData.updated_at
+        });
+      }
+
+      const { rows: serviceRows } = await client.query('SELECT * FROM services');
+      for (const row of serviceRows) {
+        const sData = row.data || {};
+        this.services.set(row.id, {
+          ...sData,
+          id: row.id,
+          tenant_id: row.tenant_id,
+          name: row.name || sData.name,
+          duration_minutes: row.duration_minutes || sData.duration_minutes,
+          price: Number(row.price || sData.price),
+          is_active: row.is_active !== false,
+          created_at: row.created_at ? new Date(row.created_at).toISOString() : sData.created_at,
+          updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : sData.updated_at
+        });
+      }
+
+      const { rows: aptRows } = await client.query('SELECT * FROM appointments');
+      for (const row of aptRows) {
+        const aData = row.data || {};
+        this.appointments.set(row.id, {
+          ...aData,
+          id: row.id,
+          tenant_id: row.tenant_id,
+          service_id: row.service_id,
+          customer_phone: row.customer_phone,
+          customer_name: row.customer_name,
+          status: row.status,
+          start_time: row.start_time ? new Date(row.start_time).toISOString() : aData.start_time,
+          end_time: row.end_time ? new Date(row.end_time).toISOString() : aData.end_time
+        });
+      }
+
+      const { rows: invRows } = await client.query('SELECT * FROM subscription_invoices');
+      for (const row of invRows) {
+        const iData = row.data || {};
+        this.subscriptionInvoices.set(row.id, {
+          ...iData,
+          id: row.id,
+          tenant_id: row.tenant_id,
+          plan_tier: row.plan_tier,
+          amount: Number(row.amount),
+          status: row.status
+        });
+      }
+
+      const { rows: kvRows } = await client.query("SELECT data FROM app_kv_store WHERE key = 'kv_state'");
+      if (kvRows.length > 0) {
+        const s = kvRows[0].data || {};
+        this.kv = this.parseToMap(s.kv);
+        this.userSessions = this.parseToMap(s.userSessions);
+      }
+
+      this.pgLoaded = true;
+      this.lastPersistHash = this.computeStateHash();
+      console.log(`[DatabaseEngine] ✅ PostgreSQL aktif: ${this.tenants.size} tenant, ${this.services.size} layanan, ${this.appointments.size} reservasi dimuat. Semua perubahan disinkronkan otomatis.`);
+      return true;
+    } catch (err) {
+      console.error('[DatabaseEngine] Gagal inisialisasi/memuat data PostgreSQL:', err.message);
+      this.pgPool = null;
+      this.loadFromFile();
+      return false;
+    } finally {
+      client.release();
+    }
+  }
+
+  // --- Generic persistent key/value store (connect tokens, pending registrations, ...) ---
+  kvGet(key, fallback = null) {
+    return this.kv.has(key) ? this.kv.get(key) : fallback;
+  }
+
+  kvSet(key, value) {
+    this.kv.set(key, value);
+    this.saveToFile();
+  }
+
+  computeStateHash() {
+    return crypto.createHash('md5').update(JSON.stringify([
+      Array.from(this.tenants.entries()),
+      Array.from(this.services.entries()),
+      Array.from(this.appointments.entries()),
+      Array.from(this.subscriptionInvoices.entries()),
+      Array.from(this.userSessions.entries()),
+      Array.from(this.kv.entries())
+    ])).digest('hex');
+  }
+
+  // Debounced full write-through to PostgreSQL (upserts + removes rows that no longer exist in memory)
+  schedulePgSync() {
+    if (!this.pgPool || !this.pgLoaded) return;
+    if (this.pgTimer) clearTimeout(this.pgTimer);
+    this.pgTimer = setTimeout(() => {
+      this.pgTimer = null;
+      this.pgSyncAll().catch(() => {});
+    }, 300);
+  }
+
+  async pgSyncAll() {
+    if (!this.pgPool || !this.pgLoaded) return;
+    if (this.pgSyncing) {
+      this.pgSyncQueued = true;
+      return;
+    }
+    this.pgSyncing = true;
     try {
       const client = await this.pgPool.connect();
       try {
-        console.log('[DatabaseEngine] Terhubung ke PostgreSQL!');
+        const ids = (map) => Array.from(map.keys());
+        // Deletes first so UNIQUE(slug) never clashes with a removed row
+        await client.query('DELETE FROM appointments WHERE NOT (id = ANY($1::text[]))', [ids(this.appointments)]);
+        await client.query('DELETE FROM services WHERE NOT (id = ANY($1::text[]))', [ids(this.services)]);
+        await client.query('DELETE FROM subscription_invoices WHERE NOT (id = ANY($1::text[]))', [ids(this.subscriptionInvoices)]);
+        await client.query('DELETE FROM tenants WHERE NOT (id = ANY($1::text[]))', [ids(this.tenants)]);
+
+        for (const t of this.tenants.values()) await this.pgUpsertTenant(t, client);
+        for (const s of this.services.values()) await this.pgUpsertService(s, client);
+        for (const a of this.appointments.values()) await this.pgUpsertAppointment(a, client);
+        for (const i of this.subscriptionInvoices.values()) await this.pgUpsertInvoice(i, client);
+
         await client.query(`
-          CREATE TABLE IF NOT EXISTS app_kv_store (
-            key TEXT PRIMARY KEY,
-            data JSONB NOT NULL,
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-
-          CREATE TABLE IF NOT EXISTS tenants (
-            id TEXT PRIMARY KEY,
-            slug TEXT UNIQUE,
-            name TEXT,
-            owner_phone TEXT,
-            category TEXT,
-            subscription_plan TEXT,
-            subscription_until TIMESTAMPTZ,
-            whatsapp_connected_phone TEXT,
-            owner_email TEXT,
-            is_accepting_patients BOOLEAN DEFAULT true,
-            data JSONB,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-
-          CREATE TABLE IF NOT EXISTS services (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT,
-            name TEXT,
-            duration_minutes INT,
-            price NUMERIC,
-            is_active BOOLEAN DEFAULT true,
-            data JSONB,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-
-          CREATE TABLE IF NOT EXISTS appointments (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT,
-            service_id TEXT,
-            customer_phone TEXT,
-            customer_name TEXT,
-            status TEXT,
-            start_time TIMESTAMPTZ,
-            end_time TIMESTAMPTZ,
-            data JSONB,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-
-          CREATE TABLE IF NOT EXISTS subscription_invoices (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT,
-            plan_tier TEXT,
-            amount NUMERIC,
-            status TEXT,
-            data JSONB,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `);
-
-        // Load existing records from Postgres into memory
-        const { rows: tenantRows } = await client.query('SELECT * FROM tenants');
-        if (tenantRows.length > 0) {
-          console.log(`[DatabaseEngine] ✅ Berhasil memuat ${tenantRows.length} tenant dari PostgreSQL Cloud`);
-          for (const row of tenantRows) {
-            const tData = row.data || {};
-            this.tenants.set(row.id, {
-              ...tData,
-              id: row.id,
-              slug: row.slug || tData.slug,
-              name: row.name || tData.name,
-              owner_phone: row.owner_phone || tData.owner_phone,
-              category: row.category || tData.category,
-              subscription_plan: row.subscription_plan || tData.subscription_plan,
-              subscription_until: row.subscription_until ? new Date(row.subscription_until).toISOString() : tData.subscription_until,
-              whatsapp_connected_phone: row.whatsapp_connected_phone || tData.whatsapp_connected_phone,
-              owner_email: row.owner_email || tData.owner_email,
-              is_accepting_patients: row.is_accepting_patients !== undefined ? row.is_accepting_patients : tData.is_accepting_patients,
-              created_at: row.created_at ? new Date(row.created_at).toISOString() : tData.created_at,
-              updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : tData.updated_at
-            });
-          }
-        } else {
-          for (const tenant of this.tenants.values()) {
-            await this.pgUpsertTenant(tenant, client);
-          }
-        }
-
-        const { rows: serviceRows } = await client.query('SELECT * FROM services');
-        if (serviceRows.length > 0) {
-          for (const row of serviceRows) {
-            const sData = row.data || {};
-            this.services.set(row.id, {
-              ...sData,
-              id: row.id,
-              tenant_id: row.tenant_id,
-              name: row.name || sData.name,
-              duration_minutes: row.duration_minutes || sData.duration_minutes,
-              price: Number(row.price || sData.price),
-              is_active: row.is_active !== false,
-              created_at: row.created_at ? new Date(row.created_at).toISOString() : sData.created_at,
-              updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : sData.updated_at
-            });
-          }
-        } else {
-          for (const service of this.services.values()) {
-            await this.pgUpsertService(service, client);
-          }
-        }
-
-        const { rows: aptRows } = await client.query('SELECT * FROM appointments');
-        if (aptRows.length > 0) {
-          for (const row of aptRows) {
-            const aData = row.data || {};
-            this.appointments.set(row.id, {
-              ...aData,
-              id: row.id,
-              tenant_id: row.tenant_id,
-              service_id: row.service_id,
-              customer_phone: row.customer_phone,
-              customer_name: row.customer_name,
-              status: row.status,
-              start_time: row.start_time ? new Date(row.start_time).toISOString() : aData.start_time,
-              end_time: row.end_time ? new Date(row.end_time).toISOString() : aData.end_time
-            });
-          }
-        } else {
-          for (const apt of this.appointments.values()) {
-            await this.pgUpsertAppointment(apt, client);
-          }
-        }
-
-        const { rows: invRows } = await client.query('SELECT * FROM subscription_invoices');
-        if (invRows.length > 0) {
-          for (const row of invRows) {
-            const iData = row.data || {};
-            this.subscriptionInvoices.set(row.id, {
-              ...iData,
-              id: row.id,
-              tenant_id: row.tenant_id,
-              plan_tier: row.plan_tier,
-              amount: Number(row.amount),
-              status: row.status
-            });
-          }
-        } else {
-          for (const inv of this.subscriptionInvoices.values()) {
-            await this.pgUpsertInvoice(inv, client);
-          }
-        }
-
-        console.log('[DatabaseEngine] ✅ Sinkronisasi PostgreSQL Cloud aktif & data terjamin aman!');
+          INSERT INTO app_kv_store (key, data, updated_at)
+          VALUES ('kv_state', $1, NOW())
+          ON CONFLICT (key) DO UPDATE SET data = $1, updated_at = NOW()
+        `, [JSON.stringify({
+          kv: Array.from(this.kv.entries()),
+          userSessions: Array.from(this.userSessions.entries())
+        })]);
       } finally {
         client.release();
       }
-    } catch (err) {
-      console.warn('[DatabaseEngine] Koneksi PostgreSQL dilewati / gagal:', err.message);
+    } catch (e) {
+      console.warn('[DatabaseEngine] Sinkronisasi PostgreSQL gagal (akan dicoba lagi):', e.message);
+      this.lastPersistHash = null; // force a retry on the next auto-persist tick
+    } finally {
+      this.pgSyncing = false;
+      if (this.pgSyncQueued) {
+        this.pgSyncQueued = false;
+        this.schedulePgSync();
+      }
     }
+  }
+
+  // Safety net: some code paths mutate objects directly without calling save(). Detect & persist them.
+  startAutoPersist() {
+    if (this.autoPersistTimer || !this.storagePath) return;
+    this.autoPersistTimer = setInterval(() => {
+      if (this.pgPool && !this.pgLoaded) return;
+      try {
+        if (this.computeStateHash() !== this.lastPersistHash) this.saveToFile();
+      } catch (e) {}
+    }, 5000);
+    if (this.autoPersistTimer.unref) this.autoPersistTimer.unref();
+  }
+
+  // Called on SIGTERM (Coolify redeploy) so nothing in memory is lost
+  async flush() {
+    try { this.saveToFile(); } catch (e) {}
+    if (this.pgTimer) {
+      clearTimeout(this.pgTimer);
+      this.pgTimer = null;
+    }
+    for (let i = 0; i < 60 && this.pgSyncing; i++) {
+      await new Promise(r => setTimeout(r, 50));
+    }
+    await this.pgSyncAll();
   }
 
   async pgUpsertTenant(tenant, optionalClient = null) {
@@ -344,6 +473,9 @@ class DatabaseEngine {
           INSERT INTO appointments (id, tenant_id, service_id, customer_phone, customer_name, status, start_time, end_time, data, updated_at)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
           ON CONFLICT (id) DO UPDATE SET
+            service_id = EXCLUDED.service_id,
+            customer_phone = EXCLUDED.customer_phone,
+            customer_name = EXCLUDED.customer_name,
             status = EXCLUDED.status,
             start_time = EXCLUDED.start_time,
             end_time = EXCLUDED.end_time,
@@ -431,6 +563,7 @@ class DatabaseEngine {
 
   saveToFile() {
     if (!this.storagePath) return;
+    if (this.pgPool && !this.pgLoaded) return;
     try {
       const data = {
         version: '1.0.0',
@@ -440,7 +573,8 @@ class DatabaseEngine {
         appointments: Array.from(this.appointments.entries()),
         subscriptionInvoices: Array.from(this.subscriptionInvoices.entries()),
         idempotencyRecords: Array.from(this.idempotencyRecords.entries()),
-        userSessions: Array.from(this.userSessions.entries())
+        userSessions: Array.from(this.userSessions.entries()),
+        kv: Array.from(this.kv.entries())
       };
 
       const dir = path.dirname(this.storagePath);
@@ -449,31 +583,17 @@ class DatabaseEngine {
       }
 
       const jsonString = JSON.stringify(data, null, 2);
-
-      // 1. Direct write to primary storage file
       fs.writeFileSync(this.storagePath, jsonString, 'utf8');
-
-      // 2. Synchronous backup write (.bak) to protect against accidental loss or truncation
       try {
         const bakPath = `${this.storagePath}.bak`;
         fs.writeFileSync(bakPath, jsonString, 'utf8');
-      } catch (bakErr) {
-        // non-fatal for backup
-      }
+      } catch (bakErr) {}
+
+      this.lastPersistHash = this.computeStateHash();
     } catch (err) {
-      console.error('[DatabaseEngine] FATAL: Error persisting database to primary disk:', err.message);
-      // Emergency fallback write to project root if primary path had permission/volume errors
-      try {
-        const fallbackPath = path.join(process.cwd(), 'data/app_database.json');
-        const fallbackDir = path.dirname(fallbackPath);
-        if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
-        fs.writeFileSync(fallbackPath, JSON.stringify(data, null, 2), 'utf8');
-        console.warn(`[DatabaseEngine] Emergency backup successfully written to ${fallbackPath}`);
-      } catch (emergencyErr) {
-        console.error('[DatabaseEngine] Emergency database backup write failed:', emergencyErr.message);
-      }
+      console.error('[DatabaseEngine] Error persisting database to disk:', err.message);
     }
-    this.pgSaveSnapshot();
+    this.schedulePgSync();
   }
 
   save() {
@@ -508,10 +628,7 @@ class DatabaseEngine {
 
     const candidatePaths = [
       this.storagePath,
-      `${this.storagePath}.bak`,
-      `${this.storagePath}.tmp`,
-      path.join(process.cwd(), 'data/app_database.json'),
-      path.join(process.cwd(), 'app_database_fallback.json')
+      `${this.storagePath}.bak`
     ];
 
     let foundValid = false;
@@ -529,7 +646,9 @@ class DatabaseEngine {
               this.subscriptionInvoices = this.parseToMap(data.subscriptionInvoices);
               this.idempotencyRecords = this.parseToMap(data.idempotencyRecords);
               this.userSessions = this.parseToMap(data.userSessions);
+              this.kv = this.parseToMap(data.kv);
               foundValid = true;
+              this.lastPersistHash = this.computeStateHash();
               console.log(`[DatabaseEngine] Berhasil memuat basis data dari: ${p} (Total ${this.tenants.size} tenant)`);
               break;
             }
@@ -874,6 +993,19 @@ class DatabaseEngine {
       const matchesLid = cleanDigits && (cleanDoctorLid === cleanDigits || extraPhones.includes(cleanDigits) || (tenant.owner_phone && tenant.owner_phone.replace(/\D/g, '') === cleanDigits));
 
       if (matchesPhone || matchesLid) {
+        return tenant;
+      }
+    }
+    return null;
+  }
+
+  getTenantByBotPhone(phone) {
+    if (!phone) return null;
+    const clean = this.normalizePhone(phone);
+    const cleanDigits = phone.toString().split('@')[0].split(':')[0].replace(/\D/g, '');
+    for (const tenant of this.tenants.values()) {
+      const cleanBot = tenant.whatsapp_connected_phone ? this.normalizePhone(tenant.whatsapp_connected_phone) : null;
+      if (cleanBot && (cleanBot === clean || cleanBot.replace(/\D/g, '') === cleanDigits)) {
         return tenant;
       }
     }

@@ -64,4 +64,19 @@ server.listen(PORT, HOST, () => {
   console.log(`[Unified Server] REST API live at: http://${HOST}:${PORT}/api/health`);
 });
 
+const gracefulShutdown = async (signal) => {
+  console.log(`[Unified Server] Received ${signal}. Flushing database state before exit...`);
+  try {
+    if (backendApp.db && typeof backendApp.db.flush === 'function') {
+      await backendApp.db.flush();
+    }
+  } catch (e) {
+    console.error('[Unified Server] Error during shutdown flush:', e.message);
+  }
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 module.exports = { server, backendApp };

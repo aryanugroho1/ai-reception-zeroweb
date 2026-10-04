@@ -76,7 +76,31 @@ class AppServer {
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
   }
 
-  addAuditLog(level = 'info', tag = 'SYSTEM', message = '') {
+  getCouponRedemptions(quotaKey) {
+    const redeemed = new Set();
+    const targetKey = (quotaKey === 'LIFETIMEFREE' || quotaKey === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
+    for (const tenant of this.db.tenants.values()) {
+      const isLifetime = tenant.subscription_plan === 'LIFETIME_PARTNER' || tenant.coupon_key === 'LIFETIMEFREE' || tenant.coupon_code === 'LIFETIMEFREE' || tenant.coupon_code === 'PILOTLIFETIME';
+      const isPro = tenant.coupon_key === 'FREEPRO' || tenant.coupon_code === 'FREEPRO' || tenant.coupon_code === 'FREEPRO1M' || tenant.coupon_code === 'PILOTPRO';
+      if ((targetKey === 'LIFETIMEFREE' && isLifetime) || (targetKey === 'FREEPRO' && isPro)) {
+        const ph = (tenant.whatsapp_connected_phone || tenant.owner_phone || '').replace(/\D/g, '');
+        if (ph) redeemed.add(ph);
+      }
+    }
+    if (this.baileys && this.baileys.pendingRegistrations) {
+      for (const p of this.baileys.pendingRegistrations.values()) {
+        const isLifetime = p.plan === 'LIFETIME_PARTNER' || p.coupon_key === 'LIFETIMEFREE' || p.coupon_code === 'LIFETIMEFREE' || p.coupon_code === 'PILOTLIFETIME';
+        const isPro = p.coupon_key === 'FREEPRO' || p.coupon_code === 'FREEPRO' || p.coupon_code === 'FREEPRO1M' || p.coupon_code === 'PILOTPRO';
+        if ((targetKey === 'LIFETIMEFREE' && isLifetime) || (targetKey === 'FREEPRO' && isPro)) {
+          const ph = (p.rawPhone || p.phone || '').replace(/\D/g, '');
+          if (ph) redeemed.add(ph);
+        }
+      }
+    }
+    return redeemed;
+  }
+
+    addAuditLog(level = 'info', tag = 'SYSTEM', message = '') {
     const entry = {
       id: ++this.logCounter,
       timestamp: new Date().toISOString(),
@@ -647,68 +671,58 @@ class AppServer {
           });
         }
 
+        const rawSlug = (bizName || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
+        const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
+
         // Check if user submitted a valid 100% coupon (Free pass)
         const rawCoupon = (body.coupon || '').toUpperCase().trim();
         if (rawCoupon) {
           const couponConfig = this.couponConfigs[rawCoupon];
           if (couponConfig) {
-            this.couponRedemptions = this.couponRedemptions || new Map();
             const quotaKey = (rawCoupon === 'LIFETIMEFREE' || rawCoupon === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
-            if (!this.couponRedemptions.has(quotaKey)) {
-              this.couponRedemptions.set(quotaKey, new Set());
-            }
-            const redeemedSet = this.couponRedemptions.get(quotaKey);
+            const redeemedSet = this.getCouponRedemptions(quotaKey);
             if (!redeemedSet.has(rawPhone) && redeemedSet.size >= couponConfig.maxCapacity) {
               return this.sendJson(res, 400, {
                 error: `Mohon maaf, kuota kupon ${rawCoupon} telah penuh (${redeemedSet.size}/${couponConfig.maxCapacity} nomor terdaftar).`,
                 code: 'COUPON_QUOTA_EXCEEDED'
               });
             }
-            redeemedSet.add(rawPhone);
 
             const subUntil = new Date(Date.now() + couponConfig.durationDays * 24 * 60 * 60 * 1000).toISOString();
-            let tenant = this.db.getTenantByPhone(rawPhone) || this.db.getTenantByPhone(doctorPhone);
-            if (tenant) {
-              tenant.name = bizName || tenant.name;
-              tenant.category = category || tenant.category;
-              if (ownerEmail) tenant.owner_email = ownerEmail;
-              tenant.subscription_plan = couponConfig.plan;
-              tenant.subscription_until = subUntil;
-              tenant.whatsapp_connected_phone = rawPhone;
-              if (doctorPhone) tenant.owner_phone = doctorPhone;
-              tenant.updated_at = new Date().toISOString();
-            } else {
-              const rawSlug = (bizName || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
-              const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
-              tenant = this.db.createTenant({
-                name: bizName,
-                slug: uniqueSlug,
-                owner_phone: doctorPhone || rawPhone,
-                owner_email: ownerEmail,
-                category: category,
-                subscription_plan: couponConfig.plan,
-                subscription_until: subUntil,
-                timezone: 'Asia/Jakarta'
-              });
-              tenant.whatsapp_connected_phone = rawPhone;
-            }
 
-            const token = this.baileys.generateConnectToken(tenant.id);
-            let qrImage = null;
-            try {
-              const QRCode = require('qrcode');
-              const qrPayload = `WA-CONNECT-BAILEYS:${tenant.id}:${rawPhone}:${token}`;
-              qrImage = await QRCode.toDataURL(qrPayload, { width: 280, margin: 2, color: { dark: '#0a0f1d', light: '#ffffff' } });
-            } catch (e) {}
+            // Register as pending staging ONLY - DO NOT save to database until QR is scanned & connected!
+            const pending = this.baileys.registerPendingTenant({
+              business_name: bizName,
+              slug: uniqueSlug,
+              rawPhone: rawPhone,
+              owner_phone: doctorPhone || rawPhone,
+              email: ownerEmail,
+              category: category,
+              plan: couponConfig.plan,
+              subUntil: subUntil,
+              coupon_code: rawCoupon,
+              coupon_key: quotaKey,
+              invoice: {
+                id: `inv-${crypto.randomUUID().slice(0, 8)}`,
+                invoice_number: `INV-COUPON-${Date.now()}`,
+                amount: 0,
+                plan_tier: couponConfig.plan,
+                status: 'PAID',
+                paid_at: new Date().toISOString()
+              }
+            });
+
+            // Auto-start Baileys WhatsApp pairing socket for real QR generation
+            this.baileys.ensureSessionStarted(pending.pendingId).catch(() => {});
 
             return this.sendJson(res, 200, {
               success: true,
               free: true,
               message: `Kupon ${rawCoupon} valid! Pembayaran dilewati (100% Free).`,
               plan: couponConfig.plan,
-              token: token,
-              connect_url: `/connect?token=${token}`,
-              qr_image: qrImage
+              token: pending.token,
+              connect_url: `/connect?token=${pending.token}`,
+              qr_image: null
             });
           }
         }
@@ -720,63 +734,29 @@ class AppServer {
           'CLINIC': 349000
         };
         const amount = planPrices[planTier] || 199000;
-
-        let tenant = this.db.getTenantByPhone(rawPhone) || this.db.getTenantByPhone(doctorPhone);
-        if (tenant) {
-          tenant.name = bizName || tenant.name;
-          tenant.category = category || tenant.category;
-          if (ownerEmail) tenant.owner_email = ownerEmail;
-          tenant.whatsapp_connected_phone = rawPhone;
-          if (doctorPhone) tenant.owner_phone = doctorPhone;
-          tenant.updated_at = new Date().toISOString();
-        } else {
-          const rawSlug = (bizName || 'bisnis').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
-          const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
-          tenant = this.db.createTenant({
-            name: bizName,
-            slug: uniqueSlug,
-            owner_phone: doctorPhone || rawPhone,
-            owner_email: ownerEmail,
-            category: category,
-            subscription_plan: planTier,
-            subscription_until: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-            timezone: 'Asia/Jakarta'
-          });
-          tenant.whatsapp_connected_phone = rawPhone;
-
-          // Seed default starter services
-          try {
-            this.db.createService({
-              tenant_id: tenant.id,
-              name: 'Layanan Utama / Reservasi Slot',
-              duration_minutes: 45,
-              price: 150000,
-              is_active: true
-            });
-            this.db.createService({
-              tenant_id: tenant.id,
-              name: 'Treatment Tambahan / Konsultasi',
-              duration_minutes: 30,
-              price: 100000,
-              is_active: true
-            });
-          } catch (e) {}
-        }
-
-        const crypto = require('crypto');
         const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
         const invoiceNumber = 'INV-MYR-' + Math.floor(100000 + Math.random() * 900000);
-        this.db.createSubscriptionInvoice({
-          id: invoiceId,
-          tenant_id: tenant.id,
-          amount: amount,
-          plan_tier: planTier,
-          status: 'PENDING'
-        });
-        this.db.saveToFile();
 
-        const token = this.baileys.generateConnectToken(tenant.id);
-        const paymentUrl = `https://pay.mayar.id/checkout/${invoiceId}?amount=${amount}&tenant=${tenant.slug}&name=${encodeURIComponent(bizName)}`;
+        // Register as pending staging - DO NOT save to database until payment is settled and QR is scanned!
+        const pending = this.baileys.registerPendingTenant({
+          business_name: bizName,
+          slug: uniqueSlug,
+          rawPhone: rawPhone,
+          owner_phone: doctorPhone || rawPhone,
+          email: ownerEmail,
+          category: category,
+          plan: planTier,
+          subUntil: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          invoice: {
+            id: invoiceId,
+            invoice_number: invoiceNumber,
+            amount: amount,
+            plan_tier: planTier,
+            status: 'PENDING'
+          }
+        });
+
+        const paymentUrl = `https://pay.mayar.id/checkout/${invoiceId}?amount=${amount}&tenant=${uniqueSlug}&name=${encodeURIComponent(bizName)}`;
 
         return this.sendJson(res, 200, {
           success: true,
@@ -786,8 +766,8 @@ class AppServer {
           amount: amount,
           plan: planTier,
           payment_url: paymentUrl,
-          tenant_id: tenant.id,
-          token: token
+          tenant_id: pending.pendingId,
+          token: pending.token
         });
       }
 
@@ -797,24 +777,33 @@ class AppServer {
         if (!invoiceId) {
           return this.sendJson(res, 400, { error: 'invoice_id diperlukan' });
         }
-        const invoice = this.db.subscriptionInvoices.get(invoiceId);
+
+        // 1. Check in persistent database
+        let invoice = this.db.subscriptionInvoices.get(invoiceId);
+        let pending = null;
+
+        // 2. Check in pending registrations
+        if (!invoice && this.baileys && this.baileys.pendingRegistrations) {
+          for (const [pId, pData] of this.baileys.pendingRegistrations.entries()) {
+            if (pData.invoice && pData.invoice.id === invoiceId) {
+              invoice = pData.invoice;
+              pending = pData;
+              break;
+            }
+          }
+        }
+
         if (!invoice) {
           return this.sendJson(res, 404, { error: 'Invoice tidak ditemukan' });
         }
 
         const isPaid = invoice.status === 'PAID';
-        const tenant = this.db.tenants.get(invoice.tenant_id);
         let token = null;
-        let qrImage = null;
 
-        if (isPaid && tenant) {
-          token = this.baileys.generateConnectToken(tenant.id);
-          try {
-            const QRCode = require('qrcode');
-            const cleanPhone = tenant.whatsapp_connected_phone || tenant.owner_phone || '';
-            const qrPayload = `WA-CONNECT-BAILEYS:${tenant.id}:${cleanPhone}:${token}`;
-            qrImage = await QRCode.toDataURL(qrPayload, { width: 280, margin: 2, color: { dark: '#0a0f1d', light: '#ffffff' } });
-          } catch (e) {}
+        if (isPaid) {
+          const targetId = pending ? pending.id : invoice.tenant_id;
+          token = this.baileys.getConnectTokenFor ? this.baileys.getConnectTokenFor(targetId) : this.baileys.generateConnectToken(targetId);
+          this.baileys.ensureSessionStarted(targetId).catch(() => {});
         }
 
         return this.sendJson(res, 200, {
@@ -824,10 +813,10 @@ class AppServer {
           paid: isPaid,
           plan: invoice.plan_tier,
           amount: invoice.amount,
-          tenant_id: invoice.tenant_id,
+          tenant_id: pending ? pending.id : invoice.tenant_id,
           token: token,
           connect_url: token ? `/connect?token=${token}` : null,
-          qr_image: qrImage
+          qr_image: null
         });
       }
 
@@ -838,7 +827,20 @@ class AppServer {
         if (!invoiceId) {
           return this.sendJson(res, 400, { error: 'invoice_id diperlukan' });
         }
-        const invoice = this.db.subscriptionInvoices.get(invoiceId);
+
+        let invoice = this.db.subscriptionInvoices.get(invoiceId);
+        let pending = null;
+
+        if (!invoice && this.baileys && this.baileys.pendingRegistrations) {
+          for (const [pId, pData] of this.baileys.pendingRegistrations.entries()) {
+            if (pData.invoice && pData.invoice.id === invoiceId) {
+              invoice = pData.invoice;
+              pending = pData;
+              break;
+            }
+          }
+        }
+
         if (!invoice) {
           return this.sendJson(res, 404, { error: 'Invoice tidak ditemukan' });
         }
@@ -848,27 +850,29 @@ class AppServer {
         invoice.updated_at = new Date().toISOString();
         invoice.payment_provider = 'MAYAR_SIMULATION';
 
-        const tenant = this.db.tenants.get(invoice.tenant_id);
-        let token = null;
-        let qrImage = null;
-
-        if (tenant) {
-          const currentSubEnd = new Date(tenant.subscription_until || Date.now());
-          const baseDate = currentSubEnd > new Date() ? currentSubEnd : new Date();
+        let targetId = invoice.tenant_id;
+        if (pending) {
+          targetId = pending.id;
+          const baseDate = new Date();
           baseDate.setDate(baseDate.getDate() + 30);
-          tenant.subscription_plan = invoice.plan_tier;
-          tenant.subscription_until = baseDate.toISOString();
-          tenant.updated_at = new Date().toISOString();
-
-          token = this.baileys.generateConnectToken(tenant.id);
-          try {
-            const QRCode = require('qrcode');
-            const cleanPhone = tenant.whatsapp_connected_phone || tenant.owner_phone || '';
-            const qrPayload = `WA-CONNECT-BAILEYS:${tenant.id}:${cleanPhone}:${token}`;
-            qrImage = await QRCode.toDataURL(qrPayload, { width: 280, margin: 2, color: { dark: '#0a0f1d', light: '#ffffff' } });
-          } catch (e) {}
+          pending.subUntil = baseDate.toISOString();
+          pending.plan = invoice.plan_tier;
+          this.baileys.saveTokens();
+        } else {
+          const tenant = this.db.tenants.get(invoice.tenant_id);
+          if (tenant) {
+            const currentSubEnd = new Date(tenant.subscription_until || Date.now());
+            const baseDate = currentSubEnd > new Date() ? currentSubEnd : new Date();
+            baseDate.setDate(baseDate.getDate() + 30);
+            tenant.subscription_plan = invoice.plan_tier;
+            tenant.subscription_until = baseDate.toISOString();
+            tenant.updated_at = new Date().toISOString();
+          }
+          this.db.saveToFile();
         }
-        this.db.saveToFile();
+
+        const token = this.baileys.getConnectTokenFor ? this.baileys.getConnectTokenFor(targetId) : this.baileys.generateConnectToken(targetId);
+        this.baileys.ensureSessionStarted(targetId).catch(() => {});
 
         return this.sendJson(res, 200, {
           success: true,
@@ -878,7 +882,7 @@ class AppServer {
           paid: true,
           token: token,
           connect_url: token ? `/connect?token=${token}` : null,
-          qr_image: qrImage
+          qr_image: null
         });
       }
 
@@ -900,12 +904,8 @@ class AppServer {
         }
 
         // Quota check per coupon type
-        this.couponRedemptions = this.couponRedemptions || new Map();
         const quotaKey = (rawCode === 'LIFETIMEFREE' || rawCode === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO';
-        if (!this.couponRedemptions.has(quotaKey)) {
-          this.couponRedemptions.set(quotaKey, new Set());
-        }
-        const redeemedSet = this.couponRedemptions.get(quotaKey);
+        const redeemedSet = this.getCouponRedemptions(quotaKey);
         if (!redeemedSet.has(cleanPhone) && redeemedSet.size >= couponConfig.maxCapacity) {
           return this.sendJson(res, 400, {
             error: `Mohon maaf, kuota kupon ${rawCode} telah penuh (${redeemedSet.size}/${couponConfig.maxCapacity} nomor telah terdaftar).`,
@@ -914,113 +914,63 @@ class AppServer {
             quota_max: couponConfig.maxCapacity
           });
         }
-        redeemedSet.add(cleanPhone);
 
         const bizName = (body.business_name || body.name || 'Bisnis Pilot').trim();
         const ownerEmail = (body.email || '').trim();
         const category = (body.category || 'GENERAL').toUpperCase();
         const doctorPhone = (body.doctor_phone || body.owner_phone || cleanPhone).replace(/[^0-9]/g, '');
         const subUntil = new Date(Date.now() + couponConfig.durationDays * 24 * 60 * 60 * 1000).toISOString();
+        const rawSlug = (body.slug || bizName).toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 25);
+        const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
 
-        // Check if tenant already exists with this phone
-        let tenant = this.db.getTenantByPhone(cleanPhone);
-        if (tenant) {
-          tenant.name = bizName || tenant.name;
-          tenant.category = category || tenant.category;
-          if (ownerEmail) tenant.owner_email = ownerEmail;
-          tenant.subscription_plan = couponConfig.plan;
-          tenant.subscription_until = subUntil;
-          tenant.whatsapp_connected_phone = cleanPhone;
-          if (doctorPhone) tenant.owner_phone = doctorPhone;
-          tenant.updated_at = new Date().toISOString();
-        } else {
-          const rawSlug = (body.slug || bizName).toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 25);
-          const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
-          tenant = this.db.createTenant({
+        // Register as pending staging - DO NOT save to database until QR is scanned & connected!
+        const pending = this.baileys.registerPendingTenant({
+          business_name: bizName,
+          slug: uniqueSlug,
+          rawPhone: cleanPhone,
+          owner_phone: doctorPhone || cleanPhone,
+          email: ownerEmail,
+          category: category,
+          plan: couponConfig.plan,
+          subUntil: subUntil,
+          coupon_code: rawCode,
+          coupon_key: quotaKey,
+          invoice: {
+            id: `inv-${crypto.randomUUID().slice(0, 8)}`,
+            invoice_number: `INV-COUPON-${Date.now()}`,
+            amount: 0,
+            plan_tier: couponConfig.plan,
+            status: 'PAID',
+            paid_at: new Date().toISOString()
+          }
+        });
+
+        // Auto-start Baileys WhatsApp pairing socket for real QR generation
+        this.baileys.ensureSessionStarted(pending.pendingId).catch(() => {});
+
+        const connectUrl = `/connect?token=${pending.token}`;
+
+        return this.sendJson(res, 200, {
+          success: true,
+          message: `Kupon ${rawCode} berhasil diterapkan! Mayar.id dilewati. Silakan scan QR code WhatsApp resmi.`,
+          coupon: rawCode,
+          plan: couponConfig.plan,
+          label: couponConfig.label,
+          quota_used: redeemedSet.size + (redeemedSet.has(cleanPhone) ? 0 : 1),
+          quota_max: couponConfig.maxCapacity,
+          quota_remaining: Math.max(0, couponConfig.maxCapacity - (redeemedSet.size + (redeemedSet.has(cleanPhone) ? 0 : 1))),
+          tenant: {
+            id: pending.pendingId,
             name: bizName,
             slug: uniqueSlug,
             owner_phone: doctorPhone || cleanPhone,
             owner_email: ownerEmail,
-            category: category,
-            subscription_plan: couponConfig.plan,
-            subscription_until: subUntil,
-            timezone: 'Asia/Jakarta'
-          });
-          tenant.whatsapp_connected_phone = cleanPhone;
-
-          // Seed default starter services for new pilot tenant
-          try {
-            this.db.createService({
-              tenant_id: tenant.id,
-              name: 'Layanan Utama / Reservasi Slot',
-              duration_minutes: 45,
-              price: 150000,
-              is_active: true
-            });
-            this.db.createService({
-              tenant_id: tenant.id,
-              name: 'Treatment Tambahan / Konsultasi',
-              duration_minutes: 30,
-              price: 100000,
-              is_active: true
-            });
-          } catch (e) {}
-        }
-
-        // Generate Baileys onboarding connect token (1 QR untuk 1 nomor)
-        const token = this.baileys.generateConnectToken(tenant.id);
-        const connectUrl = `/connect?token=${token}`;
-
-        // Generate live QR image Data URL (1 QR untuk 1 nomor)
-        let qrImage = null;
-        try {
-          const QRCode = require('qrcode');
-          const qrPayload = `WA-CONNECT-BAILEYS:${tenant.id}:${cleanPhone}:${token}`;
-          qrImage = await QRCode.toDataURL(qrPayload, {
-            width: 280,
-            margin: 2,
-            color: { dark: '#0a0f1d', light: '#ffffff' }
-          });
-        } catch (e) {
-          console.error('[Baileys] QR Generation error:', e);
-        }
-
-        // Record a zero-rupiah invoice in database (Mayar skipped)
-        const invId = `INV-COUPON-${Date.now()}`;
-        this.db.subscriptionInvoices.set(invId, {
-          id: invId,
-          tenant_id: tenant.id,
-          invoice_number: invId,
-          plan_tier: couponConfig.plan,
-          amount: 0,
-          payment_provider: `COUPON_${rawCode}`,
-          payment_ref_id: `COUPON-REDEEMED-${rawCode}`,
-          status: 'PAID',
-          paid_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-
-        return this.sendJson(res, 200, {
-          success: true,
-          message: `Kupon ${rawCode} berhasil diterapkan! Mayar.id dilewati.`,
-          coupon: rawCode,
-          plan: couponConfig.plan,
-          label: couponConfig.label,
-          quota_used: redeemedSet.size,
-          quota_max: couponConfig.maxCapacity,
-          quota_remaining: Math.max(0, couponConfig.maxCapacity - redeemedSet.size),
-          tenant: {
-            id: tenant.id,
-            name: tenant.name,
-            slug: tenant.slug,
-            owner_phone: tenant.owner_phone,
-            owner_email: tenant.owner_email || ownerEmail,
-            plan: tenant.subscription_plan,
-            subscription_until: tenant.subscription_until.slice(0, 10)
+            plan: couponConfig.plan,
+            subscription_until: subUntil.slice(0, 10)
           },
           connect_url: connectUrl,
-          qr_image: qrImage
+          token: pending.token,
+          qr_image: null
         });
       }
 
@@ -1181,100 +1131,48 @@ class AppServer {
         }
 
         const subUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+        const rawSlug = (bizName || 'klinik').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
+        const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
 
-        // Create and commit tenant directly to persistent database immediately
-        let tenant = this.db.getTenantByPhone(rawPhone) || this.db.getTenantByPhone(doctorPhone);
-        if (tenant) {
-          tenant.name = bizName;
-          tenant.category = category;
-          tenant.subscription_plan = plan;
-          tenant.subscription_until = subUntil;
-          tenant.owner_phone = doctorPhone || rawPhone;
-          tenant.whatsapp_connected_phone = rawPhone;
-          tenant.updated_at = new Date().toISOString();
-        } else {
-          const rawSlug = (bizName || 'klinik').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
-          const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
-          tenant = this.db.createTenant({
-            name: bizName,
-            slug: uniqueSlug,
-            owner_phone: doctorPhone || rawPhone,
-            category: category,
-            subscription_plan: plan,
-            subscription_until: subUntil,
-            timezone: 'Asia/Jakarta'
-          });
-          tenant.whatsapp_connected_phone = rawPhone;
-          tenant.is_accepting_patients = true;
-
-          // Seed default starter services by specialty
-          const starterServicesByCategory = {
-            'BARBER': [
-              { name: 'Gentleman Haircut & Styling', duration_minutes: 45, price: 75000 },
-              { name: 'Beard Trim & Hot Towel', duration_minutes: 30, price: 50000 },
-              { name: 'Hair Wash & Scalp Massage', duration_minutes: 20, price: 35000 }
-            ],
-            'SALON': [
-              { name: 'Hair Treatment & Styling', duration_minutes: 60, price: 150000 },
-              { name: 'Manicure & Nail Art', duration_minutes: 45, price: 120000 },
-              { name: 'Wash & Blow Signature', duration_minutes: 30, price: 60000 }
-            ],
-            'SPA': [
-              { name: 'Full Body Relaxation Massage (60m)', duration_minutes: 60, price: 180000 },
-              { name: 'Refleksi Kaki & Relaksasi (45m)', duration_minutes: 45, price: 100000 },
-              { name: 'Aromatherapy Herbal Spa (90m)', duration_minutes: 90, price: 220000 }
-            ],
-            'DENTAL': [
-              { name: 'Pembersihan Karang Gigi (Scaling)', duration_minutes: 40, price: 250000 },
-              { name: 'Tambal Gigi Estetik', duration_minutes: 45, price: 200000 },
-              { name: 'Konsultasi & Pemeriksaan Gigi', duration_minutes: 30, price: 100000 }
-            ],
-            'PEDIATRICS': [
-              { name: 'Konsultasi Dokter Spesialis Anak', duration_minutes: 30, price: 150000 },
-              { name: 'Imunisasi & Tumbuh Kembang Anak', duration_minutes: 30, price: 200000 }
-            ],
-            'GENERAL': [
-              { name: 'Konsultasi Dokter Umum', duration_minutes: 20, price: 100000 },
-              { name: 'Pemeriksaan Kesehatan Rutin', duration_minutes: 30, price: 150000 }
-            ]
-          };
-
-          const srvs = starterServicesByCategory[category] || [
-            { name: 'Layanan Konsultasi Utama', duration_minutes: 30, price: 100000 },
-            { name: 'Pemeriksaan Lanjutan / Tindakan', duration_minutes: 45, price: 150000 }
-          ];
-
-          for (const s of srvs) {
-            try {
-              this.db.createService({
-                tenant_id: tenant.id,
-                name: s.name,
-                duration_minutes: s.duration_minutes,
-                price: s.price,
-                is_active: true
-              });
-            } catch (e) {}
+        // Register as pending staging - DO NOT save to database until QR is scanned & connected!
+        const pending = this.baileys.registerPendingTenant({
+          business_name: bizName,
+          slug: uniqueSlug,
+          rawPhone: rawPhone,
+          owner_phone: doctorPhone || rawPhone,
+          email: (body.email || '').trim(),
+          category: category,
+          plan: plan,
+          subUntil: subUntil,
+          coupon_code: rawCoupon || null,
+          coupon_key: (rawCoupon === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO',
+          invoice: {
+            id: `inv-${crypto.randomUUID().slice(0, 8)}`,
+            invoice_number: `INV-TRIAL-${Date.now()}`,
+            amount: 0,
+            plan_tier: plan,
+            status: 'PAID',
+            paid_at: new Date().toISOString()
           }
-        }
+        });
 
-        this.db.saveToFile();
+        // Auto-start Baileys WhatsApp pairing socket for real QR generation
+        this.baileys.ensureSessionStarted(pending.pendingId).catch(() => {});
 
-        // Generate persistent connect token bound to permanent tenant.id
-        const token = this.baileys.generateConnectToken(tenant.id);
-        const connectUrl = `/connect.html?token=${token}`;
+        const connectUrl = `/connect.html?token=${pending.token}`;
         const waDeeplink = `https://wa.me/${rawPhone}?text=Halo%20${encodeURIComponent(bizName)}%2C%20saya%20ingin%20reservasi`;
 
         return this.sendJson(res, 200, {
           success: true,
-          message: 'Pendaftaran berhasil disimpan permanen! Silakan scan QR code WhatsApp untuk mengaktifkan bot.',
+          message: 'Pendaftaran diterima! Silakan scan QR code WhatsApp resmi untuk mengaktifkan bot.',
           plan: plan,
           label: planLabel,
           coupon_applied: !!(rawCoupon && validCoupons[rawCoupon]),
           tenant: {
-            id: tenant.id,
-            name: tenant.name,
-            slug: tenant.slug,
-            owner_phone: tenant.owner_phone,
+            id: pending.pendingId,
+            name: bizName,
+            slug: uniqueSlug,
+            owner_phone: doctorPhone || rawPhone,
             bot_phone: rawPhone,
             category: category,
             plan: plan,
@@ -1282,7 +1180,8 @@ class AppServer {
           },
           connect_url: connectUrl,
           wa_deeplink: waDeeplink,
-          token: token
+          token: pending.token,
+          qr_image: null
         });
       }
 

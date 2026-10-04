@@ -13,10 +13,11 @@ gmail_accounts.json
 temp/
 sessions/
 auth_baileys/
+data/*.json
 data/*.bak
 data/*.tmp
-data/admin_sessions.json
-data/connect_tokens.json
+data/app_database.json
+sessions/
 *.log
 
 # OS & IDE files

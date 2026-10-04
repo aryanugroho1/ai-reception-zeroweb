@@ -66,13 +66,16 @@ class IngressRouter {
     return clean;
   }
 
-  resolveDoctorTenant(senderPhone, senderLid = null) {
+  resolveDoctorTenant(senderPhone, senderLid = null, onlyTenant = null) {
     const cleanPhone = this.normalizePhone(senderPhone);
     const cleanLid = senderLid ? senderLid.toString().split('@')[0].split(':')[0].replace(/\D/g, '') : null;
 
     if (!cleanPhone && !cleanLid) return null;
 
-    for (const tenant of this.db.tenants.values()) {
+    const tenantsToCheck = onlyTenant ? [onlyTenant] : Array.from(this.db.tenants.values());
+
+    for (const tenant of tenantsToCheck) {
+      if (!tenant) continue;
       const cleanOwner = this.normalizePhone(tenant.owner_phone);
       const cleanBot = tenant.whatsapp_connected_phone ? this.normalizePhone(tenant.whatsapp_connected_phone) : null;
       const cleanDoctorLid = tenant.doctor_lid ? tenant.doctor_lid.toString().replace(/\D/g, '') : null;
@@ -125,8 +128,12 @@ class IngressRouter {
       : (from.includes('@lid') ? from.split('@')[0].split(':')[0].replace(/\D/g, '') : null);
     const cleanText = (text || '').trim();
 
-    // 1. DOCTOR WHITLELIST ROUTING (Check Phone AND LID)
-    const doctorTenant = this.resolveDoctorTenant(cleanPhone, cleanLid);
+    // 1. DOCTOR WHITLELIST ROUTING (Check Phone AND LID, scoped to target tenant if tenant_slug is present)
+    let scopedTenant = null;
+    if (tenant_slug) {
+      scopedTenant = this.db.getTenantBySlug(tenant_slug);
+    }
+    const doctorTenant = this.resolveDoctorTenant(cleanPhone, cleanLid, scopedTenant);
     if (doctorTenant) {
       // Doctor is sending a message -> pass to Doctor Copilot
       const copilotResponse = await this.doctorCopilot.handleCommand({
