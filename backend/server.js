@@ -300,6 +300,23 @@ class AppServer {
         });
       }
 
+      // 0D. Public Contact & Inquiry: POST /api/contact
+      if (pathname === '/api/contact' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const { name, email, phone, business_name, subject, message } = body;
+        if (!name || !email || !message) {
+          return this.sendJson(res, 400, {
+            error: 'Nama, email, dan pesan wajib diisi.',
+            code: 'VALIDATION_ERROR'
+          });
+        }
+        this.addAuditLog('info', 'CONTACT', `Inquiry kontak diterima dari ${name} (${email}, ${phone || '-'}): [${subject || 'General'}] ${message.substring(0, 100)}`);
+        return this.sendJson(res, 200, {
+          success: true,
+          message: 'Terima kasih telah menghubungi PraktikaAI. Pesan Anda telah kami terima dan tim support kami akan merespons melalui email/WhatsApp dalam waktu 1x24 jam.'
+        });
+      }
+
       // 1. Health check (Public telemetry)
       if (pathname === '/api/health' && method === 'GET') {
         return this.sendJson(res, 200, {

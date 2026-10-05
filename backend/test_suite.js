@@ -1064,6 +1064,15 @@ async function runTestSuite() {
     assert(suddenCloseRes.notifications[0].message.includes('DIBATALKAN') && suddenCloseRes.notifications[0].message.includes('H-2 sebelum praktek buka'), 'Patient notification contains cancellation and H-2 re-booking advice');
     assert(suddenCloseRes.reply.includes('2 jadwal pasien'), 'Doctor reply reports affected patients cancelled and notified');
 
+    // Verify POST /api/contact endpoint for Payment Gateway compliance
+    const contactRes = await makeRequest('POST', '/api/contact', {
+      name: 'dr. Auditor',
+      email: 'auditor@paymentgateway.com',
+      phone: '081299998888',
+      message: 'Verifying merchant contact endpoint'
+    });
+    assert(contactRes.statusCode === 200 && contactRes.body.success === true, 'POST /api/contact handled successfully for Payment Gateway compliance');
+
     await app.close();
     assert(true, 'HTTP REST server gracefully closed');
   }

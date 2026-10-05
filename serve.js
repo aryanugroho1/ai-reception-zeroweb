@@ -34,6 +34,14 @@ const server = http.createServer((req, res) => {
     reqPath = '/admin.html';
   } else if (reqPath === '/connect' || reqPath === '/connect/') {
     reqPath = '/connect.html';
+  } else if (reqPath === '/about' || reqPath === '/about/' || reqPath === '/about-us' || reqPath === '/about-us/') {
+    reqPath = '/about.html';
+  } else if (reqPath === '/contact' || reqPath === '/contact/' || reqPath === '/contact-us' || reqPath === '/contact-us/') {
+    reqPath = '/contact.html';
+  } else if (reqPath === '/privacy-policy' || reqPath === '/privacy-policy/' || reqPath === '/privacy' || reqPath === '/privacy/') {
+    reqPath = '/privacy-policy.html';
+  } else if (reqPath === '/refund-policy' || reqPath === '/refund-policy/' || reqPath === '/refund' || reqPath === '/refund/') {
+    reqPath = '/refund-policy.html';
   }
 
   const filePath = path.join(__dirname, reqPath);

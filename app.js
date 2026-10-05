@@ -2054,6 +2054,151 @@ class ThemeEngine {
   }
 }
 
+// --- Legal Policies & Corporate Compliance Modal ---
+class LegalModalManager {
+  constructor() {
+    this.modal = document.getElementById('legalModal');
+    this.closeBtn = document.getElementById('closeLegalModal');
+    this.tabBtns = document.querySelectorAll('.legal-tab-btn');
+    this.panels = document.querySelectorAll('.legal-panel');
+    this.badgeEl = document.getElementById('legalModalBadge');
+    this.titleEl = document.getElementById('legalModalTitle');
+    this.form = document.getElementById('modalContactForm');
+    this.alertBox = document.getElementById('modalContactAlert');
+    this.submitBtn = document.getElementById('modalContactSubmitBtn');
+  }
+
+  init() {
+    if (!this.modal) return;
+
+    // Attach click listeners to all [data-open-legal] links across header & footer
+    document.querySelectorAll('[data-open-legal]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        // Prevent default navigation to show interactive modal
+        e.preventDefault();
+        const targetTab = link.getAttribute('data-open-legal');
+        this.open(targetTab);
+      });
+    });
+
+    // Tab button switches
+    this.tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-tab-target');
+        this.switchTab(targetId);
+      });
+    });
+
+    // Close button
+    if (this.closeBtn) {
+      this.closeBtn.addEventListener('click', () => this.close());
+    }
+
+    // Backdrop click
+    this.modal.addEventListener('click', (e) => {
+      if (e.target === this.modal) this.close();
+    });
+
+    // Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.modal.classList.contains('active')) {
+        this.close();
+      }
+    });
+
+    // Contact form inside modal
+    if (this.form) {
+      this.form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (this.submitBtn) {
+          this.submitBtn.disabled = true;
+          this.submitBtn.innerHTML = '<span>Mengirimkan Pesan...</span>';
+        }
+        if (this.alertBox) this.alertBox.style.display = 'none';
+
+        try {
+          const resp = await fetch('/api/contact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: document.getElementById('modalContactName').value.trim(),
+              email: document.getElementById('modalContactEmail').value.trim(),
+              message: document.getElementById('modalContactMessage').value.trim(),
+              subject: 'Inquiry via Legal Modal'
+            })
+          });
+          const data = await resp.json();
+          if (resp.ok && data.success) {
+            if (this.alertBox) {
+              this.alertBox.style.display = 'block';
+              this.alertBox.style.background = '#dcfce7';
+              this.alertBox.style.color = '#15803d';
+              this.alertBox.style.border = '1px solid #86efac';
+              this.alertBox.innerHTML = `✅ ${data.message}`;
+            }
+            this.form.reset();
+          } else {
+            throw new Error(data.error || 'Gagal mengirim pesan');
+          }
+        } catch (err) {
+          if (this.alertBox) {
+            this.alertBox.style.display = 'block';
+            this.alertBox.style.background = '#fee2e2';
+            this.alertBox.style.color = '#b91c1c';
+            this.alertBox.style.border = '1px solid #fca5a5';
+            this.alertBox.innerHTML = `⚠️ ${err.message || 'Terjadi kesalahan jaringan.'}`;
+          }
+        } finally {
+          if (this.submitBtn) {
+            this.submitBtn.disabled = false;
+            this.submitBtn.innerHTML = '<span>Kirim Pesan Sekarang →</span>';
+          }
+        }
+      });
+    }
+  }
+
+  switchTab(targetPanelId) {
+    const tabMap = {
+      'about': 'legalAbout',
+      'privacy': 'legalPrivacy',
+      'refund': 'legalRefund',
+      'contact': 'legalContact',
+      'legalAbout': 'legalAbout',
+      'legalPrivacy': 'legalPrivacy',
+      'legalRefund': 'legalRefund',
+      'legalContact': 'legalContact'
+    };
+    const resolvedId = tabMap[targetPanelId] || 'legalAbout';
+
+    this.tabBtns.forEach(btn => {
+      const match = btn.getAttribute('data-tab-target') === resolvedId;
+      btn.classList.toggle('active', match);
+    });
+
+    this.panels.forEach(p => {
+      p.classList.toggle('active', p.id === resolvedId);
+    });
+
+    const badgeMap = {
+      'legalAbout': '🏢 TENTANG KAMI &amp; PROFIL',
+      'legalPrivacy': '🔒 KEBIJAKAN PRIVASI &amp; DATA',
+      'legalRefund': '💳 KEBIJAKAN REFUND &amp; PEMBATALAN',
+      'legalContact': '📞 HUBUNGI KAMI &amp; DUKUNGAN'
+    };
+    if (this.badgeEl) this.badgeEl.innerHTML = badgeMap[resolvedId] || 'INFORMASI LEGALITAS';
+  }
+
+  open(tabKey = 'about') {
+    this.switchTab(tabKey);
+    this.modal.classList.add('active');
+  }
+
+  close() {
+    this.modal.classList.remove('active');
+  }
+}
+
 // --- Application Bootstrapping ---
 document.addEventListener('DOMContentLoaded', () => {
   const theme = new ThemeEngine();
@@ -2079,6 +2224,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const admin = new SuperadminHub();
   admin.init();
+
+  const legal = new LegalModalManager();
+  legal.init();
 
   initFAQ();
   initNavObserver();
