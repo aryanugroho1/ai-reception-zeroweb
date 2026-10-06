@@ -182,6 +182,56 @@ class IPaymuPaymentService {
   }
 
   /**
+   * Check transaction status with iPaymu API v2
+   * @param {object} params { transactionId }
+   * @returns {Promise<object>}
+   */
+  async checkTransactionStatus({ transactionId }) {
+    if (!transactionId) {
+      return { success: false, error: 'transactionId wajib diisi' };
+    }
+    const payload = { transactionId: Number(transactionId) };
+    const signature = this.generateSignature(payload, 'POST');
+    const jsonBody = JSON.stringify(payload);
+    const targetUrl = `${this.isProduction ? 'https://my.ipaymu.com' : 'https://sandbox.ipaymu.com'}/api/v2/transaction`;
+
+    try {
+      const response = await this._postRequest(targetUrl, jsonBody, {
+        'Content-Type': 'application/json',
+        'va': this.va,
+        'signature': signature,
+        'timestamp': Date.now().toString()
+      });
+
+      if (response && (response.Status === 200 || response.Success) && response.Data) {
+        const txData = response.Data;
+        const statusStr = String(txData.Status || '').toLowerCase();
+        const statusCode = String(txData.StatusCode || '');
+        const isPaid = statusStr === 'berhasil' || statusStr === 'paid' || statusStr === 'success' || statusCode === '1';
+
+        return {
+          success: true,
+          is_paid: isPaid,
+          status: statusStr,
+          status_code: statusCode,
+          transaction_id: txData.TransactionId || transactionId,
+          reference_id: txData.ReferenceId,
+          amount: txData.Amount,
+          paid_at: txData.PaidDate || txData.SettlementDate,
+          raw: txData
+        };
+      }
+      return {
+        success: false,
+        error: response?.Message || 'Transaksi tidak ditemukan',
+        raw: response
+      };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
    * Handle Inbound Webhook event from iPaymu
    * @param {object} params { signature, payload, rawBody }
    * @returns {Promise<object>}
@@ -251,11 +301,77 @@ class IPaymuPaymentService {
     invoice.payment_method = data.via || data.channel || 'QRIS/VA';
 
     let targetId = invoice.tenant_id;
+    let tenant = this.db.tenants.get(invoice.tenant_id);
+    const reg = invoice.registration_data || pending;
 
-    // 5. Upgrade Tenant / Staging Pending Tenant
-    if (pending) {
-      targetId = pending.id;
-      const baseDate = new Date();
+    // 5. Create or Upgrade Tenant in Database ONLY after payment is confirmed
+    if (!tenant && reg) {
+      // 5A. New paid registration: Create tenant row in DB now
+      targetId = reg.id || invoice.tenant_id;
+      const durationDays = invoice.billing_cycle === 'ANNUAL' ? 365 : 30;
+      const calculatedSubUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+      tenant = this.db.createTenant({
+        id: targetId,
+        name: reg.name || reg.business_name || 'Bisnis Anda',
+        slug: reg.slug || `bisnis_${Math.floor(100 + Math.random() * 900)}`,
+        owner_phone: reg.owner_phone || reg.rawPhone,
+        owner_email: reg.owner_email || reg.email,
+        whatsapp_connected_phone: null,
+        category: reg.category || 'GENERAL',
+        subscription_plan: invoice.plan_tier,
+        subscription_until: reg.subUntil || calculatedSubUntil,
+        timezone: 'Asia/Jakarta'
+      });
+      tenant.is_accepting_patients = false;
+
+      // Seed starter services
+      const starterServicesByCategory = {
+        'BARBER': [
+          { name: 'Gentleman Haircut & Styling', duration_minutes: 45, price: 75000 },
+          { name: 'Beard Trim & Hot Towel', duration_minutes: 30, price: 50000 },
+          { name: 'Hair Wash & Scalp Massage', duration_minutes: 20, price: 35000 }
+        ],
+        'SALON': [
+          { name: 'Hair Treatment & Styling', duration_minutes: 60, price: 150000 },
+          { name: 'Manicure & Nail Art', duration_minutes: 45, price: 120000 },
+          { name: 'Wash & Blow Signature', duration_minutes: 30, price: 60000 }
+        ],
+        'SPA': [
+          { name: 'Full Body Relaxation Massage (60m)', duration_minutes: 60, price: 180000 },
+          { name: 'Refleksi Kaki & Relaksasi (45m)', duration_minutes: 45, price: 100000 },
+          { name: 'Aromatherapy Herbal Spa (90m)', duration_minutes: 90, price: 220000 }
+        ],
+        'DENTAL': [
+          { name: 'Pembersihan Karang Gigi (Scaling)', duration_minutes: 40, price: 250000 },
+          { name: 'Tambal Gigi Estetik', duration_minutes: 45, price: 200000 },
+          { name: 'Konsultasi & Pemeriksaan Gigi', duration_minutes: 30, price: 100000 }
+        ],
+        'GENERAL': [
+          { name: 'Konsultasi Dokter Umum', duration_minutes: 20, price: 100000 },
+          { name: 'Pemeriksaan Kesehatan Rutin', duration_minutes: 30, price: 150000 }
+        ]
+      };
+      const srvs = starterServicesByCategory[reg.category] || [
+        { name: 'Layanan Utama / Reservasi Slot', duration_minutes: 45, price: 150000 },
+        { name: 'Konsultasi / Treatment Tambahan', duration_minutes: 30, price: 100000 }
+      ];
+      for (const s of srvs) {
+        try {
+          this.db.createService({
+            tenant_id: tenant.id,
+            name: s.name,
+            duration_minutes: s.duration_minutes,
+            price: s.price,
+            is_active: true
+          });
+        } catch (e) {}
+      }
+      this.db.saveToFile();
+    } else if (tenant) {
+      // 5B. Existing Tenant Upgrade / Renewal
+      const currentSubEnd = new Date(tenant.subscription_until || Date.now());
+      const baseDate = currentSubEnd > new Date() ? currentSubEnd : new Date();
       if (invoice.plan_tier === 'LIFETIME_PARTNER') {
         baseDate.setFullYear(2099);
       } else if (invoice.billing_cycle === 'ANNUAL') {
@@ -263,27 +379,17 @@ class IPaymuPaymentService {
       } else {
         baseDate.setDate(baseDate.getDate() + 30);
       }
-      pending.subUntil = baseDate.toISOString();
+      tenant.subscription_plan = invoice.plan_tier;
+      tenant.subscription_until = baseDate.toISOString();
+      tenant.updated_at = new Date().toISOString();
+      this.db.saveToFile();
+    }
+
+    if (pending) {
+      pending.subUntil = tenant ? tenant.subscription_until : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       pending.plan = invoice.plan_tier;
-      if (this.baileys.saveTokens) {
+      if (this.baileys && this.baileys.saveTokens) {
         this.baileys.saveTokens();
-      }
-    } else {
-      const tenant = this.db.tenants.get(invoice.tenant_id);
-      if (tenant) {
-        const currentSubEnd = new Date(tenant.subscription_until || Date.now());
-        const baseDate = currentSubEnd > new Date() ? currentSubEnd : new Date();
-        if (invoice.plan_tier === 'LIFETIME_PARTNER') {
-          baseDate.setFullYear(2099);
-        } else if (invoice.billing_cycle === 'ANNUAL') {
-          baseDate.setDate(baseDate.getDate() + 365);
-        } else {
-          baseDate.setDate(baseDate.getDate() + 30);
-        }
-        tenant.subscription_plan = invoice.plan_tier;
-        tenant.subscription_until = baseDate.toISOString();
-        tenant.updated_at = new Date().toISOString();
-        this.db.saveToFile();
       }
     }
 
@@ -296,7 +402,7 @@ class IPaymuPaymentService {
 
     // 7. Dispatch WhatsApp receipt if phone is available
     let receiptMessage = null;
-    const recipientPhone = pending ? (pending.owner_phone || pending.phone) : (this.db.tenants.get(invoice.tenant_id)?.owner_phone);
+    const recipientPhone = tenant ? tenant.owner_phone : (reg ? (reg.owner_phone || reg.rawPhone) : null);
     if (recipientPhone) {
       receiptMessage = this._createReceiptMessage({
         invoiceId: invoice.id,

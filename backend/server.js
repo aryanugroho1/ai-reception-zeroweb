@@ -812,25 +812,11 @@ class AppServer {
         const subUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
         const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
         const invoiceNumber = 'INV-IPM-' + Math.floor(100000 + Math.random() * 900000);
+        const pendingTenantId = 't-' + crypto.randomUUID().slice(0, 8);
 
-        // 1. Immediately create tenant row directly in DB
-        const newTenant = this.db.createTenant({
-          name: bizName,
-          slug: uniqueSlug,
-          owner_phone: doctorPhone || rawPhone,
-          owner_email: ownerEmail,
-          whatsapp_connected_phone: null,
-          category: category,
-          subscription_plan: planTier,
-          subscription_until: subUntil,
-          timezone: 'Asia/Jakarta'
-        });
-        newTenant.is_accepting_patients = false;
-        this.db.saveToFile();
-
-        // 2. Register in Baileys staging & store invoice
+        // 1. Register in Baileys staging & store pending invoice (DO NOT create tenant in DB until payment is PAID)
         const pending = this.baileys.registerPendingTenant({
-          id: newTenant.id,
+          id: pendingTenantId,
           business_name: bizName,
           slug: uniqueSlug,
           rawPhone: rawPhone,
@@ -851,15 +837,29 @@ class AppServer {
           }
         });
 
+        // 2. Persist invoice with full registration data for post-payment activation
         this.db.subscriptionInvoices.set(invoiceId, {
           id: invoiceId,
           invoice_number: invoiceNumber,
-          tenant_id: newTenant.id,
+          tenant_id: pendingTenantId,
           plan_tier: planTier,
           billing_cycle: billingCycle,
           amount: amount,
           status: 'PENDING',
           payment_provider: 'IPAYMU',
+          registration_data: {
+            id: pendingTenantId,
+            name: bizName,
+            slug: uniqueSlug,
+            rawPhone: rawPhone,
+            owner_phone: doctorPhone || rawPhone,
+            email: ownerEmail,
+            category: category,
+            plan: planTier,
+            billing_cycle: billingCycle,
+            durationDays: durationDays,
+            subUntil: subUntil
+          },
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
@@ -876,13 +876,18 @@ class AppServer {
             phone: rawPhone,
             planTier: planTier,
             billingCycle: billingCycle,
-            returnUrl: `https://praktika-ai.web.id/connect?token=${pending.token}`,
+            returnUrl: `https://praktika-ai.web.id/connect?token=${pending.token}&invoice_id=${invoiceId}`,
             cancelUrl: `https://praktika-ai.web.id/#harga`,
             notifyUrl: `https://praktika-ai.web.id/api/payment/ipaymu/webhook`
           });
           if (ipaymuRes && ipaymuRes.success && ipaymuRes.payment_url) {
             paymentUrl = ipaymuRes.payment_url;
             sessionId = ipaymuRes.session_id;
+            const invRecord = this.db.subscriptionInvoices.get(invoiceId);
+            if (invRecord && sessionId) {
+              invRecord.session_id = sessionId;
+              this.db.saveToFile();
+            }
           } else {
             console.warn('[Checkout] iPaymu error:', ipaymuRes?.error || ipaymuRes?.message);
           }
@@ -901,7 +906,7 @@ class AppServer {
           payment_url: paymentUrl,
           session_id: sessionId,
           provider: 'IPAYMU',
-          tenant_id: newTenant.id,
+          tenant_id: pendingTenantId,
           token: pending.token
         });
       }
@@ -920,7 +925,7 @@ class AppServer {
         // 2. Check in pending registrations
         if (!invoice && this.baileys && this.baileys.pendingRegistrations) {
           for (const [pId, pData] of this.baileys.pendingRegistrations.entries()) {
-            if (pData.invoice && pData.invoice.id === invoiceId) {
+            if (pData.invoice && (pData.invoice.id === invoiceId || pData.invoice.invoice_number === invoiceId)) {
               invoice = pData.invoice;
               pending = pData;
               break;
@@ -932,13 +937,43 @@ class AppServer {
           return this.sendJson(res, 404, { error: 'Invoice tidak ditemukan' });
         }
 
+        // Active check against iPaymu API if invoice is PENDING and trx_id / session_id is available
+        const trxIdToCheck = query.trx_id || invoice.ipaymu_trx_id;
+        if (invoice.status === 'PENDING' && trxIdToCheck && this.ipaymu && typeof this.ipaymu.checkTransactionStatus === 'function') {
+          try {
+            const checkRes = await this.ipaymu.checkTransactionStatus({ transactionId: trxIdToCheck });
+            if (checkRes && checkRes.success && checkRes.is_paid) {
+              await this.ipaymu.handleWebhook({
+                signature: null,
+                payload: {
+                  trx_id: checkRes.transaction_id || trxIdToCheck,
+                  reference_id: invoice.id,
+                  status: 'berhasil',
+                  status_code: '1',
+                  amount: checkRes.amount || invoice.amount
+                }
+              });
+              invoice = this.db.subscriptionInvoices.get(invoiceId) || invoice;
+            }
+          } catch (e) {
+            console.warn('[InvoiceStatus] checkTransactionStatus check notice:', e.message);
+          }
+        }
+
         const isPaid = invoice.status === 'PAID';
         let token = null;
+        let qrImage = null;
 
         if (isPaid) {
           const targetId = pending ? pending.id : invoice.tenant_id;
           token = this.baileys.getConnectTokenFor ? this.baileys.getConnectTokenFor(targetId) : this.baileys.generateConnectToken(targetId);
-          this.baileys.ensureSessionStarted(targetId).catch(() => {});
+          try {
+            await this.baileys.ensureSessionStarted(targetId);
+            const sess = this.baileys.getSessionStatus(targetId);
+            if (sess) {
+              qrImage = sess.qrImage || sess.qr_image || null;
+            }
+          } catch (e) {}
         }
 
         return this.sendJson(res, 200, {
@@ -951,11 +986,11 @@ class AppServer {
           tenant_id: pending ? pending.id : invoice.tenant_id,
           token: token,
           connect_url: token ? `/connect?token=${token}` : null,
-          qr_image: null
+          qr_image: qrImage
         });
       }
 
-      // 2G3. Simulate Mayar Payment Success: POST /api/subscriptions/simulate-payment
+      // 2G3. Simulate Payment Success (Super Admin / Test): POST /api/subscriptions/simulate-payment
       if (pathname === '/api/subscriptions/simulate-payment' && method === 'POST') {
         const body = await this.readRequestBody(req);
         const invoiceId = body.invoice_id;
@@ -983,12 +1018,35 @@ class AppServer {
         invoice.status = 'PAID';
         invoice.paid_at = new Date().toISOString();
         invoice.updated_at = new Date().toISOString();
-        invoice.payment_provider = 'MAYAR_SIMULATION';
+        invoice.payment_provider = 'SIMULATION';
 
         let targetId = invoice.tenant_id;
-        if (pending) {
-          targetId = pending.id;
-          const baseDate = new Date();
+        let tenant = this.db.tenants.get(invoice.tenant_id);
+        const reg = invoice.registration_data || pending;
+
+        // Create tenant in DB if it was a pending checkout
+        if (!tenant && reg) {
+          targetId = reg.id || invoice.tenant_id;
+          const durationDays = invoice.billing_cycle === 'ANNUAL' ? 365 : 30;
+          const calculatedSubUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+          tenant = this.db.createTenant({
+            id: targetId,
+            name: reg.name || reg.business_name || 'Bisnis Anda',
+            slug: reg.slug || `bisnis_${Math.floor(100 + Math.random() * 900)}`,
+            owner_phone: reg.owner_phone || reg.rawPhone,
+            owner_email: reg.owner_email || reg.email,
+            whatsapp_connected_phone: null,
+            category: reg.category || 'GENERAL',
+            subscription_plan: invoice.plan_tier,
+            subscription_until: reg.subUntil || calculatedSubUntil,
+            timezone: 'Asia/Jakarta'
+          });
+          tenant.is_accepting_patients = false;
+          this.db.saveToFile();
+        } else if (tenant) {
+          const currentSubEnd = new Date(tenant.subscription_until || Date.now());
+          const baseDate = currentSubEnd > new Date() ? currentSubEnd : new Date();
           if (invoice.plan_tier === 'LIFETIME_PARTNER') {
             baseDate.setFullYear(2099);
           } else if (invoice.billing_cycle === 'ANNUAL') {
@@ -996,26 +1054,18 @@ class AppServer {
           } else {
             baseDate.setDate(baseDate.getDate() + 30);
           }
-          pending.subUntil = baseDate.toISOString();
-          pending.plan = invoice.plan_tier;
-          this.baileys.saveTokens();
-        } else {
-          const tenant = this.db.tenants.get(invoice.tenant_id);
-          if (tenant) {
-            const currentSubEnd = new Date(tenant.subscription_until || Date.now());
-            const baseDate = currentSubEnd > new Date() ? currentSubEnd : new Date();
-            if (invoice.plan_tier === 'LIFETIME_PARTNER') {
-              baseDate.setFullYear(2099);
-            } else if (invoice.billing_cycle === 'ANNUAL') {
-              baseDate.setDate(baseDate.getDate() + 365);
-            } else {
-              baseDate.setDate(baseDate.getDate() + 30);
-            }
-            tenant.subscription_plan = invoice.plan_tier;
-            tenant.subscription_until = baseDate.toISOString();
-            tenant.updated_at = new Date().toISOString();
-          }
+          tenant.subscription_plan = invoice.plan_tier;
+          tenant.subscription_until = baseDate.toISOString();
+          tenant.updated_at = new Date().toISOString();
           this.db.saveToFile();
+        }
+
+        if (pending) {
+          pending.subUntil = tenant ? tenant.subscription_until : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+          pending.plan = invoice.plan_tier;
+          if (this.baileys && this.baileys.saveTokens) {
+            this.baileys.saveTokens();
+          }
         }
 
         const token = this.baileys.getConnectTokenFor ? this.baileys.getConnectTokenFor(targetId) : this.baileys.generateConnectToken(targetId);
@@ -1023,7 +1073,7 @@ class AppServer {
 
         return this.sendJson(res, 200, {
           success: true,
-          message: 'Simulasi pembayaran sukses! Status invoice sekarang PAID.',
+          message: 'Simulasi pembayaran sukses! Status invoice sekarang PAID dan tenant aktif.',
           invoice_id: invoice.id,
           status: 'PAID',
           paid: true,
