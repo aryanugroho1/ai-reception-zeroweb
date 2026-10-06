@@ -24,14 +24,16 @@ class IPaymuPaymentService {
 
   /**
    * Generate HMAC-SHA256 signature for iPaymu v2
-   * Format: METHOD:VA:JSON_BODY:API_KEY
+   * Format: METHOD:VA:BODY_HASH:API_KEY
+   * where BODY_HASH = sha256(jsonBody).toLowerCase()
    * @param {object|string} body
    * @param {string} method
    * @returns {string} hex signature
    */
   generateSignature(body, method = 'POST') {
     const jsonBody = typeof body === 'string' ? body : JSON.stringify(body);
-    const stringToSign = `${method.toUpperCase()}:${this.va}:${jsonBody}:${this.apiKey}`;
+    const bodyHash = crypto.createHash('sha256').update(jsonBody).digest('hex').toLowerCase();
+    const stringToSign = `${method.toUpperCase()}:${this.va}:${bodyHash}:${this.apiKey}`;
     return crypto.createHmac('sha256', this.apiKey).update(stringToSign).digest('hex');
   }
 
@@ -44,7 +46,8 @@ class IPaymuPaymentService {
   verifySignature(rawBody, signature) {
     if (!signature) return false;
     const jsonBody = typeof rawBody === 'string' ? rawBody : JSON.stringify(rawBody);
-    const expected = crypto.createHmac('sha256', this.apiKey).update(`POST:${this.va}:${jsonBody}:${this.apiKey}`).digest('hex');
+    const bodyHash = crypto.createHash('sha256').update(jsonBody).digest('hex').toLowerCase();
+    const expected = crypto.createHmac('sha256', this.apiKey).update(`POST:${this.va}:${bodyHash}:${this.apiKey}`).digest('hex');
     try {
       return crypto.timingSafeEqual(Buffer.from(signature, 'utf8'), Buffer.from(expected, 'utf8'));
     } catch {
@@ -64,6 +67,7 @@ class IPaymuPaymentService {
     email,
     phone,
     planTier = 'PRO',
+    billingCycle = 'MONTHLY',
     returnUrl,
     cancelUrl,
     notifyUrl
@@ -73,6 +77,7 @@ class IPaymuPaymentService {
     const finalNotifyUrl = notifyUrl || `${this.appUrl}/api/payment/ipaymu/webhook`;
     const finalReturnUrl = returnUrl || `${this.appUrl}/#aktivasi-qr`;
     const finalCancelUrl = cancelUrl || `${this.appUrl}/#harga`;
+    const durationLabel = billingCycle === 'ANNUAL' ? '1 Tahun' : '1 Bulan';
 
     const payload = {
       name: name || 'Pelanggan PraktikaAI',
@@ -83,10 +88,10 @@ class IPaymuPaymentService {
       returnUrl: finalReturnUrl,
       cancelUrl: finalCancelUrl,
       referenceId: invoiceId,
-      product: [`Langganan PraktikaAI - Paket ${planTier}`],
+      product: [`Langganan PraktikaAI - Paket ${planTier} (${durationLabel})`],
       qty: [1],
       price: [finalAmount],
-      description: `Aktivasi Otomatis AI Receptionist WhatsApp PraktikaAI (${planTier})`
+      description: [`Aktivasi Otomatis AI Receptionist WhatsApp PraktikaAI (${planTier} ${durationLabel})`]
     };
 
     const signature = this.generateSignature(payload, 'POST');
@@ -112,28 +117,24 @@ class IPaymuPaymentService {
         };
       } else {
         console.warn('[iPaymu] Non-standard response:', response);
-        // Fallback payment URL if sandbox or mock
+        const errMsg = response?.Message || 'Gagal memproses sesi pembayaran iPaymu';
         return {
-          success: true,
+          success: false,
           invoice_id: invoiceId,
           amount: finalAmount,
-          session_id: `sid-${invoiceId}`,
-          payment_url: response?.Data?.Url || `https://my.ipaymu.com/payment/${invoiceId}?amount=${finalAmount}`,
           provider: 'IPAYMU',
-          message: response?.Message || 'Session created'
+          error: errMsg,
+          message: errMsg
         };
       }
     } catch (err) {
       console.error('[iPaymu Error] Failed to create payment redirect:', err.message);
-      // Graceful fallback to prevent user blocker
       return {
-        success: true,
+        success: false,
         invoice_id: invoiceId,
         amount: finalAmount,
-        session_id: `sid-${invoiceId}`,
-        payment_url: `https://my.ipaymu.com/payment/${invoiceId}?amount=${finalAmount}`,
-        provider: 'IPAYMU_FALLBACK',
-        warning: err.message
+        provider: 'IPAYMU',
+        error: err.message
       };
     }
   }
@@ -257,6 +258,8 @@ class IPaymuPaymentService {
       const baseDate = new Date();
       if (invoice.plan_tier === 'LIFETIME_PARTNER') {
         baseDate.setFullYear(2099);
+      } else if (invoice.billing_cycle === 'ANNUAL') {
+        baseDate.setDate(baseDate.getDate() + 365);
       } else {
         baseDate.setDate(baseDate.getDate() + 30);
       }
@@ -272,6 +275,8 @@ class IPaymuPaymentService {
         const baseDate = currentSubEnd > new Date() ? currentSubEnd : new Date();
         if (invoice.plan_tier === 'LIFETIME_PARTNER') {
           baseDate.setFullYear(2099);
+        } else if (invoice.billing_cycle === 'ANNUAL') {
+          baseDate.setDate(baseDate.getDate() + 365);
         } else {
           baseDate.setDate(baseDate.getDate() + 30);
         }

@@ -884,9 +884,16 @@ class PricingEngine {
     this.starterPrice = document.getElementById('priceStarter');
     this.proPrice = document.getElementById('pricePro');
     this.clinicPrice = document.getElementById('priceClinic');
+    this.prefixStarter = document.getElementById('prefixStarter');
+    this.prefixPro = document.getElementById('prefixPro');
+    this.prefixClinic = document.getElementById('prefixClinic');
+    this.totalStarter = document.getElementById('totalStarter');
+    this.totalPro = document.getElementById('totalPro');
+    this.totalClinic = document.getElementById('totalClinic');
   }
 
   init() {
+    window.pricingEngineInstance = this;
     if (!this.switchBtn) return;
     this.switchBtn.addEventListener('click', () => {
       this.isAnnual = !this.isAnnual;
@@ -902,21 +909,48 @@ class PricingEngine {
       this.isAnnual = true;
       this.render();
     });
+
+    this.render();
   }
 
   render() {
-    this.switchBtn.classList.toggle('annual', this.isAnnual);
-    this.labelMonthly.classList.toggle('active', !this.isAnnual);
-    this.labelAnnual.classList.toggle('active', this.isAnnual);
+    if (this.switchBtn) this.switchBtn.classList.toggle('annual', this.isAnnual);
+    if (this.labelMonthly) this.labelMonthly.classList.toggle('active', !this.isAnnual);
+    if (this.labelAnnual) this.labelAnnual.classList.toggle('active', this.isAnnual);
 
     if (this.isAnnual) {
-      this.starterPrice.textContent = '79.000';
-      this.proPrice.textContent = '159.000';
-      this.clinicPrice.textContent = '279.000';
+      if (this.starterPrice) this.starterPrice.textContent = '79.000';
+      if (this.proPrice) this.proPrice.textContent = '159.000';
+      if (this.clinicPrice) this.clinicPrice.textContent = '279.000';
+
+      if (this.prefixStarter) this.prefixStarter.style.display = 'inline';
+      if (this.prefixPro) this.prefixPro.style.display = 'inline';
+      if (this.prefixClinic) this.prefixClinic.style.display = 'inline';
+
+      if (this.totalStarter) {
+        this.totalStarter.style.display = 'inline-block';
+        this.totalStarter.textContent = 'Ditagih Rp 948.000 / tahun (Hemat 20%)';
+      }
+      if (this.totalPro) {
+        this.totalPro.style.display = 'inline-block';
+        this.totalPro.textContent = 'Ditagih Rp 1.908.000 / tahun (Hemat 20%)';
+      }
+      if (this.totalClinic) {
+        this.totalClinic.style.display = 'inline-block';
+        this.totalClinic.textContent = 'Ditagih Rp 3.348.000 / tahun (Hemat 20%)';
+      }
     } else {
-      this.starterPrice.textContent = '99.000';
-      this.proPrice.textContent = '199.000';
-      this.clinicPrice.textContent = '349.000';
+      if (this.starterPrice) this.starterPrice.textContent = '99.000';
+      if (this.proPrice) this.proPrice.textContent = '199.000';
+      if (this.clinicPrice) this.clinicPrice.textContent = '349.000';
+
+      if (this.prefixStarter) this.prefixStarter.style.display = 'none';
+      if (this.prefixPro) this.prefixPro.style.display = 'none';
+      if (this.prefixClinic) this.prefixClinic.style.display = 'none';
+
+      if (this.totalStarter) this.totalStarter.style.display = 'none';
+      if (this.totalPro) this.totalPro.style.display = 'none';
+      if (this.totalClinic) this.totalClinic.style.display = 'none';
     }
   }
 }
@@ -968,7 +1002,6 @@ class MayarPaymentModal {
     this.payStepAmount = document.getElementById('payStepAmount');
     this.btnPayMayarLink = document.getElementById('btnPayMayarLink');
     this.paymentSyncStatus = document.getElementById('paymentSyncStatus');
-    this.btnSimulatePaymentSuccess = document.getElementById('btnSimulatePaymentSuccess');
     this.btnBackToStep2FromPay = document.getElementById('btnBackToStep2FromPay');
 
     // Step 4: QR & Email
@@ -1093,13 +1126,6 @@ class MayarPaymentModal {
       this.btnBackToStep2FromPay.addEventListener('click', () => {
         if (this.paymentPollInterval) clearInterval(this.paymentPollInterval);
         this.goToStep2();
-      });
-    }
-
-    // Step 3 (Payment) -> Sandbox Simulation Test Button
-    if (this.btnSimulatePaymentSuccess) {
-      this.btnSimulatePaymentSuccess.addEventListener('click', async () => {
-        await this.simulatePaymentSuccess();
       });
     }
 
@@ -1268,18 +1294,23 @@ class MayarPaymentModal {
 
     if (this.payStepInvNo) this.payStepInvNo.textContent = data.invoice_number || data.invoice_id || '-';
     if (this.payStepPlanName) {
-      const planNames = { 'STARTER': 'Starter Monthly', 'PRO': 'Pro Monthly (Rekomendasi)', 'CLINIC': 'Business / Multi-Seat' };
-      this.payStepPlanName.textContent = planNames[data.plan] || data.plan || 'Pro Monthly';
+      const isAnnual = this.isAnnual;
+      const planNames = isAnnual ? {
+        'STARTER': 'Starter Tahunan (1 Tahun • Diskon 20%)',
+        'PRO': 'Pro Tahunan (1 Tahun • Rekomendasi)',
+        'CLINIC': 'Business / Multi-Seat Tahunan (1 Tahun)'
+      } : {
+        'STARTER': 'Starter Monthly (30 Hari)',
+        'PRO': 'Pro Monthly (30 Hari • Rekomendasi)',
+        'CLINIC': 'Business / Multi-Seat Monthly (30 Hari)'
+      };
+      this.payStepPlanName.textContent = planNames[data.plan] || data.plan || 'Paket PraktikaAI';
     }
     if (this.payStepAmount) {
-      this.payStepAmount.textContent = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(data.amount || 199000);
+      this.payStepAmount.textContent = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(data.amount || (this.currentPlanAmount || 199000));
     }
     if (this.btnPayMayarLink) {
       this.btnPayMayarLink.href = data.payment_url || '#';
-    }
-    if (this.btnSimulatePaymentSuccess) {
-      this.btnSimulatePaymentSuccess.disabled = false;
-      this.btnSimulatePaymentSuccess.textContent = '🧪 Simulasi Pembayaran Berhasil (Test / Demo Mode)';
     }
 
     // Start polling payment status every 2.5s
@@ -1437,6 +1468,7 @@ class MayarPaymentModal {
           owner_phone: doctorPhone,
           email: email,
           plan_tier: this.selectedPlanKey,
+          billing_cycle: this.isAnnual ? 'ANNUAL' : 'MONTHLY',
           coupon: this.activeCoupon || ''
         })
       });
@@ -1568,17 +1600,27 @@ class MayarPaymentModal {
   }
 
   open(planKey) {
-    const plans = {
-      STARTER: { name: 'Starter Monthly', price: 'Rp 99.000', duration: '30 Hari' },
-      PRO: { name: 'Pro Monthly (Rekomendasi)', price: 'Rp 199.000', duration: '30 Hari' },
-      CLINIC: { name: 'Business / Multi-Seat', price: 'Rp 349.000', duration: '30 Hari' }
+    const isAnnual = window.pricingEngineInstance ? window.pricingEngineInstance.isAnnual : false;
+    this.isAnnual = isAnnual;
+
+    const monthlyPlans = {
+      STARTER: { name: 'Starter Monthly', price: 'Rp 99.000', duration: '30 Hari', amount: 99000 },
+      PRO: { name: 'Pro Monthly (Rekomendasi)', price: 'Rp 199.000', duration: '30 Hari', amount: 199000 },
+      CLINIC: { name: 'Business / Multi-Seat Monthly', price: 'Rp 349.000', duration: '30 Hari', amount: 349000 }
     };
 
-    const target = plans[planKey] || plans.PRO;
-    const invNo = 'INV-MYR-' + Math.floor(100000 + Math.random() * 900000);
+    const annualPlans = {
+      STARTER: { name: 'Starter Tahunan (Hemat 20%)', price: 'Rp 948.000', duration: '365 Hari (1 Tahun)', amount: 948000 },
+      PRO: { name: 'Pro Tahunan (Rekomendasi • Hemat 20%)', price: 'Rp 1.908.000', duration: '365 Hari (1 Tahun)', amount: 1908000 },
+      CLINIC: { name: 'Business / Multi-Seat Tahunan (Hemat 20%)', price: 'Rp 3.348.000', duration: '365 Hari (1 Tahun)', amount: 3348000 }
+    };
+
+    const target = (isAnnual ? annualPlans[planKey] : monthlyPlans[planKey]) || (isAnnual ? annualPlans.PRO : monthlyPlans.PRO);
+    const invNo = 'INV-IPM-' + Math.floor(100000 + Math.random() * 900000);
 
     this.selectedPlanKey = planKey;
     this.originalPrice = target.price;
+    this.currentPlanAmount = target.amount;
     if (this.planNameEl) this.planNameEl.textContent = target.name;
     if (this.planAmountEl) this.planAmountEl.textContent = target.price;
     if (this.planDurationEl) this.planDurationEl.textContent = target.duration;
@@ -1590,6 +1632,9 @@ class MayarPaymentModal {
     this.currentBizName = '';
     this.currentToken = '';
     this.currentInvoiceId = null;
+    if (this.infoForm) this.infoForm.reset();
+    if (this.qrImg) this.qrImg.src = '';
+    if (this.qrStatus) this.qrStatus.innerHTML = '';
     if (this.pollInterval) clearInterval(this.pollInterval);
     if (this.paymentPollInterval) clearInterval(this.paymentPollInterval);
 
@@ -1863,6 +1908,7 @@ class FreeTrialModal {
 
   open() {
     // Reset to initial screen
+    if (this.form) this.form.reset();
     if (this.formContainer) this.formContainer.style.display = 'block';
     if (this.successView) this.successView.style.display = 'none';
     if (this.couponAlert) this.couponAlert.style.display = 'none';

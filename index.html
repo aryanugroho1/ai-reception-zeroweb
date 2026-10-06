@@ -516,10 +516,14 @@
             <h3 class="plan-name">Starter</h3>
             <div class="plan-framing">Setara harga 1-2 cup kopi</div>
             
-            <div class="plan-price-wrap">
+            <div class="plan-price-wrap" style="flex-wrap: wrap; align-items: baseline;">
+              <span class="plan-prefix" id="prefixStarter" style="display:none; font-size:1.05rem; font-weight:700; color:#38bdf8; margin-right:5px;">jadi sekitar</span>
               <span class="plan-currency">Rp</span>
               <span class="plan-price" id="priceStarter">99.000</span>
               <span class="plan-period">/bln</span>
+            </div>
+            <div class="plan-annual-total" id="totalStarter" style="display:none; font-size:0.84rem; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.12); padding:4px 10px; border-radius:8px; margin: 4px 0 10px; text-align:center;">
+              Ditagih Rp 948.000 / tahun (Hemat 20%)
             </div>
             <div class="plan-subtext">Cocok untuk barber, stylist, terapis mandiri, atau dokter pemula yang ingin menguji reservasi otomatis.</div>
 
@@ -565,10 +569,14 @@
             <h3 class="plan-name">Pro Monthly</h3>
             <div class="plan-framing">Setara biaya 1x potong rambut atau 1x periksa!</div>
             
-            <div class="plan-price-wrap">
+            <div class="plan-price-wrap" style="flex-wrap: wrap; align-items: baseline;">
+              <span class="plan-prefix" id="prefixPro" style="display:none; font-size:1.05rem; font-weight:700; color:#38bdf8; margin-right:5px;">jadi sekitar</span>
               <span class="plan-currency">Rp</span>
               <span class="plan-price" id="pricePro">199.000</span>
               <span class="plan-period">/bln</span>
+            </div>
+            <div class="plan-annual-total" id="totalPro" style="display:none; font-size:0.84rem; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.12); padding:4px 10px; border-radius:8px; margin: 4px 0 10px; text-align:center;">
+              Ditagih Rp 1.908.000 / tahun (Hemat 20%)
             </div>
             <div class="plan-subtext">Pilihan paling ideal untuk salon aktif, barbershop ramai, studio spa, dan dokter dengan jadwal padat.</div>
 
@@ -609,10 +617,14 @@
             <h3 class="plan-name">Business / Multi-Seat</h3>
             <div class="plan-framing">Untuk salon multi-chair, barbershop tim &amp; klinik</div>
             
-            <div class="plan-price-wrap">
+            <div class="plan-price-wrap" style="flex-wrap: wrap; align-items: baseline;">
+              <span class="plan-prefix" id="prefixClinic" style="display:none; font-size:1.05rem; font-weight:700; color:#38bdf8; margin-right:5px;">jadi sekitar</span>
               <span class="plan-currency">Rp</span>
               <span class="plan-price" id="priceClinic">349.000</span>
               <span class="plan-period">/bln</span>
+            </div>
+            <div class="plan-annual-total" id="totalClinic" style="display:none; font-size:0.84rem; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.12); padding:4px 10px; border-radius:8px; margin: 4px 0 10px; text-align:center;">
+              Ditagih Rp 3.348.000 / tahun (Hemat 20%)
             </div>
             <div class="plan-subtext">Dirancang untuk barbershop/salon dengan banyak kursi kerja (kursi 1-4) atau klinik dengan beberapa dokter/terapis simultan.</div>
 
@@ -1185,11 +1197,6 @@
             Sistem otomatis mendeteksi status pembayaran secara real-time. Begitu transaksi terverifikasi, layar ini otomatis beralih ke kode QR WhatsApp bot.
           </p>
         </div>
-
-        <!-- Sandbox Simulation Test Button -->
-        <button type="button" class="btn btn-secondary" id="btnSimulatePaymentSuccess" style="width:100%; border:1.5px dashed #0284c7; color:#0369a1; font-weight:700; margin-bottom:10px; padding:10px;">
-          🧪 Simulasi Pembayaran Berhasil (Test / Demo Mode)
-        </button>
 
         <button type="button" class="btn btn-secondary" id="btnBackToStep2FromPay" style="width:100%; padding:10px;">
           ← Kembali / Ubah Data Akun

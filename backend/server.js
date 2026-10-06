@@ -739,8 +739,25 @@ class AppServer {
 
           const subUntil = new Date(Date.now() + couponConfig.durationDays * 24 * 60 * 60 * 1000).toISOString();
 
-          // Register as pending staging ONLY - DO NOT save to database until QR is scanned & connected!
+          // 1. Immediately persist tenant in database so a row is guaranteed
+          const newTenant = this.db.createTenant({
+            name: bizName,
+            slug: uniqueSlug,
+            owner_phone: doctorPhone || rawPhone,
+            owner_email: ownerEmail,
+            whatsapp_connected_phone: null,
+            coupon_code: rawCoupon,
+            coupon_key: quotaKey,
+            category: category,
+            subscription_plan: couponConfig.plan,
+            subscription_until: subUntil,
+            timezone: 'Asia/Jakarta'
+          });
+          newTenant.is_accepting_patients = false;
+          this.db.saveToFile();
+
           const pending = this.baileys.registerPendingTenant({
+            id: newTenant.id,
             business_name: bizName,
             slug: uniqueSlug,
             rawPhone: rawPhone,
@@ -762,7 +779,7 @@ class AppServer {
           });
 
           // Auto-start Baileys WhatsApp pairing socket for real QR generation
-          this.baileys.ensureSessionStarted(pending.pendingId).catch(() => {});
+          this.baileys.ensureSessionStarted(newTenant.id).catch(() => {});
 
           return this.sendJson(res, 200, {
             success: true,
@@ -776,17 +793,44 @@ class AppServer {
         }
 
         // Standard Paid Subscription Flow (iPaymu API v2 Integration)
-        const planPrices = {
+        const billingCycle = (body.billing_cycle || body.billingCycle || 'MONTHLY').toUpperCase();
+        const isAnnual = billingCycle === 'ANNUAL';
+
+        const monthlyPrices = {
           'STARTER': 99000,
           'PRO': 199000,
           'CLINIC': 349000
         };
-        const amount = planPrices[planTier] || 199000;
+        const annualPrices = {
+          'STARTER': 948000,
+          'PRO': 1908000,
+          'CLINIC': 3348000
+        };
+
+        const amount = isAnnual ? (annualPrices[planTier] || 1908000) : (monthlyPrices[planTier] || 199000);
+        const durationDays = isAnnual ? 365 : 30;
+        const subUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
         const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
         const invoiceNumber = 'INV-IPM-' + Math.floor(100000 + Math.random() * 900000);
 
-        // Register as pending staging - DO NOT save to database until payment is settled and QR is scanned!
+        // 1. Immediately create tenant row directly in DB
+        const newTenant = this.db.createTenant({
+          name: bizName,
+          slug: uniqueSlug,
+          owner_phone: doctorPhone || rawPhone,
+          owner_email: ownerEmail,
+          whatsapp_connected_phone: null,
+          category: category,
+          subscription_plan: planTier,
+          subscription_until: subUntil,
+          timezone: 'Asia/Jakarta'
+        });
+        newTenant.is_accepting_patients = false;
+        this.db.saveToFile();
+
+        // 2. Register in Baileys staging & store invoice
         const pending = this.baileys.registerPendingTenant({
+          id: newTenant.id,
           business_name: bizName,
           slug: uniqueSlug,
           rawPhone: rawPhone,
@@ -794,18 +838,34 @@ class AppServer {
           email: ownerEmail,
           category: category,
           plan: planTier,
-          subUntil: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          billing_cycle: billingCycle,
+          subUntil: subUntil,
           invoice: {
             id: invoiceId,
             invoice_number: invoiceNumber,
             amount: amount,
             plan_tier: planTier,
+            billing_cycle: billingCycle,
             status: 'PENDING',
             payment_provider: 'IPAYMU'
           }
         });
 
-        let paymentUrl = `https://my.ipaymu.com/payment/${invoiceId}?amount=${amount}`;
+        this.db.subscriptionInvoices.set(invoiceId, {
+          id: invoiceId,
+          invoice_number: invoiceNumber,
+          tenant_id: newTenant.id,
+          plan_tier: planTier,
+          billing_cycle: billingCycle,
+          amount: amount,
+          status: 'PENDING',
+          payment_provider: 'IPAYMU',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+        this.db.saveToFile();
+
+        let paymentUrl = null;
         let sessionId = null;
         try {
           const ipaymuRes = await this.ipaymu.createPaymentRedirect({
@@ -815,13 +875,16 @@ class AppServer {
             email: ownerEmail,
             phone: rawPhone,
             planTier: planTier,
+            billingCycle: billingCycle,
             returnUrl: `https://praktika-ai.web.id/connect?token=${pending.token}`,
             cancelUrl: `https://praktika-ai.web.id/#harga`,
             notifyUrl: `https://praktika-ai.web.id/api/payment/ipaymu/webhook`
           });
-          if (ipaymuRes && ipaymuRes.payment_url) {
+          if (ipaymuRes && ipaymuRes.success && ipaymuRes.payment_url) {
             paymentUrl = ipaymuRes.payment_url;
             sessionId = ipaymuRes.session_id;
+          } else {
+            console.warn('[Checkout] iPaymu error:', ipaymuRes?.error || ipaymuRes?.message);
           }
         } catch (e) {
           console.error('[Checkout] iPaymu link generation error:', e.message);
@@ -834,10 +897,11 @@ class AppServer {
           invoice_number: invoiceNumber,
           amount: amount,
           plan: planTier,
+          billing_cycle: billingCycle,
           payment_url: paymentUrl,
           session_id: sessionId,
           provider: 'IPAYMU',
-          tenant_id: pending.pendingId,
+          tenant_id: newTenant.id,
           token: pending.token
         });
       }
@@ -925,7 +989,13 @@ class AppServer {
         if (pending) {
           targetId = pending.id;
           const baseDate = new Date();
-          baseDate.setDate(baseDate.getDate() + 30);
+          if (invoice.plan_tier === 'LIFETIME_PARTNER') {
+            baseDate.setFullYear(2099);
+          } else if (invoice.billing_cycle === 'ANNUAL') {
+            baseDate.setDate(baseDate.getDate() + 365);
+          } else {
+            baseDate.setDate(baseDate.getDate() + 30);
+          }
           pending.subUntil = baseDate.toISOString();
           pending.plan = invoice.plan_tier;
           this.baileys.saveTokens();
@@ -934,7 +1004,13 @@ class AppServer {
           if (tenant) {
             const currentSubEnd = new Date(tenant.subscription_until || Date.now());
             const baseDate = currentSubEnd > new Date() ? currentSubEnd : new Date();
-            baseDate.setDate(baseDate.getDate() + 30);
+            if (invoice.plan_tier === 'LIFETIME_PARTNER') {
+              baseDate.setFullYear(2099);
+            } else if (invoice.billing_cycle === 'ANNUAL') {
+              baseDate.setDate(baseDate.getDate() + 365);
+            } else {
+              baseDate.setDate(baseDate.getDate() + 30);
+            }
             tenant.subscription_plan = invoice.plan_tier;
             tenant.subscription_until = baseDate.toISOString();
             tenant.updated_at = new Date().toISOString();
@@ -994,8 +1070,26 @@ class AppServer {
         const rawSlug = (body.slug || bizName).toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 25);
         const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
 
-        // Register as pending staging - DO NOT save to database until QR is scanned & connected!
+        // 1. Persist new tenant row directly into database
+        const newTenant = this.db.createTenant({
+          name: bizName,
+          slug: uniqueSlug,
+          owner_phone: doctorPhone || cleanPhone,
+          owner_email: ownerEmail,
+          whatsapp_connected_phone: null,
+          coupon_code: rawCode,
+          coupon_key: quotaKey,
+          category: category,
+          subscription_plan: couponConfig.plan,
+          subscription_until: subUntil,
+          timezone: 'Asia/Jakarta'
+        });
+        newTenant.is_accepting_patients = false;
+        this.db.saveToFile();
+
+        // 2. Register in Baileys staging
         const pending = this.baileys.registerPendingTenant({
+          id: newTenant.id,
           business_name: bizName,
           slug: uniqueSlug,
           rawPhone: cleanPhone,
@@ -1017,7 +1111,7 @@ class AppServer {
         });
 
         // Auto-start Baileys WhatsApp pairing socket for real QR generation
-        this.baileys.ensureSessionStarted(pending.pendingId).catch(() => {});
+        this.baileys.ensureSessionStarted(newTenant.id).catch(() => {});
 
         const connectUrl = `/connect?token=${pending.token}`;
 
@@ -1031,7 +1125,7 @@ class AppServer {
           quota_max: couponConfig.maxCapacity,
           quota_remaining: Math.max(0, couponConfig.maxCapacity - (redeemedSet.size + (redeemedSet.has(cleanPhone) ? 0 : 1))),
           tenant: {
-            id: pending.pendingId,
+            id: newTenant.id,
             name: bizName,
             slug: uniqueSlug,
             owner_phone: doctorPhone || cleanPhone,
@@ -1216,8 +1310,26 @@ class AppServer {
         const rawSlug = (bizName || 'klinik').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 24);
         const uniqueSlug = `${rawSlug}_${Math.floor(100 + Math.random() * 900)}`;
 
-        // Register as pending staging - DO NOT save to database until QR is scanned & connected!
+        // 1. Immediately create tenant row directly in DB
+        const newTenant = this.db.createTenant({
+          name: bizName,
+          slug: uniqueSlug,
+          owner_phone: doctorPhone || rawPhone,
+          owner_email: (body.email || '').trim(),
+          whatsapp_connected_phone: null,
+          coupon_code: rawCoupon || null,
+          coupon_key: (rawCoupon === 'PILOTLIFETIME') ? 'LIFETIMEFREE' : 'FREEPRO',
+          category: category,
+          subscription_plan: plan,
+          subscription_until: subUntil,
+          timezone: 'Asia/Jakarta'
+        });
+        newTenant.is_accepting_patients = false;
+        this.db.saveToFile();
+
+        // 2. Register in Baileys staging
         const pending = this.baileys.registerPendingTenant({
+          id: newTenant.id,
           business_name: bizName,
           slug: uniqueSlug,
           rawPhone: rawPhone,
@@ -1239,7 +1351,7 @@ class AppServer {
         });
 
         // Auto-start Baileys WhatsApp pairing socket for real QR generation
-        this.baileys.ensureSessionStarted(pending.pendingId).catch(() => {});
+        this.baileys.ensureSessionStarted(newTenant.id).catch(() => {});
 
         const connectUrl = `/connect.html?token=${pending.token}`;
         const waDeeplink = `https://wa.me/${rawPhone}?text=Halo%20${encodeURIComponent(bizName)}%2C%20saya%20ingin%20reservasi`;
@@ -1251,7 +1363,7 @@ class AppServer {
           label: planLabel,
           coupon_applied: !!(rawCoupon && validCoupons[rawCoupon]),
           tenant: {
-            id: pending.pendingId,
+            id: newTenant.id,
             name: bizName,
             slug: uniqueSlug,
             owner_phone: doctorPhone || rawPhone,

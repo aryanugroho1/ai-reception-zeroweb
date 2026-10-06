@@ -282,8 +282,8 @@ class BaileysManager {
     const p = this.pendingRegistrations.get(pendingId);
     const phone = actualConnectedPhone || p.rawPhone || p.phone;
 
-    // Check if tenant with this phone or ID already exists in DB
-    let tenant = (phone ? this.db.getTenantByPhone(phone) : null) || this.db.tenants.get(p.id) || this.db.tenants.get(pendingId);
+    // Check if tenant with this ID or phone already exists in DB
+    let tenant = this.db.tenants.get(p.id) || this.db.tenants.get(pendingId) || (phone ? this.db.getTenantByPhone(phone) : null);
     if (tenant) {
       tenant.name = p.business_name || tenant.name;
       tenant.category = p.category || tenant.category;
