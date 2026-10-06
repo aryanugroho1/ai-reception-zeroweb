@@ -12,6 +12,7 @@ const { TierGatingService, PLAN_LIMITS } = require('./tier_gating');
 const { IdempotencyService } = require('./idempotency');
 const { RescheduleService } = require('./reschedule');
 const { MayarPaymentService } = require('./mayar_service');
+const { IPaymuPaymentService } = require('./ipaymu_service');
 const { DoctorCopilotEngine } = require('./doctor_copilot');
 const { IngressRouter } = require('./ingress_router');
 const { AppServer } = require('./server');
@@ -515,6 +516,72 @@ async function runTestSuite() {
     assert(webhookResult.handled === true, 'Valid Mayar webhook handled successfully');
     assert(rian.subscription_plan === 'PRO', 'Tenant upgraded to PRO tier automatically');
     assert(webhookResult.receipt_message.includes('LUNAS (PAID)'), 'WhatsApp payment receipt generated');
+  }
+
+  // -------------------------------------------------------------
+  // TEST GROUP 7B: iPaymu Payment Gateway (API v2) & Webhook
+  // -------------------------------------------------------------
+  console.log(bold('\n--- TEST SUITE 7B: iPaymu Payment & HMAC-SHA256 Webhook ---'));
+  {
+    const db = new DatabaseEngine();
+    const testVa = '1179008158722770';
+    const testApiKey = '9F39C5FE-D9F6-4B12-BE84-76246E3939F3';
+    const ipaymu = new IPaymuPaymentService(db, { va: testVa, apiKey: testApiKey, isProduction: true });
+    const budi = db.getTenantBySlug('dr_budi_umum');
+
+    // 1. Signature generation verification
+    const testPayload = { name: 'dr. Budi', amount: 199000, referenceId: 'inv-test-123' };
+    const sig = ipaymu.generateSignature(testPayload, 'POST');
+    assert(typeof sig === 'string' && sig.length === 64, 'iPaymu HMAC-SHA256 signature generated with valid hex length');
+    assert(ipaymu.verifySignature(testPayload, sig) === true, 'iPaymu signature verification matches generated hash');
+
+    // 2. Reject invalid signature
+    let invalidSigCaught = false;
+    try {
+      await ipaymu.handleWebhook({
+        signature: 'invalid_sha256_ipaymu_signature',
+        payload: { reference_id: 'inv-test-123', status: 'berhasil' },
+        rawBody: JSON.stringify({ reference_id: 'inv-test-123', status: 'berhasil' })
+      });
+    } catch (err) {
+      invalidSigCaught = true;
+      assert(err.code === 'INVALID_SIGNATURE', 'iPaymu Webhook: Invalid signature rejected with 401');
+    }
+    assert(invalidSigCaught, 'iPaymu invalid webhook signature rejected');
+
+    // 3. Register invoice in DB
+    const invId = 'inv-ipm-' + Date.now();
+    db.createSubscriptionInvoice({
+      id: invId,
+      tenant_id: budi.id,
+      amount: 199000,
+      plan_tier: 'PRO',
+      status: 'PENDING'
+    });
+
+    // 4. Valid Webhook handling
+    const validCallback = {
+      trx_id: '12345678',
+      reference_id: invId,
+      status: 'berhasil',
+      status_code: '1',
+      via: 'qris',
+      channel: 'qris_gopay',
+      amount: 199000
+    };
+    const validRaw = JSON.stringify(validCallback);
+    const validSig = ipaymu.generateSignature(validCallback, 'POST');
+
+    const result = await ipaymu.handleWebhook({
+      signature: validSig,
+      payload: validCallback,
+      rawBody: validRaw
+    });
+
+    assert(result.handled === true, 'Valid iPaymu callback processed successfully');
+    assert(result.status === 'PAID', 'Invoice status updated to PAID via iPaymu');
+    assert(budi.subscription_plan === 'PRO', 'Tenant upgraded to PRO tier automatically via iPaymu');
+    assert(result.receipt_message && result.receipt_message.includes('BUKTI PEMBAYARAN RESMI PRAKTIKAAI'), 'Official WhatsApp payment receipt created for iPaymu');
   }
 
   // -------------------------------------------------------------

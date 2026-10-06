@@ -14,6 +14,7 @@ const { TierGatingService, PLAN_LIMITS } = require('./tier_gating');
 const { IdempotencyService } = require('./idempotency');
 const { RescheduleService } = require('./reschedule');
 const { MayarPaymentService } = require('./mayar_service');
+const { IPaymuPaymentService } = require('./ipaymu_service');
 const { DoctorCopilotEngine } = require('./doctor_copilot');
 const { IngressRouter } = require('./ingress_router');
 const { BaileysManager } = require('./baileys_manager');
@@ -26,6 +27,7 @@ class AppServer {
     this.idempotency = new IdempotencyService(this.db);
     this.reschedule = new RescheduleService(this.db);
     this.mayar = new MayarPaymentService(this.db);
+    this.ipaymu = new IPaymuPaymentService(this.db);
     this.doctorCopilot = new DoctorCopilotEngine(this.db);
     this.ingressRouter = new IngressRouter({
       db: this.db,
@@ -39,6 +41,7 @@ class AppServer {
       logger: this
     });
     this.mayar.baileys = this.baileys;
+    this.ipaymu.baileys = this.baileys;
 
     this.auditLogs = [];
     this.logCounter = 0;
@@ -772,7 +775,7 @@ class AppServer {
           });
         }
 
-        // Standard Paid Subscription Flow (Mayar.id Integration)
+        // Standard Paid Subscription Flow (iPaymu API v2 Integration)
         const planPrices = {
           'STARTER': 99000,
           'PRO': 199000,
@@ -780,7 +783,7 @@ class AppServer {
         };
         const amount = planPrices[planTier] || 199000;
         const invoiceId = 'inv-' + crypto.randomUUID().slice(0, 8);
-        const invoiceNumber = 'INV-MYR-' + Math.floor(100000 + Math.random() * 900000);
+        const invoiceNumber = 'INV-IPM-' + Math.floor(100000 + Math.random() * 900000);
 
         // Register as pending staging - DO NOT save to database until payment is settled and QR is scanned!
         const pending = this.baileys.registerPendingTenant({
@@ -797,11 +800,32 @@ class AppServer {
             invoice_number: invoiceNumber,
             amount: amount,
             plan_tier: planTier,
-            status: 'PENDING'
+            status: 'PENDING',
+            payment_provider: 'IPAYMU'
           }
         });
 
-        const paymentUrl = `https://pay.mayar.id/checkout/${invoiceId}?amount=${amount}&tenant=${uniqueSlug}&name=${encodeURIComponent(bizName)}`;
+        let paymentUrl = `https://my.ipaymu.com/payment/${invoiceId}?amount=${amount}`;
+        let sessionId = null;
+        try {
+          const ipaymuRes = await this.ipaymu.createPaymentRedirect({
+            invoiceId: invoiceId,
+            amount: amount,
+            name: contactName || bizName,
+            email: ownerEmail,
+            phone: rawPhone,
+            planTier: planTier,
+            returnUrl: `https://praktika-ai.web.id/connect?token=${pending.token}`,
+            cancelUrl: `https://praktika-ai.web.id/#harga`,
+            notifyUrl: `https://praktika-ai.web.id/api/payment/ipaymu/webhook`
+          });
+          if (ipaymuRes && ipaymuRes.payment_url) {
+            paymentUrl = ipaymuRes.payment_url;
+            sessionId = ipaymuRes.session_id;
+          }
+        } catch (e) {
+          console.error('[Checkout] iPaymu link generation error:', e.message);
+        }
 
         return this.sendJson(res, 200, {
           success: true,
@@ -811,6 +835,8 @@ class AppServer {
           amount: amount,
           plan: planTier,
           payment_url: paymentUrl,
+          session_id: sessionId,
+          provider: 'IPAYMU',
           tenant_id: pending.pendingId,
           token: pending.token
         });
@@ -1345,6 +1371,55 @@ class AppServer {
         const signature = cryptoMod.createHmac('sha256', this.mayar.webhookSecret).update(rawBody).digest('hex');
 
         const webhookResult = await this.mayar.handleWebhook({
+          signature,
+          payload: body,
+          rawBody
+        });
+
+        return this.sendJson(res, 200, {
+          simulated: true,
+          signature,
+          ...webhookResult
+        });
+      }
+
+      // 6C. iPaymu Inbound Webhook Callback: POST /api/payment/ipaymu/webhook & /api/webhooks/ipaymu
+      if ((pathname === '/api/payment/ipaymu/webhook' || pathname === '/api/webhooks/ipaymu') && method === 'POST') {
+        const signature = req.headers['signature'] || req.headers['x-ipaymu-signature'];
+        const body = await this.readRequestBody(req);
+        const rawBody = typeof body === 'string' ? body : JSON.stringify(body);
+
+        try {
+          const webhookResult = await this.ipaymu.handleWebhook({
+            signature,
+            payload: body,
+            rawBody
+          });
+
+          this.addAuditLog('success', 'PAYMENT', `iPaymu Webhook processed for invoice [${webhookResult.invoice_id || 'unknown'}] - Status: PAID`);
+          return this.sendJson(res, 200, {
+            status: 200,
+            success: true,
+            message: 'Webhook processed successfully',
+            data: webhookResult
+          });
+        } catch (err) {
+          console.error('[iPaymu Webhook Error]', err.message);
+          return this.sendJson(res, err.statusCode || 400, {
+            status: err.statusCode || 400,
+            success: false,
+            error: err.message
+          });
+        }
+      }
+
+      // 6D. iPaymu Webhook Simulator (Test / Admin): POST /api/payment/ipaymu/simulate
+      if (pathname === '/api/payment/ipaymu/simulate' && method === 'POST') {
+        const body = await this.readRequestBody(req);
+        const rawBody = typeof body === 'string' ? body : JSON.stringify(body);
+        const signature = this.ipaymu.generateSignature(body, 'POST');
+
+        const webhookResult = await this.ipaymu.handleWebhook({
           signature,
           payload: body,
           rawBody

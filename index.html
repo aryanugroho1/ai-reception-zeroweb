@@ -442,7 +442,7 @@
           <div class="section-tag">Paket Langganan Terjangkau</div>
           <h2 class="section-title">Investasi Terjangkau untuk Ketenangan &amp; Pertumbuhan Bisnis Anda</h2>
           <p class="section-desc">
-            Pilih paket yang paling pas untuk salon, barbershop, spa, maupun klinik mandiri Anda. Pembayaran instan via QRIS Mayar.id langsung aktif otomatis.
+            Pilih paket yang paling pas untuk salon, barbershop, spa, maupun klinik mandiri Anda. Pembayaran instan via QRIS, Virtual Account &amp; E-Wallet iPaymu langsung aktif otomatis.
           </p>
         </div>
 
@@ -815,7 +815,7 @@
         <div class="footer-trust-badges">
           <span class="footer-badge-pill">🔒 TLS 1.3 256-Bit SSL</span>
           <span class="footer-badge-pill">🛡️ UU PDP No. 27/2022 Compliant</span>
-          <span class="footer-badge-pill">💳 Official Mayar.id Partner</span>
+          <span class="footer-badge-pill">💳 Official iPaymu Partner</span>
           <span class="footer-badge-pill">🇮🇩 Server Data Center Indonesia</span>
         </div>
         <div style="font-size:0.82rem; color:var(--text-faint);">
@@ -903,7 +903,7 @@
           <ul>
             <li><strong>Data Mitra Usaha:</strong> Nama pemilik, nama usaha, email resmi, nomor WhatsApp bisnis, dan nomor WhatsApp pribadi dokter.</li>
             <li><strong>Data Pelanggan:</strong> Nama, nomor WhatsApp, riwayat layanan, dan jadwal janji temu.</li>
-            <li><strong>Data Pembayaran:</strong> Diproses melalui mitra gateway berlisensi (Mayar.id). Kami tidak menyimpan nomor kartu kredit atau kode CVV pengguna.</li>
+            <li><strong>Data Pembayaran:</strong> Diproses melalui mitra gateway berlisensi Bank Indonesia (iPaymu). Kami tidak menyimpan nomor kartu kredit atau kode CVV pengguna.</li>
           </ul>
 
           <h2>2. Tujuan Penggunaan Data</h2>
@@ -941,7 +941,7 @@
           <ul>
             <li>Permohonan diajukan maksimal <strong>7 (tujuh) hari kalender</strong> sejak transaksi pembayaran berhasil.</li>
             <li>Berlaku jika terjadi kegagalan sistemik dari pihak PraktikaAI yang menyebabkan bot tidak dapat beroperasi lebih dari 48 jam dan tim teknis kami tidak dapat memperbaikinya.</li>
-            <li>Proses verifikasi membutuhkan 1-2 hari kerja, dan dana dikembalikan dalam waktu <strong>3 - 5 hari kerja</strong> ke rekening bank asal atau metode pembayaran Mayar.id.</li>
+            <li>Proses verifikasi membutuhkan 1-2 hari kerja, dan dana dikembalikan dalam waktu <strong>3 - 5 hari kerja</strong> ke rekening bank asal atau metode pembayaran iPaymu.</li>
           </ul>
 
           <div style="margin-top:1.5rem; text-align:right;">
@@ -1135,7 +1135,7 @@
           </div>
 
           <button type="submit" class="trial-submit-btn" id="btnSubmitMayarInfo">
-            <span>Lanjut ke Pembayaran via Mayar →</span>
+            <span>Lanjut ke Pembayaran via iPaymu →</span>
           </button>
 
           <button type="button" class="btn btn-secondary" id="btnBackToStep1" style="width:100%; margin-top:8px;">
@@ -1144,14 +1144,14 @@
         </form>
       </div>
 
-      <!-- STEP 3: Pembayaran via Gateway Mayar.id (QRIS / Virtual Account) -->
+      <!-- STEP 3: Pembayaran via Gateway iPaymu (QRIS / Virtual Account / E-Wallet) -->
       <div id="mayarStepPayment" style="display:none;">
         <div class="trial-header">
           <div class="trial-badge" style="background:rgba(2,132,199,0.12); color:#0369a1; border-color:#0284c7;">
-            💳 Langkah 3 dari 4 • Pembayaran via Mayar.id
+            💳 Langkah 3 dari 4 • Pembayaran via iPaymu
           </div>
           <h3 class="trial-title">Selesaikan Pembayaran Langganan</h3>
-          <p class="trial-subtitle">Klik tombol pembayaran di bawah untuk membayar melalui gateway resmi Mayar.id. Setelah sync pembayaran berhasil, QR code aktivasi WhatsApp bot akan langsung muncul otomatis.</p>
+          <p class="trial-subtitle">Klik tombol pembayaran di bawah untuk membayar melalui gateway resmi iPaymu (QRIS, VA Bank BCA/Mandiri/BNI/BRI, E-Wallet). Setelah sync pembayaran berhasil, QR code aktivasi WhatsApp bot akan langsung muncul otomatis.</p>
         </div>
 
         <div class="qris-invoice-summary" style="margin-bottom:1.2rem;">
@@ -1171,7 +1171,7 @@
 
         <div style="margin-bottom:1.2rem;">
           <a id="btnPayMayarLink" href="#" target="_blank" class="trial-submit-btn" style="text-decoration:none; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; font-weight:700; background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
-            <span>💳 Bayar Sekarang via Mayar.id (QRIS / VA) ↗</span>
+            <span>💳 Bayar Sekarang via iPaymu (QRIS / VA / E-Wallet) ↗</span>
           </a>
         </div>
 
@@ -1179,7 +1179,7 @@
         <div id="paymentSyncBox" style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:14px; padding:16px; margin-bottom:14px; text-align:center;">
           <div id="paymentSyncStatus" style="font-size:0.88rem; font-weight:700; color:#b45309; display:flex; align-items:center; justify-content:center; gap:8px;">
             <span style="font-size:1.1rem; animation:spin 2s linear infinite; display:inline-block;">🔄</span>
-            <span>Menunggu konfirmasi pembayaran dari Mayar.id...</span>
+            <span>Menunggu konfirmasi pembayaran dari iPaymu...</span>
           </div>
           <p style="font-size:0.78rem; color:#78350f; margin-top:6px; margin-bottom:0; line-height:1.4;">
             Sistem otomatis mendeteksi status pembayaran secara real-time. Begitu transaksi terverifikasi, layar ini otomatis beralih ke kode QR WhatsApp bot.

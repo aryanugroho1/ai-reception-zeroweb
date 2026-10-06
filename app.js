@@ -1252,7 +1252,7 @@ class MayarPaymentModal {
       if (this.activeCoupon) {
         this.btnSubmitMayarInfo.innerHTML = '<span>Lanjut ke Scan QR WhatsApp (Gratis Kupon) →</span>';
       } else {
-        this.btnSubmitMayarInfo.innerHTML = '<span>Lanjut ke Pembayaran via Mayar →</span>';
+        this.btnSubmitMayarInfo.innerHTML = '<span>Lanjut ke Pembayaran via iPaymu →</span>';
       }
       this.btnSubmitMayarInfo.disabled = false;
     }
@@ -1464,7 +1464,7 @@ class MayarPaymentModal {
       alert(`⚠️ Pendaftaran gagal: ${err.message}`);
       if (this.btnSubmitMayarInfo) {
         this.btnSubmitMayarInfo.disabled = false;
-        this.btnSubmitMayarInfo.innerHTML = this.activeCoupon ? '<span>Lanjut ke Scan QR WhatsApp (Gratis Kupon) →</span>' : '<span>Lanjut ke Pembayaran via Mayar →</span>';
+        this.btnSubmitMayarInfo.innerHTML = this.activeCoupon ? '<span>Lanjut ke Scan QR WhatsApp (Gratis Kupon) →</span>' : '<span>Lanjut ke Pembayaran via iPaymu →</span>';
       }
     }
   }
@@ -1607,7 +1607,7 @@ class MayarPaymentModal {
 
     if (this.btnSubmitMayarInfo) {
       this.btnSubmitMayarInfo.disabled = false;
-      this.btnSubmitMayarInfo.innerHTML = this.activeCoupon ? '<span>Lanjut ke Scan QR WhatsApp (Gratis Kupon) →</span>' : '<span>Lanjut ke Pembayaran via Mayar →</span>';
+      this.btnSubmitMayarInfo.innerHTML = this.activeCoupon ? '<span>Lanjut ke Scan QR WhatsApp (Gratis Kupon) →</span>' : '<span>Lanjut ke Pembayaran via iPaymu →</span>';
     }
 
     if (this.btnCloseAndSendEmailBtn) {
