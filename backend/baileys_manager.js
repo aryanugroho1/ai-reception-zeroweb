@@ -177,7 +177,8 @@ class BaileysManager {
         for (const dirent of subDirs) {
           if (dirent.isDirectory()) {
             const folderName = dirent.name;
-            if (!restoredTenantIds.has(folderName) && !this.db.tenants.has(folderName)) {
+            const isAliased = tenants.some(t => t.session_dir_key === folderName);
+            if (!restoredTenantIds.has(folderName) && !this.db.tenants.has(folderName) && !isAliased) {
               console.log(`[BaileysManager] Folder sesi disk tak bertuan diabaikan: ${folderName}`);
             }
           }
@@ -398,19 +399,12 @@ class BaileysManager {
       this.sessions.set(pendingId, pendingSession);
     }
 
-    // Mirror session auth files to committed tenant ID folder if different
-    const pendingDir = this.getSessionDir(pendingId);
-    const tenantDir = this.getSessionDir(tenant.id);
-    if (fs.existsSync(pendingDir) && pendingDir !== tenantDir) {
-      try {
-        if (!fs.existsSync(tenantDir)) {
-          fs.mkdirSync(tenantDir, { recursive: true });
-        }
-        fs.cpSync(pendingDir, tenantDir, { recursive: true });
-        try { fs.rmSync(pendingDir, { recursive: true, force: true }); } catch (rmErr) {}
-      } catch (e) {
-        console.warn('[BaileysManager] Failed copying session files to tenant dir:', e.message);
-      }
+    // Keep the live socket's auth folder in place. Previously the folder was copied
+    // and the original deleted while the socket was still writing signal keys into
+    // it, which broke the first minutes after linking and any later reconnect.
+    const pendingDir = path.join(this.sessionsDir, pendingId);
+    if (fs.existsSync(pendingDir) && pendingId !== tenant.id) {
+      tenant.session_dir_key = pendingId;
     }
 
     // Update connect tokens referencing pendingId
@@ -477,7 +471,12 @@ class BaileysManager {
   }
 
   getSessionDir(tenantId) {
-    return path.join(this.sessionsDir, tenantId);
+    // Tenants committed from a pending registration keep using the auth folder
+    // they originally paired in (session_dir_key), so the live socket's key
+    // writes never land in a deleted directory.
+    const t = this.db && this.db.tenants ? this.db.tenants.get(tenantId) : null;
+    const key = (t && t.session_dir_key) || tenantId;
+    return path.join(this.sessionsDir, key);
   }
 
   hasExistingCredentials(tenantId) {
@@ -528,6 +527,16 @@ class BaileysManager {
     let session = this.sessions.get(tenantId);
     if (session && session.status === 'CONNECTED' && session.sock) {
       return this.formatSessionResponse(tenant, session);
+    }
+
+    // Do NOT tear down a socket that is showing a QR or finishing the handshake.
+    // Killing it here (page reload, "Refresh QR", second tab, polling) is what made
+    // the phone show "no connection / couldn't link device" right after scanning.
+    if (session && session.sock && (session.status === 'SCAN_QR' || session.status === 'CONNECTING')) {
+      const ageMs = Date.now() - new Date(session.updatedAt || 0).getTime();
+      if (ageMs < 120000) {
+        return this.formatSessionResponse(tenant, session);
+      }
     }
 
     if (session && session.sock && session.status !== 'CONNECTED') {
@@ -592,10 +601,12 @@ class BaileysManager {
       session.status = hasAuth ? 'CONNECTING' : 'SCAN_QR';
       session.updatedAt = new Date().toISOString();
 
-      // Official WhatsApp Web browser tuple
-      const browserTuple = (baileys.Browsers && typeof baileys.Browsers.ubuntu === 'function')
-        ? baileys.Browsers.ubuntu('Chrome')
-        : ['Ubuntu', 'Chrome', '22.04.4'];
+      // Standard Desktop WhatsApp Web browser tuple (Windows Desktop)
+      const browserTuple = (baileys.Browsers && typeof baileys.Browsers.appropriate === 'function')
+        ? baileys.Browsers.appropriate('Desktop')
+        : (baileys.Browsers && typeof baileys.Browsers.windows === 'function')
+          ? baileys.Browsers.windows('Desktop')
+          : ['Windows', 'Desktop', '10.0.22631'];
 
       const sock = (makeWASocket.default || makeWASocket)({
         version,
@@ -608,7 +619,8 @@ class BaileysManager {
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 25000,
-        markOnlineOnConnect: true
+        markOnlineOnConnect: true,
+        getMessage: async () => ({ conversation: '' })
       });
 
       session.sock = sock;
@@ -647,6 +659,7 @@ class BaileysManager {
 
         if (connection === 'open') {
           session.status = 'CONNECTED';
+          session.reconnectAttempts = 0;
           session.qr = null;
           session.qrImage = null;
           const phone = sock.user?.id ? sock.user.id.split(':')[0].replace(/\D/g, '') : null;
@@ -704,13 +717,24 @@ class BaileysManager {
             session.sock = null;
             console.warn(`[BaileysManager] Sesi ${tenant.slug} ditutup (loggedOut). Berkas autentikasi disk tetap diamankan.`);
           } else {
-            session.status = 'OFFLINE';
-            // Auto reconnect after 5s if disconnected unexpectedly
+            // After a QR scan WhatsApp always closes with 515 (restartRequired) and
+            // expects the client to reconnect right away. Waiting 5s here made the
+            // phone time out with "no connection" during "Link a device".
+            const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
+            session.status = isRestartRequired ? 'CONNECTING' : 'OFFLINE';
+            if (session.sock === sock) session.sock = null;
+            try { sock.ev.removeAllListeners(); } catch (e) {}
+            session.reconnectAttempts = isRestartRequired ? 0 : (session.reconnectAttempts || 0) + 1;
+            const delay = isRestartRequired ? 0 : Math.min(30000, 2000 * session.reconnectAttempts);
+            // Use the session's current tenantId: after commit it is the real tenant id,
+            // the captured pendingId no longer resolves.
+            const reconnectId = session.tenantId || tenantId;
             setTimeout(() => {
-              if (this.sessions.has(tenantId) && this.sessions.get(tenantId).status !== 'DISCONNECTED') {
-                this.startSession(tenantId).catch(err => console.error('[BaileysManager] Reconnect error:', err.message));
+              const s = this.sessions.get(reconnectId);
+              if (s && s.status !== 'DISCONNECTED' && !s.sock) {
+                this.startSession(reconnectId).catch(err => console.error('[BaileysManager] Reconnect error:', err.message));
               }
-            }, 5000);
+            }, delay);
           }
           session.updatedAt = new Date().toISOString();
         }
