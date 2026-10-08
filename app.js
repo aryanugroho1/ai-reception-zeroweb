@@ -2018,22 +2018,60 @@ class SuperadminHub {
 
 // --- FAQ Accordion ---
 function initFAQ() {
-  document.querySelectorAll('.faq-question').forEach(q => {
-    q.addEventListener('click', () => {
-      const parent = q.parentElement;
-      const isActive = parent.classList.contains('active');
+  const items = document.querySelectorAll('.faq-item');
+  if (!items.length) return;
 
-      document.querySelectorAll('.faq-item').forEach(item => {
-        item.classList.remove('active');
-        item.querySelector('.faq-answer').style.maxHeight = null;
+  // Initialize initial heights (first item active by default)
+  items.forEach(item => {
+    const ans = item.querySelector('.faq-answer');
+    if (!ans) return;
+    if (item.classList.contains('active')) {
+      ans.style.maxHeight = ans.scrollHeight + 35 + 'px';
+    } else {
+      ans.style.maxHeight = '0px';
+    }
+  });
+
+  items.forEach(item => {
+    const q = item.querySelector('.faq-question');
+    if (!q) return;
+
+    q.addEventListener('click', (e) => {
+      e.preventDefault();
+      const isActive = item.classList.contains('active');
+      const ans = item.querySelector('.faq-answer');
+
+      // Close all other items
+      items.forEach(other => {
+        if (other !== item) {
+          other.classList.remove('active');
+          const otherAns = other.querySelector('.faq-answer');
+          if (otherAns) otherAns.style.maxHeight = '0px';
+        }
       });
 
-      if (!isActive) {
-        parent.classList.add('active');
-        const ans = parent.querySelector('.faq-answer');
-        ans.style.maxHeight = ans.scrollHeight + 30 + 'px';
+      // Toggle current item
+      if (isActive) {
+        item.classList.remove('active');
+        if (ans) ans.style.maxHeight = '0px';
+      } else {
+        item.classList.add('active');
+        if (ans) {
+          ans.style.maxHeight = ans.scrollHeight + 35 + 'px';
+        }
       }
     });
+  });
+
+  // Re-calculate active answer height on window resize
+  window.addEventListener('resize', () => {
+    const activeItem = document.querySelector('.faq-item.active');
+    if (activeItem) {
+      const activeAns = activeItem.querySelector('.faq-answer');
+      if (activeAns) {
+        activeAns.style.maxHeight = activeAns.scrollHeight + 35 + 'px';
+      }
+    }
   });
 }
 
@@ -2210,10 +2248,12 @@ class LegalModalManager {
   switchTab(targetPanelId) {
     const tabMap = {
       'about': 'legalAbout',
+      'terms': 'legalTerms',
       'privacy': 'legalPrivacy',
       'refund': 'legalRefund',
       'contact': 'legalContact',
       'legalAbout': 'legalAbout',
+      'legalTerms': 'legalTerms',
       'legalPrivacy': 'legalPrivacy',
       'legalRefund': 'legalRefund',
       'legalContact': 'legalContact'
@@ -2231,6 +2271,7 @@ class LegalModalManager {
 
     const badgeMap = {
       'legalAbout': '🏢 TENTANG KAMI &amp; PROFIL',
+      'legalTerms': '📜 SYARAT &amp; KETENTUAN LAYANAN',
       'legalPrivacy': '🔒 KEBIJAKAN PRIVASI &amp; DATA',
       'legalRefund': '💳 KEBIJAKAN REFUND &amp; PEMBATALAN',
       'legalContact': '📞 HUBUNGI KAMI &amp; DUKUNGAN'
@@ -2559,8 +2600,6 @@ class AntigravitySpatialMotionEngine {
       revealSection('#cara-kerja', '.step-card');
       revealSection('#kalkulator', '.roi-calculator-card');
       revealSection('#harga', '.pricing-card');
-      revealSection('#testimoni', '.testimonial-card');
-      revealSection('#faq', '.faq-item');
     }
   }
 }

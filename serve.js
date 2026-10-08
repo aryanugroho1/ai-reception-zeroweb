@@ -42,6 +42,8 @@ const server = http.createServer((req, res) => {
     reqPath = '/privacy-policy.html';
   } else if (reqPath === '/refund-policy' || reqPath === '/refund-policy/' || reqPath === '/refund' || reqPath === '/refund/') {
     reqPath = '/refund-policy.html';
+  } else if (reqPath === '/terms' || reqPath === '/terms/' || reqPath === '/terms-and-conditions' || reqPath === '/terms-and-conditions/' || reqPath === '/syarat-ketentuan' || reqPath === '/syarat-ketentuan/') {
+    reqPath = '/terms.html';
   }
 
   const filePath = path.join(__dirname, reqPath);
