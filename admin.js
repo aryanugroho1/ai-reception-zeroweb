@@ -578,7 +578,7 @@ class SuperadminController {
               method: 'POST',
               headers: this.getAuthHeaders()
             });
-          } catch (e) {}
+          } catch (e) { }
           this.clearAuthToken();
           this.showLoginGate();
           document.getElementById('formAdminLogin').reset();
@@ -728,9 +728,9 @@ class SuperadminController {
       if (this.searchQuery) {
         const q = this.searchQuery.toLowerCase();
         const match = t.name.toLowerCase().includes(q) ||
-                      t.slug.toLowerCase().includes(q) ||
-                      t.ownerPhone.includes(q) ||
-                      t.specialty.toLowerCase().includes(q);
+          t.slug.toLowerCase().includes(q) ||
+          t.ownerPhone.includes(q) ||
+          t.specialty.toLowerCase().includes(q);
         if (!match) return false;
       }
 
@@ -1384,7 +1384,7 @@ class SuperadminController {
         method: 'DELETE',
         headers: this.getAuthHeaders()
       });
-      
+
       let data = {};
       try { data = await res.json(); } catch (e) { data = {}; }
 
@@ -1613,7 +1613,7 @@ class SuperadminController {
         } else if (data.qr_image && data.qr_image !== img.src) {
           img.src = data.qr_image;
         }
-      } catch (e) {}
+      } catch (e) { }
     }, 1500);
   }
 
@@ -1743,7 +1743,7 @@ class SuperadminController {
         if (ltMaxDisplay) ltMaxDisplay.textContent = max;
         if (ltRemainingText) {
           ltRemainingText.textContent = remaining > 0 ? `Sisa ${remaining} Kuota` : 'Kuota Penuh';
-          ltRemainingText.style.color = remaining > 0 ? '#00b894' : '#ef4444';
+          ltRemainingText.style.color = remaining > 0 ? '#10b981' : '#ef4444';
         }
 
         if (ltProgressBar) {
@@ -1905,9 +1905,9 @@ class SuperadminController {
 
       if (feedbackEl) {
         feedbackEl.style.display = 'block';
-        feedbackEl.style.background = 'rgba(0, 184, 148, 0.15)';
-        feedbackEl.style.color = '#00b894';
-        feedbackEl.style.border = '1px solid rgba(0, 184, 148, 0.3)';
+        feedbackEl.style.background = 'rgba(16, 185, 129, 0.15)';
+        feedbackEl.style.color = '#10b981';
+        feedbackEl.style.border = '1px solid rgba(16, 185, 129, 0.3)';
         feedbackEl.textContent = `✅ Berhasil! Kuota ${couponCode} kini: ${data.max_capacity} nomor (Sisa: ${data.quota_remaining}).`;
         setTimeout(() => { feedbackEl.style.display = 'none'; }, 4000);
       }

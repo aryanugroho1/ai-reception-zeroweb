@@ -1,34 +1,43 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PraktikaAI - AI Receptionist WhatsApp untuk Salon, Barbershop, Spa &amp; Klinik</title>
-  <meta name="description" content="Bisnis ramai tanpa ruang tunggu penuh. Asisten AI WhatsApp mandiri untuk Salon, Barbershop, Massage &amp; Spa, serta Dokter Mandiri. Customer booking 24/7 langsung ke nomor Anda, konfirmasi otomatis, Anda cukup fokus melayani.">
-  <meta name="keywords" content="asisten booking salon, whatsapp bot barbershop, bot reservasi spa massage, resepsionis ai klinik dokter, booking otomatis whatsapp, zero web receptionist">
+  <meta name="description"
+    content="Bisnis ramai tanpa ruang tunggu penuh. Asisten AI WhatsApp mandiri untuk Salon, Barbershop, Massage &amp; Spa, serta Dokter Mandiri. Customer booking 24/7 langsung ke nomor Anda, konfirmasi otomatis, Anda cukup fokus melayani.">
+  <meta name="keywords"
+    content="asisten booking salon, whatsapp bot barbershop, bot reservasi spa massage, resepsionis ai klinik dokter, booking otomatis whatsapp, zero web receptionist">
   <link rel="stylesheet" href="index.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✨</text></svg>">
+  <!-- GSAP & ScrollTrigger for Antigravity Spatial Motion -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
   <script>
-    (function() {
+    (function () {
       try {
         var saved = localStorage.getItem('praktika_theme') || localStorage.getItem('praktika_admin_theme');
         var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day');
         document.documentElement.setAttribute('data-theme', theme);
-      } catch (e) {}
+      } catch (e) { }
     })();
   </script>
 </head>
+
 <body>
 
-  <!-- Ambient Background Glow (Luminous Glow Orbs) -->
+  <!-- Ambient Background Glow & Spatial Depth Grid (Antigravity Spatial System) -->
   <div class="ambient-glow-wrapper" aria-hidden="true">
+    <div class="antigravity-spatial-grid"></div>
     <div class="glow-orb glow-orb-1"></div>
     <div class="glow-orb glow-orb-2"></div>
     <div class="glow-orb glow-orb-3"></div>
   </div>
 
   <!-- Navigation Bar -->
-  <header class="navbar">
+  <header class="navbar" id="mainNavbar">
     <div class="container nav-container">
       <a href="#" class="brand-logo" id="navBrandLogo">
         <div class="brand-icon">✨</div>
@@ -36,20 +45,65 @@
         <span class="brand-badge">Zero-Web Booking</span>
       </a>
 
-      <ul class="nav-links">
+      <ul class="nav-links" id="desktopNavLinks">
         <li><a href="#masalah" class="nav-link">Masalah &amp; Solusi</a></li>
         <li><a href="#cara-kerja" class="nav-link">Cara Kerja</a></li>
+        <li><a href="#kalkulator" class="nav-link">Simulasi ROI</a></li>
         <li><a href="#harga" class="nav-link">Harga &amp; Paket</a></li>
+        <li><a href="#testimoni" class="nav-link">Kisah Sukses</a></li>
         <li><a href="#faq" class="nav-link">FAQ</a></li>
         <li><a href="/about" class="nav-link" data-open-legal="about">About Us</a></li>
         <li><a href="/contact" class="nav-link" data-open-legal="contact">Contact Us</a></li>
       </ul>
 
       <div class="nav-actions">
-        <button type="button" class="btn-theme-toggle" id="btnThemeToggle" title="Ganti Mode Tampilan (Day / Night)" aria-label="Toggle Day / Night Mode">
+        <button type="button" class="btn-theme-toggle" id="btnThemeToggle" title="Ganti Mode Tampilan (Day / Night)"
+          aria-label="Toggle Day / Night Mode">
           <span class="theme-toggle-icon" id="themeIcon">☀️</span>
           <span class="theme-toggle-text" id="themeLabel">Day</span>
         </button>
+
+        <button type="button" class="btn btn-primary nav-cta-btn" data-open-trial id="navBtnTrial">
+          <span>Coba Gratis</span> →
+        </button>
+
+        <!-- Mobile Hamburger Toggle Button -->
+        <button type="button" class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Buka Menu Navigasi"
+          aria-expanded="false" aria-controls="mobileNavDrawer">
+          <span class="hamburger-bar"></span>
+          <span class="hamburger-bar"></span>
+          <span class="hamburger-bar"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Navigation Drawer -->
+    <div class="mobile-nav-drawer" id="mobileNavDrawer" aria-hidden="true">
+      <div class="mobile-nav-backdrop" id="mobileNavBackdrop"></div>
+      <div class="mobile-nav-content">
+        <div class="mobile-nav-header">
+          <div class="brand-logo">
+            <div class="brand-icon">✨</div>
+            <span class="brand-name">Praktika<span class="gradient-text">AI</span></span>
+          </div>
+          <button type="button" class="mobile-nav-close" id="mobileNavClose" aria-label="Tutup Menu">&times;</button>
+        </div>
+        <ul class="mobile-nav-list">
+          <li><a href="#masalah" class="mobile-nav-link"><span>🛋️</span> Masalah &amp; Solusi</a></li>
+          <li><a href="#cara-kerja" class="mobile-nav-link"><span>⚡</span> Cara Kerja 3 Langkah</a></li>
+          <li><a href="#demoLive" class="mobile-nav-link"><span>📱</span> Simulasi WhatsApp Live</a></li>
+          <li><a href="#kalkulator" class="mobile-nav-link"><span>🧮</span> Kalkulator Hemat Waktu</a></li>
+          <li><a href="#harga" class="mobile-nav-link"><span>💳</span> Harga &amp; Paket</a></li>
+          <li><a href="#testimoni" class="mobile-nav-link"><span>⭐</span> Kisah Sukses Mitra</a></li>
+          <li><a href="#faq" class="mobile-nav-link"><span>❓</span> Tanya Jawab (FAQ)</a></li>
+          <li><a href="/about" class="mobile-nav-link" data-open-legal="about"><span>🏢</span> About Us</a></li>
+          <li><a href="/contact" class="mobile-nav-link" data-open-legal="contact"><span>📞</span> Contact Us</a></li>
+        </ul>
+        <div class="mobile-nav-footer">
+          <button type="button" class="btn btn-primary btn-pulse" style="width:100%;" data-open-trial>
+            Mulai Coba Gratis 30 Hari →
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -60,7 +114,7 @@
          ==================================================================== -->
     <section class="hero-section" id="hero">
       <div class="container hero-stack-container">
-        
+
         <!-- Top: High Hook Copywriting & Proof -->
         <div class="hero-content hero-content-centered">
           <div class="hero-badge-wrap">
@@ -74,7 +128,9 @@
           </h1>
 
           <p class="hero-subtitle">
-            <strong>Nol aplikasi tambahan, tanpa ribet buka laptop kasir.</strong> Pelanggan booking sendiri via WhatsApp langsung ke nomor Anda, jadwal terkunci anti-tabrakan, dan Anda cukup balas <strong>'Next'</strong> saat kursi siap.
+            <strong>Nol aplikasi tambahan, tanpa ribet buka laptop kasir.</strong> Pelanggan booking sendiri via
+            WhatsApp langsung ke nomor Anda, jadwal terkunci anti-tabrakan, dan Anda cukup balas <strong>'Next'</strong>
+            saat kursi siap.
           </p>
 
           <div class="hero-cta-group">
@@ -119,20 +175,35 @@
         <!-- Centerpiece: Live Dual Sync WhatsApp Simulation Showcase -->
         <div class="dual-sync-showcase" id="demoLive">
           <div class="phone-decor-glow"></div>
-          
+
           <div class="dual-sync-header-badge">
             <span class="pulse-dot"></span>
             <strong>⚡ SIMULASI BOOKING KE NOMOR WHATSAPP BISNIS ANDA</strong>
-            <span class="dual-sync-subtext">— Customer chat langsung ke nomor WhatsApp bisnis Anda (kiri), dan bot otomatis menjadwalkan serta mengirim notifikasi ke HP Anda / owner (kanan).</span>
+            <span class="dual-sync-subtext">— Customer chat langsung ke nomor WhatsApp bisnis Anda (kiri), dan bot
+              otomatis menjadwalkan serta mengirim notifikasi ke HP Anda / owner (kanan).</span>
+          </div>
+
+          <!-- Mobile Perspective Switcher Tabs (Antigravity Mobile Segmented Controller) -->
+          <div class="phone-perspective-tabs" id="phonePerspectiveTabs" role="tablist"
+            aria-label="Pilih Perspektif Tampilan">
+            <button type="button" class="perspective-tab-btn active" data-perspective="patient" id="tabPerspPatient"
+              role="tab" aria-selected="true">
+              <span>📱 Chat Pelanggan</span>
+            </button>
+            <button type="button" class="perspective-tab-btn" data-perspective="doctor" id="tabPerspDoctor" role="tab"
+              aria-selected="false">
+              <span>💼 HP Owner / Dokter</span>
+              <span class="perspective-pulse-badge" id="perspSyncBadge" style="display:none;">Notif Baru!</span>
+            </button>
           </div>
 
           <div class="dual-phone-grid" id="dualPhoneGrid">
-            
+
             <!-- PHONE 1: PERSPEKTIF CUSTOMER / PASIEN -->
             <div class="phone-device" id="phonePatientWrap">
               <span class="phone-role-badge patient">📱 Chat Pelanggan / Pasien</span>
               <div class="phone-screen">
-                
+
                 <!-- Status Bar -->
                 <div class="phone-status-bar">
                   <span>10:15</span>
@@ -151,7 +222,8 @@
                     <div class="wa-header-title" id="waHeaderTitle">
                       drg. Maya Dental Care 🦷 <span class="wa-verified-badge">✓</span>
                     </div>
-                    <div class="wa-header-status" id="waHeaderStatus">+62 812-9988-7766 • Bisnis Terverifikasi • Online</div>
+                    <div class="wa-header-status" id="waHeaderStatus">+62 812-9988-7766 • Bisnis Terverifikasi • Online
+                    </div>
                   </div>
                   <div class="wa-header-actions">
                     <span>📹</span>
@@ -182,7 +254,8 @@
                 <div class="wa-input-bar">
                   <button class="wa-icon-btn">😊</button>
                   <div class="wa-input-box">
-                    <input type="text" class="wa-input-field" id="waInputField" placeholder="Ketik pesan atau opsi..." autocomplete="off">
+                    <input type="text" class="wa-input-field" id="waInputField" placeholder="Ketik pesan atau opsi..."
+                      autocomplete="off">
                     <button class="wa-icon-btn">📎</button>
                   </div>
                   <button class="wa-send-btn" id="waSendBtn">➤</button>
@@ -195,7 +268,7 @@
             <div class="phone-device" id="phoneDoctorWrap">
               <span class="phone-role-badge doctor">💼 HP Owner / Terapis / Dokter (Zero-Web AI)</span>
               <div class="phone-screen">
-                
+
                 <!-- Status Bar -->
                 <div class="phone-status-bar">
                   <span>16:00</span>
@@ -233,7 +306,8 @@
                     <span style="color:#34d399;">Multi-Business AI</span>
                   </div>
                   <div class="doc-btn-row">
-                    <button class="doc-cmd-btn" id="cmdDoctorDashboard" style="background:#1e3a5f; color:#38bdf8; border-color:#38bdf8;">
+                    <button class="doc-cmd-btn" id="cmdDoctorDashboard"
+                      style="background:#1e3a5f; color:#38bdf8; border-color:#38bdf8;">
                       📊 <span>Dashboard &amp; Omset</span>
                     </button>
                     <button class="doc-cmd-btn" id="cmdDoctorQueue">
@@ -258,7 +332,8 @@
                 <div class="wa-input-bar">
                   <button class="wa-icon-btn">🎤</button>
                   <div class="wa-input-box">
-                    <input type="text" class="wa-input-field" id="docInputField" placeholder="Perintah bebas: 'dashboard', 'antrean', 'next'..." autocomplete="off">
+                    <input type="text" class="wa-input-field" id="docInputField"
+                      placeholder="Perintah bebas: 'dashboard', 'antrean', 'next'..." autocomplete="off">
                   </div>
                   <button class="wa-send-btn" id="docSendBtn" style="background:#3b82f6; color:#fff;">➤</button>
                 </div>
@@ -271,7 +346,8 @@
           <!-- Simulator Floating Controls & Replay -->
           <div class="sim-controls" style="max-width: 820px; margin: 1.5rem auto 0 auto;">
             <div class="sim-control-left">
-              <span>⚡ Sinkronisasi Dua Arah Aktif: Memanggil pelanggan di kanan langsung mengirim notifikasi live ke HP kiri.</span>
+              <span>⚡ Sinkronisasi Dua Arah Aktif: Memanggil pelanggan di kanan langsung mengirim notifikasi live ke HP
+                kiri.</span>
             </div>
             <div style="display:flex; gap:8px;">
               <button class="sim-btn" id="soundToggleBtn">🔊 Suara On</button>
@@ -295,12 +371,14 @@
           <div class="section-tag">Masalah Klasik vs Solusi Pintar</div>
           <h2 class="section-title">Fokus Melayani Pelanggan, Bukan Menjadi Resepsionis Chat 24 Jam</h2>
           <p class="section-desc">
-            Baik mengelola salon, barbershop, studio massage &amp; spa, maupun praktek dokter mandiri—interupsi chat booking saat tangan sedang memegang gunting, melayani treatment, atau memeriksa pasien sangat menguras tenaga. Bandingkan cara lama dengan solusi kami:
+            Baik mengelola salon, barbershop, studio massage &amp; spa, maupun praktek dokter mandiri—interupsi chat
+            booking saat tangan sedang memegang gunting, melayani treatment, atau memeriksa pasien sangat menguras
+            tenaga. Bandingkan cara lama dengan solusi kami:
           </p>
         </div>
 
         <div class="pain-points-grid">
-          
+
           <!-- Card 1 -->
           <div class="pain-card">
             <div class="pain-header">
@@ -311,13 +389,15 @@
               </div>
             </div>
             <p class="pain-body">
-              Pelanggan atau pasien datang di jam yang sama tanpa kepastian giliran. Ruang tunggu sempit jadi sesak, kursi tidak cukup, dan pelanggan yang menunggu lama menjadi bosan dan komplain.
+              Pelanggan atau pasien datang di jam yang sama tanpa kepastian giliran. Ruang tunggu sempit jadi sesak,
+              kursi tidak cukup, dan pelanggan yang menunggu lama menjadi bosan dan komplain.
             </p>
             <div class="pain-solution-box">
               <span class="solution-icon">✨</span>
               <div class="solution-text">
                 <strong>Solusi Zero-Web AI:</strong>
-                Pelanggan datang teratur sesuai estimasi giliran. WhatsApp otomatis memberi pengingat 10-15 menit sebelum giliran tiba. Ruang tunggu senantiasa nyaman dan lengang.
+                Pelanggan datang teratur sesuai estimasi giliran. WhatsApp otomatis memberi pengingat 10-15 menit
+                sebelum giliran tiba. Ruang tunggu senantiasa nyaman dan lengang.
               </div>
             </div>
           </div>
@@ -332,13 +412,16 @@
               </div>
             </div>
             <p class="pain-body">
-              Chat masuk tanpa henti: <em>"Kak, jam 3 ada slot potong rambut?"</em>, <em>"Bisa booking spa sore ini?"</em>, atau <em>"Dok, antreannya panjang?"</em> tepat saat Anda sedang memegang alat kerja di depan klien.
+              Chat masuk tanpa henti: <em>"Kak, jam 3 ada slot potong rambut?"</em>, <em>"Bisa booking spa sore
+                ini?"</em>, atau <em>"Dok, antreannya panjang?"</em> tepat saat Anda sedang memegang alat kerja di depan
+              klien.
             </p>
             <div class="pain-solution-box">
               <span class="solution-icon">✨</span>
               <div class="solution-text">
                 <strong>Solusi Zero-Web AI:</strong>
-                AI menjawab 100% pertanyaan ketersediaan jam kosong, daftar harga &amp; menu treatment, serta lokasi secara instan tanpa perlu Anda menyentuh smartphone.
+                AI menjawab 100% pertanyaan ketersediaan jam kosong, daftar harga &amp; menu treatment, serta lokasi
+                secara instan tanpa perlu Anda menyentuh smartphone.
               </div>
             </div>
           </div>
@@ -353,13 +436,15 @@
               </div>
             </div>
             <p class="pain-body">
-              Customer yang sudah booking 1 jam treatment atau potong rambut mendadak tidak datang tanpa kabar. Alokasi waktu dan kursi kerja terbuang percuma tanpa pemasukan.
+              Customer yang sudah booking 1 jam treatment atau potong rambut mendadak tidak datang tanpa kabar. Alokasi
+              waktu dan kursi kerja terbuang percuma tanpa pemasukan.
             </p>
             <div class="pain-solution-box">
               <span class="solution-icon">✨</span>
               <div class="solution-text">
                 <strong>Solusi Zero-Web AI:</strong>
-                Sistem mengirimkan pengingat interaktif H-2 jam ke WhatsApp customer. Pelanggan dapat melakukan reschedule mandiri jika berhalangan, dan slot kosong seketika dibuka untuk customer lain.
+                Sistem mengirimkan pengingat interaktif H-2 jam ke WhatsApp customer. Pelanggan dapat melakukan
+                reschedule mandiri jika berhalangan, dan slot kosong seketika dibuka untuk customer lain.
               </div>
             </div>
           </div>
@@ -374,13 +459,16 @@
               </div>
             </div>
             <p class="pain-body">
-              Seharian lelah berdiri melayani puluhan pelanggan, Anda masih dituntut membuka laptop, login ke dashboard web kasir yang lambat, dan merekap transaksi manual.
+              Seharian lelah berdiri melayani puluhan pelanggan, Anda masih dituntut membuka laptop, login ke dashboard
+              web kasir yang lambat, dan merekap transaksi manual.
             </p>
             <div class="pain-solution-box">
               <span class="solution-icon">✨</span>
               <div class="solution-text">
                 <strong>Solusi Zero-Web AI:</strong>
-                Semua kontrol berjalan di aplikasi WhatsApp yang sudah Anda pakai tiap hari. Cukup ketik <code>NEXT</code> saat siap memanggil giliran berikutnya, atau ketik <code>dashboard</code> untuk melihat omset harian.
+                Semua kontrol berjalan di aplikasi WhatsApp yang sudah Anda pakai tiap hari. Cukup ketik
+                <code>NEXT</code> saat siap memanggil giliran berikutnya, atau ketik <code>dashboard</code> untuk
+                melihat omset harian.
               </div>
             </div>
           </div>
@@ -392,13 +480,14 @@
     <!-- ====================================================================
          SECTION 4: CARA KERJA (3 Langkah Sederhana)
          ==================================================================== -->
-    <section id="cara-kerja" style="background: rgba(14, 21, 36, 0.4);">
+    <section id="cara-kerja" class="section-alt">
       <div class="container">
         <div class="section-header">
           <div class="section-tag">Alur Tanpa Friksi</div>
           <h2 class="section-title">Hanya 3 Langkah: Dari Pelanggan Chat Sampai Masuk Kursi Layanan</h2>
           <p class="section-desc">
-            Tidak ada aplikasi yang harus diunduh pelanggan. Tidak ada software kasir rumit yang harus dipelajari pemilik usaha.
+            Tidak ada aplikasi yang harus diunduh pelanggan. Tidak ada software kasir rumit yang harus dipelajari
+            pemilik usaha.
           </p>
         </div>
 
@@ -407,7 +496,8 @@
             <div class="step-number">01</div>
             <h3 class="step-title">Pelanggan Klik Link / Scan QR</h3>
             <p class="step-desc">
-              Pelanggan memulai obrolan dari tautan Instagram Bio, Google Maps, TikTok, WhatsApp story, atau stiker QR di meja kasir. Bot langsung mengenali bisnis Anda.
+              Pelanggan memulai obrolan dari tautan Instagram Bio, Google Maps, TikTok, WhatsApp story, atau stiker QR
+              di meja kasir. Bot langsung mengenali bisnis Anda.
             </p>
             <span class="step-badge">Otomatis Terhubung</span>
           </div>
@@ -416,7 +506,8 @@
             <div class="step-number">02</div>
             <h3 class="step-title">Pilih Layanan &amp; Slot Waktu</h3>
             <p class="step-desc">
-              Bot memandu pelanggan memilih jenis layanan (haircut, creambath, reflexology spa, konsultasi medis) &amp; jam kosong. Engine PostgreSQL mengunci slot waktu secara instan anti-tabrakan.
+              Bot memandu pelanggan memilih jenis layanan (haircut, creambath, reflexology spa, konsultasi medis) &amp;
+              jam kosong. Engine PostgreSQL mengunci slot waktu secara instan anti-tabrakan.
             </p>
             <span class="step-badge">Anti-Double Booking (GIST)</span>
           </div>
@@ -425,7 +516,8 @@
             <div class="step-number">03</div>
             <h3 class="step-title">Ketik 'NEXT' di WhatsApp</h3>
             <p class="step-desc">
-              Saat Anda siap melayani berikutnya, cukup kirim pesan <code>NEXT</code> di chat WhatsApp. Sistem seketika memanggil pelanggan bersangkutan dan memberi kabar ke antrean berikutnya.
+              Saat Anda siap melayani berikutnya, cukup kirim pesan <code>NEXT</code> di chat WhatsApp. Sistem seketika
+              memanggil pelanggan bersangkutan dan memberi kabar ke antrean berikutnya.
             </p>
             <span class="step-badge">Selesai Tanpa Buka Web</span>
           </div>
@@ -434,15 +526,101 @@
     </section>
 
     <!-- ====================================================================
+         SECTION 5: SIMULASI PENGHEMATAN WAKTU & OMSET (Antigravity Spatial ROI)
+         ==================================================================== -->
+    <section id="kalkulator" class="roi-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Kalkulator Penghematan</div>
+          <h2 class="section-title">Berapa Banyak Waktu &amp; Uang yang Bisa Anda Hemat?</h2>
+          <p class="section-desc">
+            Hitung sendiri estimasi efisiensi waktu kerja dan potensi omset yang terlindungi dari batal booking
+            (no-show) dengan sistem otomatis WhatsApp 24/7.
+          </p>
+        </div>
+
+        <div class="roi-calculator-card">
+          <div class="roi-inputs-col">
+            <div class="roi-field-wrap">
+              <div class="roi-label-row">
+                <label for="roiBookingsRange" class="roi-label">Rata-rata Booking / Klien per Hari:</label>
+                <span class="roi-badge-val" id="roiBookingsVal">15 Booking</span>
+              </div>
+              <input type="range" min="3" max="60" value="15" step="1" id="roiBookingsRange" class="roi-slider"
+                aria-label="Rata-rata booking per hari">
+              <div class="roi-slider-markers">
+                <span>3 Klien</span>
+                <span>30 Klien</span>
+                <span>60 Klien</span>
+              </div>
+            </div>
+
+            <div class="roi-field-wrap">
+              <div class="roi-label-row">
+                <label for="roiMinutesRange" class="roi-label">Waktu Chat Manual per Reservasi:</label>
+                <span class="roi-badge-val" id="roiMinutesVal">6 Menit</span>
+              </div>
+              <input type="range" min="3" max="15" value="6" step="1" id="roiMinutesRange" class="roi-slider"
+                aria-label="Waktu chat manual per reservasi">
+              <div class="roi-slider-markers">
+                <span>3 Menit</span>
+                <span>8 Menit</span>
+                <span>15 Menit</span>
+              </div>
+            </div>
+
+            <div class="roi-field-wrap">
+              <div class="roi-label-row">
+                <label for="roiPriceRange" class="roi-label">Rata-rata Tarif / Nilai per Layanan:</label>
+                <span class="roi-badge-val" id="roiPriceVal">Rp 80.000</span>
+              </div>
+              <input type="range" min="30000" max="350000" value="80000" step="10000" id="roiPriceRange"
+                class="roi-slider" aria-label="Rata-rata tarif per layanan">
+              <div class="roi-slider-markers">
+                <span>Rp 30rb</span>
+                <span>Rp 180rb</span>
+                <span>Rp 350rb</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="roi-results-col">
+            <div class="roi-results-badge">📊 HASIL ESTIMASI EFISIENSI ANDA</div>
+
+            <div class="roi-metric-item highlight-teal">
+              <div class="roi-metric-label">Waktu Produktif Dihemat:</div>
+              <div class="roi-metric-number" id="roiHoursSaved">~45 <span>Jam / Bulan</span></div>
+              <div class="roi-metric-sub">Setara <strong>5+ hari kerja penuh</strong> tanpa lelah balas chat bolak-balik
+              </div>
+            </div>
+
+            <div class="roi-metric-item highlight-blue">
+              <div class="roi-metric-label">Potensi Omset Diselamatkan dari No-Show:</div>
+              <div class="roi-metric-number" id="roiRevenueSaved">Rp 1.440.000 <span>/ Bulan</span></div>
+              <div class="roi-metric-sub">Berkat pengingat otomatis H-2 jam &amp; konfirmasi mandiri via WhatsApp</div>
+            </div>
+
+            <div class="roi-cta-wrap">
+              <button type="button" class="btn btn-primary btn-pulse" data-open-trial style="width:100%;">
+                Mulai Hemat Waktu Sekarang (Coba Gratis) →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====================================================================
          SECTION 6: PRICING & TIER GATING (Multi-Business)
          ==================================================================== -->
-    <section id="harga" style="background: rgba(14, 21, 36, 0.5);">
+    <section id="harga" class="section-alt">
       <div class="container">
         <div class="section-header">
           <div class="section-tag">Paket Langganan Terjangkau</div>
           <h2 class="section-title">Investasi Terjangkau untuk Ketenangan &amp; Pertumbuhan Bisnis Anda</h2>
           <p class="section-desc">
-            Pilih paket yang paling pas untuk salon, barbershop, spa, maupun klinik mandiri Anda. Pembayaran instan via QRIS, Virtual Account &amp; E-Wallet iPaymu langsung aktif otomatis.
+            Pilih paket yang paling pas untuk salon, barbershop, spa, maupun klinik mandiri Anda. Pembayaran instan via
+            QRIS, Virtual Account &amp; E-Wallet iPaymu langsung aktif otomatis.
           </p>
         </div>
 
@@ -455,15 +633,16 @@
         </div>
 
         <!-- Promo Code Input on Pricing Section -->
-        <div class="pricing-promo-bar" style="max-width: 520px; margin: 0 auto 2.5rem; background: rgba(255, 255, 255, 0.95); border: 1.5px dashed #0284c7; border-radius: 14px; padding: 14px 18px; box-shadow: 0 4px 15px rgba(2, 132, 199, 0.08); text-align: center;">
-          <div style="font-size: 0.88rem; font-weight: 700; color: #0f172a; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+        <div class="pricing-promo-bar">
+          <div class="pricing-promo-header">
             <span>🎟️ Punya Kode Promo / Voucher Mitra?</span>
           </div>
-          <div style="display: flex; gap: 8px; justify-content: center;">
-            <input type="text" id="landingPromoCodeInput" placeholder="Masukkan Kode Promo" style="flex: 1; max-width: 320px; padding: 0.6rem 0.9rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.86rem; text-transform: uppercase; font-family: var(--font-mono); font-weight: 700;">
-            <button type="button" class="btn btn-primary" id="btnApplyLandingPromo" style="padding: 0.6rem 1.2rem; font-size: 0.86rem; font-weight: 700; white-space: nowrap;">Terapkan</button>
+          <div class="pricing-promo-inputs">
+            <input type="text" id="landingPromoCodeInput" placeholder="Masukkan Kode Promo" class="promo-input">
+            <button type="button" class="btn btn-primary" id="btnApplyLandingPromo">Terapkan</button>
           </div>
-          <div id="landingPromoAlert" style="font-size: 0.82rem; margin-top: 8px; display: none; padding: 6px 12px; border-radius: 6px;"></div>
+          <div id="landingPromoAlert"
+            style="font-size: 0.82rem; margin-top: 8px; display: none; padding: 6px 12px; border-radius: 6px;"></div>
         </div>
 
         <div class="pricing-grid pricing-grid-4">
@@ -477,7 +656,8 @@
               <span class="plan-currency"></span>
               <span class="plan-price" style="font-size:2.4rem;">Gratis</span>
             </div>
-            <div class="plan-subtext">Cocok untuk mencoba dan membuktikan sendiri sebelum berlangganan. Tidak perlu kartu kredit.</div>
+            <div class="plan-subtext">Cocok untuk mencoba dan membuktikan sendiri sebelum berlangganan. Tidak perlu
+              kartu kredit.</div>
 
             <ul class="plan-features-list">
               <li class="feature-item">
@@ -515,17 +695,21 @@
           <div class="pricing-card">
             <h3 class="plan-name">Starter</h3>
             <div class="plan-framing">Setara harga 1-2 cup kopi</div>
-            
+
             <div class="plan-price-wrap" style="flex-wrap: wrap; align-items: baseline;">
-              <span class="plan-prefix" id="prefixStarter" style="display:none; font-size:1.05rem; font-weight:700; color:#38bdf8; margin-right:5px;">jadi sekitar</span>
+              <span class="plan-prefix" id="prefixStarter"
+                style="display:none; font-size:1.05rem; font-weight:700; color:#38bdf8; margin-right:5px;">jadi
+                sekitar</span>
               <span class="plan-currency">Rp</span>
               <span class="plan-price" id="priceStarter">99.000</span>
               <span class="plan-period">/bln</span>
             </div>
-            <div class="plan-annual-total" id="totalStarter" style="display:none; font-size:0.84rem; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.12); padding:4px 10px; border-radius:8px; margin: 4px 0 10px; text-align:center;">
+            <div class="plan-annual-total" id="totalStarter"
+              style="display:none; font-size:0.84rem; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.12); padding:4px 10px; border-radius:8px; margin: 4px 0 10px; text-align:center;">
               Ditagih Rp 948.000 / tahun (Hemat 20%)
             </div>
-            <div class="plan-subtext">Cocok untuk barber, stylist, terapis mandiri, atau dokter pemula yang ingin menguji reservasi otomatis.</div>
+            <div class="plan-subtext">Cocok untuk barber, stylist, terapis mandiri, atau dokter pemula yang ingin
+              menguji reservasi otomatis.</div>
 
             <ul class="plan-features-list">
               <li class="feature-item">
@@ -568,17 +752,21 @@
             <div class="featured-ribbon">⭐ Paling Banyak Dipilih</div>
             <h3 class="plan-name">Pro Monthly</h3>
             <div class="plan-framing">Setara biaya 1x potong rambut atau 1x periksa!</div>
-            
+
             <div class="plan-price-wrap" style="flex-wrap: wrap; align-items: baseline;">
-              <span class="plan-prefix" id="prefixPro" style="display:none; font-size:1.05rem; font-weight:700; color:#38bdf8; margin-right:5px;">jadi sekitar</span>
+              <span class="plan-prefix" id="prefixPro"
+                style="display:none; font-size:1.05rem; font-weight:700; color:#38bdf8; margin-right:5px;">jadi
+                sekitar</span>
               <span class="plan-currency">Rp</span>
               <span class="plan-price" id="pricePro">199.000</span>
               <span class="plan-period">/bln</span>
             </div>
-            <div class="plan-annual-total" id="totalPro" style="display:none; font-size:0.84rem; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.12); padding:4px 10px; border-radius:8px; margin: 4px 0 10px; text-align:center;">
+            <div class="plan-annual-total" id="totalPro"
+              style="display:none; font-size:0.84rem; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.12); padding:4px 10px; border-radius:8px; margin: 4px 0 10px; text-align:center;">
               Ditagih Rp 1.908.000 / tahun (Hemat 20%)
             </div>
-            <div class="plan-subtext">Pilihan paling ideal untuk salon aktif, barbershop ramai, studio spa, dan dokter dengan jadwal padat.</div>
+            <div class="plan-subtext">Pilihan paling ideal untuk salon aktif, barbershop ramai, studio spa, dan dokter
+              dengan jadwal padat.</div>
 
             <ul class="plan-features-list">
               <li class="feature-item">
@@ -616,17 +804,21 @@
           <div class="pricing-card">
             <h3 class="plan-name">Business / Multi-Seat</h3>
             <div class="plan-framing">Untuk salon multi-chair, barbershop tim &amp; klinik</div>
-            
+
             <div class="plan-price-wrap" style="flex-wrap: wrap; align-items: baseline;">
-              <span class="plan-prefix" id="prefixClinic" style="display:none; font-size:1.05rem; font-weight:700; color:#38bdf8; margin-right:5px;">jadi sekitar</span>
+              <span class="plan-prefix" id="prefixClinic"
+                style="display:none; font-size:1.05rem; font-weight:700; color:#38bdf8; margin-right:5px;">jadi
+                sekitar</span>
               <span class="plan-currency">Rp</span>
               <span class="plan-price" id="priceClinic">349.000</span>
               <span class="plan-period">/bln</span>
             </div>
-            <div class="plan-annual-total" id="totalClinic" style="display:none; font-size:0.84rem; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.12); padding:4px 10px; border-radius:8px; margin: 4px 0 10px; text-align:center;">
+            <div class="plan-annual-total" id="totalClinic"
+              style="display:none; font-size:0.84rem; font-weight:700; color:#0284c7; background:rgba(2,132,199,0.12); padding:4px 10px; border-radius:8px; margin: 4px 0 10px; text-align:center;">
               Ditagih Rp 3.348.000 / tahun (Hemat 20%)
             </div>
-            <div class="plan-subtext">Dirancang untuk barbershop/salon dengan banyak kursi kerja (kursi 1-4) atau klinik dengan beberapa dokter/terapis simultan.</div>
+            <div class="plan-subtext">Dirancang untuk barbershop/salon dengan banyak kursi kerja (kursi 1-4) atau klinik
+              dengan beberapa dokter/terapis simultan.</div>
 
             <ul class="plan-features-list">
               <li class="feature-item">
@@ -661,6 +853,105 @@
     </section>
 
     <!-- ====================================================================
+         SECTION 7: TESTIMONI & KISAH SUKSES MITRA (Antigravity Social Proof)
+         ==================================================================== -->
+    <section id="testimoni" class="testimonials-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Kisah Sukses Mitra</div>
+          <h2 class="section-title">Dipercaya Pemilik Salon, Barbershop &amp; Dokter Mandiri di Indonesia</h2>
+          <p class="section-desc">
+            Dengarkan bagaimana Praktika AI mengubah operasional harian mereka dari kewalahan menjadi tenang dan
+            terorganisir.
+          </p>
+        </div>
+
+        <div class="testimonials-grid">
+
+          <!-- Testimonial 1: Salon -->
+          <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
+            <p class="testimonial-quote">
+              "Dulu waktu lagi megang catok atau creambath, HP bunyi terus minta booking. Sekarang pelanggan tinggal
+              chat WA, pilih jam kosong sendiri. Ruang tunggu jadi rapi, gak ada yang numpuk bete nungguin giliran!"
+            </p>
+            <div class="testimonial-metric-badge">
+              <span>📉 No-Show Turun dari 25% → 1.5%</span>
+            </div>
+            <div class="testimonial-author">
+              <div class="author-avatar" style="background: linear-gradient(135deg, #ec4899, #f43f5e);">💇‍♀️</div>
+              <div class="author-info">
+                <div class="author-name">Nadia Safira</div>
+                <div class="author-role">Owner • Ayra Beauty Studio, Bandung</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Testimonial 2: Barbershop -->
+          <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
+            <p class="testimonial-quote">
+              "Ketik <code>NEXT</code> di WhatsApp pas kursi selesai dibersihin langsung manggil antrean berikutnya.
+              Fitur ini game changer banget buat barbershop kami yang punya 3 kursi. Omset tercatat otomatis tanpa harus
+              login web kasir!"
+            </p>
+            <div class="testimonial-metric-badge">
+              <span>⚡ Hemat ~3.5 Jam Waktu Balas Chat per Hari</span>
+            </div>
+            <div class="testimonial-author">
+              <div class="author-avatar" style="background: linear-gradient(135deg, #0284c7, #1e40af);">💈</div>
+              <div class="author-info">
+                <div class="author-name">Bima Wicaksono</div>
+                <div class="author-role">Founder • The Heritage Barber, Jakarta</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Testimonial 3: Dokter Gigi -->
+          <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
+            <p class="testimonial-quote">
+              "Tindakan scaling atau tambal gigi butuh fokus dan sterilisasi tinggi. Dengan bot WhatsApp ini, jadwal
+              pasien terkunci anti-tabrakan. Pasien datang tepat waktu sesuai estimasi giliran. Praktik jadi jauh lebih
+              profesional."
+            </p>
+            <div class="testimonial-metric-badge">
+              <span>🛡️ Anti Tabrakan Jadwal (Zero Double Booking)</span>
+            </div>
+            <div class="testimonial-author">
+              <div class="author-avatar" style="background: linear-gradient(135deg, #0d9488, #059669);">🦷</div>
+              <div class="author-info">
+                <div class="author-name">drg. Maya Anggraini</div>
+                <div class="author-role">Dokter Gigi • Maya Dental Care, Tangerang</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Testimonial 4: Massage & Spa -->
+          <div class="testimonial-card">
+            <div class="testimonial-stars">⭐⭐⭐⭐⭐</div>
+            <p class="testimonial-quote">
+              "Bisnis refleksi dan massage sangat sensitif dengan ketepatan waktu terapis. Sistem pengingat otomatis
+              WhatsApp H-2 jam berhasil menyelamatkan ratusan ribu potensi rugi per hari akibat customer yang mendadak
+              lupa hadir."
+            </p>
+            <div class="testimonial-metric-badge">
+              <span>📈 Utilisasi Kursi Terapis Naik +32%</span>
+            </div>
+            <div class="testimonial-author">
+              <div class="author-avatar" style="background: linear-gradient(135deg, #8b5cf6, #6366f1);">🌿</div>
+              <div class="author-info">
+                <div class="author-name">I Made Sukadana</div>
+                <div class="author-role">Pengelola • Orchid Spa &amp; Wellness, Bali</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ====================================================================
          SECTION 8: FAQ ACCORDION
          ==================================================================== -->
     <section id="faq">
@@ -674,14 +965,17 @@
         </div>
 
         <div class="faq-wrap">
-          
+
           <div class="faq-item active">
             <div class="faq-question">
               <span>Apakah pelanggan langsung menghubungi nomor WhatsApp bisnis saya?</span>
               <span class="faq-icon">+</span>
             </div>
             <div class="faq-answer" style="max-height: 200px;">
-              <strong>Ya, 100% langsung ke nomor Anda!</strong> Begitu Anda berlangganan atau memulai trial, sistem kami mengirimkan link aktivasi instan untuk menautkan nomor WhatsApp bisnis Anda (salon, barbershop, spa, atau klinik). Cukup scan QR sekali dari fitur Perangkat Tertaut di WhatsApp HP Anda. Pelanggan tidak perlu mengunduh aplikasi baru atau menyimpan nomor lain.
+              <strong>Ya, 100% langsung ke nomor Anda!</strong> Begitu Anda berlangganan atau memulai trial, sistem kami
+              mengirimkan link aktivasi instan untuk menautkan nomor WhatsApp bisnis Anda (salon, barbershop, spa, atau
+              klinik). Cukup scan QR sekali dari fitur Perangkat Tertaut di WhatsApp HP Anda. Pelanggan tidak perlu
+              mengunduh aplikasi baru atau menyimpan nomor lain.
             </div>
           </div>
 
@@ -691,7 +985,9 @@
               <span class="faq-icon">+</span>
             </div>
             <div class="faq-answer">
-              <strong>Sangat cocok!</strong> PraktikaAI dirancang fleksibel untuk segala bisnis berbasis reservasi waktu. Anda bebas memasukkan menu layanan (misal: Haircut, Creambath, Pijat Refleksi 90m, Body Spa, hingga Scaling Gigi), mengatur estimasi durasi tiap layanan, harga, serta jam operasional bisnis Anda.
+              <strong>Sangat cocok!</strong> PraktikaAI dirancang fleksibel untuk segala bisnis berbasis reservasi
+              waktu. Anda bebas memasukkan menu layanan (misal: Haircut, Creambath, Pijat Refleksi 90m, Body Spa, hingga
+              Scaling Gigi), mengatur estimasi durasi tiap layanan, harga, serta jam operasional bisnis Anda.
             </div>
           </div>
 
@@ -701,7 +997,8 @@
               <span class="faq-icon">+</span>
             </div>
             <div class="faq-answer">
-              Tiket booking WhatsApp tersimpan secara offline di riwayat chat HP pelanggan. Anda sebagai pemilik usaha/stylist/dokter memiliki kontrol penuh untuk memanggil pelanggan berdasarkan nomor tiket atau nama.
+              Tiket booking WhatsApp tersimpan secara offline di riwayat chat HP pelanggan. Anda sebagai pemilik
+              usaha/stylist/dokter memiliki kontrol penuh untuk memanggil pelanggan berdasarkan nomor tiket atau nama.
             </div>
           </div>
 
@@ -711,7 +1008,8 @@
               <span class="faq-icon">+</span>
             </div>
             <div class="faq-answer">
-              Tentu saja! Anda dapat mengatur daftar treatment/layanan, tarif harga, durasi per sesi, hingga jadwal libur secara instan. AI akan otomatis menyesuaikan penawaran jam slot kosong kepada pelanggan.
+              Tentu saja! Anda dapat mengatur daftar treatment/layanan, tarif harga, durasi per sesi, hingga jadwal
+              libur secara instan. AI akan otomatis menyesuaikan penawaran jam slot kosong kepada pelanggan.
             </div>
           </div>
 
@@ -721,7 +1019,8 @@
               <span class="faq-icon">+</span>
             </div>
             <div class="faq-answer">
-              Tidak ada ikatan kontrak sama sekali. Anda dapat berlangganan bulanan dan berhenti kapan saja. Kami juga menyediakan masa uji coba gratis 30 hari penuh tanpa meminta informasi kartu kredit.
+              Tidak ada ikatan kontrak sama sekali. Anda dapat berlangganan bulanan dan berhenti kapan saja. Kami juga
+              menyediakan masa uji coba gratis 30 hari penuh tanpa meminta informasi kartu kredit.
             </div>
           </div>
 
@@ -739,13 +1038,16 @@
             Kembalikan Ketenangan Ruang Bisnis Anda Hari Ini
           </h2>
           <p class="cta-banner-desc">
-            Aktivasi dalam 2 menit. Biarkan asisten AI menangani booking pelanggan 24/7, sementara Anda fokus memberikan layanan terbaik di salon, barbershop, spa, atau klinik Anda.
+            Aktivasi dalam 2 menit. Biarkan asisten AI menangani booking pelanggan 24/7, sementara Anda fokus memberikan
+            layanan terbaik di salon, barbershop, spa, atau klinik Anda.
           </p>
           <div style="display:flex; justify-content:center; gap:1rem; flex-wrap:wrap;">
-            <button class="btn btn-primary btn-pulse" data-open-trial style="padding:1rem 2.2rem; font-size:1.05rem;" id="ctaBannerTrial">
+            <button class="btn btn-primary btn-pulse" data-open-trial style="padding:1rem 2.2rem; font-size:1.05rem;"
+              id="ctaBannerTrial">
               Mulai Uji Coba Gratis 30 Hari →
             </button>
-            <a href="https://wa.me/817090934764?text=HALO_ADMIN_TANYA_BOT" target="_blank" class="btn btn-secondary" style="padding:1rem 2rem;">
+            <a href="https://wa.me/817090934764?text=HALO_ADMIN_TANYA_BOT" target="_blank" class="btn btn-secondary"
+              style="padding:1rem 2rem;">
               💬 Konsultasi via WhatsApp
             </a>
           </div>
@@ -765,7 +1067,9 @@
             <span class="brand-badge">Zero-Web Booking</span>
           </div>
           <p style="font-size:0.88rem; color:var(--text-secondary); line-height:1.65; margin-bottom:1.2rem;">
-            Autonomous Appointment &amp; Receptionist AI Engine. Menghilangkan kerumitan dashboard web kasir dengan kecerdasan percakapan WhatsApp 24/7 untuk Salon, Barbershop, Massage &amp; Spa, serta Dokter Mandiri di Indonesia.
+            Autonomous Appointment &amp; Receptionist AI Engine. Menghilangkan kerumitan dashboard web kasir dengan
+            kecerdasan percakapan WhatsApp 24/7 untuk Salon, Barbershop, Massage &amp; Spa, serta Dokter Mandiri di
+            Indonesia.
           </p>
           <div style="font-size:0.82rem; color:var(--text-faint); line-height:1.5;">
             Dikelola oleh <strong>PraktikaAI (Usaha Perseorangan a.n. Arya Maulana Nugroho)</strong><br>
@@ -852,7 +1156,8 @@
       <div class="legal-modal-header">
         <div class="legal-badge-tag" id="legalModalBadge">🏢 TENTANG KAMI &amp; LEGALITAS</div>
         <h3 class="trial-title" id="legalModalTitle" style="margin-bottom:4px;">Kebijakan Resmi PraktikaAI</h3>
-        <p class="trial-subtitle" style="margin-bottom:0.75rem;">PraktikaAI (Usaha Perseorangan a.n. Arya Maulana Nugroho) • Platform praktika-ai.web.id</p>
+        <p class="trial-subtitle" style="margin-bottom:0.75rem;">PraktikaAI (Usaha Perseorangan a.n. Arya Maulana
+          Nugroho) • Platform praktika-ai.web.id</p>
 
         <!-- Tab Controls -->
         <div class="legal-tabs" role="tablist">
@@ -875,17 +1180,22 @@
       <div class="legal-panel active" id="legalAbout">
         <article class="policy-doc">
           <div class="policy-callout">
-            <strong>PraktikaAI</strong> adalah platform otomatisasi reservasi cerdas berbasis kecerdasan buatan (AI) yang bekerja 24 jam sehari langsung di dalam aplikasi WhatsApp tanpa perlu membuka aplikasi web kasir.
+            <strong>PraktikaAI</strong> adalah platform otomatisasi reservasi cerdas berbasis kecerdasan buatan (AI)
+            yang bekerja 24 jam sehari langsung di dalam aplikasi WhatsApp tanpa perlu membuka aplikasi web kasir.
           </div>
 
           <h2>Profil Usaha</h2>
           <p>
-            PraktikaAI dikembangkan dan dioperasikan sebagai entitas usaha perseorangan a.n. <strong>Arya Maulana Nugroho</strong> berkedudukan di Tangerang, Banten, Indonesia. Kami berdedikasi memodernisasi cara kerja fasilitas klinik dokter praktik mandiri, salon kecantikan, barbershop, dan spa di seluruh Indonesia.
+            PraktikaAI dikembangkan dan dioperasikan sebagai entitas usaha perseorangan a.n. <strong>Arya Maulana
+              Nugroho</strong> berkedudukan di Tangerang, Banten, Indonesia. Kami berdedikasi memodernisasi cara kerja
+            fasilitas klinik dokter praktik mandiri, salon kecantikan, barbershop, dan spa di seluruh Indonesia.
           </p>
 
           <h2>Filosofi Zero-Web UI</h2>
           <p>
-            Pendekatan Zero-Web kami memastikan bahwa baik pasien/pelanggan maupun pemilik bisnis tidak dibebani oleh kerumitan software kasir. Pelanggan cukup chat di WhatsApp untuk memilih jam dan layanan, sedangkan pemilik usaha cukup mengirimkan perintah singkat di ponsel (Kopilot Dokter) untuk mengendalikan antrean.
+            Pendekatan Zero-Web kami memastikan bahwa baik pasien/pelanggan maupun pemilik bisnis tidak dibebani oleh
+            kerumitan software kasir. Pelanggan cukup chat di WhatsApp untuk memilih jam dan layanan, sedangkan pemilik
+            usaha cukup mengirimkan perintah singkat di ponsel (Kopilot Dokter) untuk mengendalikan antrean.
           </p>
 
           <h2>Standar Operasional</h2>
@@ -907,25 +1217,32 @@
       <div class="legal-panel" id="legalPrivacy">
         <article class="policy-doc">
           <div class="policy-callout">
-            PraktikaAI (Usaha Perseorangan a.n. Arya Maulana Nugroho) berkomitmen melindungi data pribadi pengguna sesuai dengan <strong>UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi (UU PDP)</strong>.
+            PraktikaAI (Usaha Perseorangan a.n. Arya Maulana Nugroho) berkomitmen melindungi data pribadi pengguna
+            sesuai dengan <strong>UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi (UU PDP)</strong>.
           </div>
 
           <h2>1. Data yang Dikumpulkan</h2>
           <p>Kami hanya mengumpulkan data yang esensial untuk penyediaan layanan:</p>
           <ul>
-            <li><strong>Data Mitra Usaha:</strong> Nama pemilik, nama usaha, email resmi, nomor WhatsApp bisnis, dan nomor WhatsApp pribadi dokter.</li>
+            <li><strong>Data Mitra Usaha:</strong> Nama pemilik, nama usaha, email resmi, nomor WhatsApp bisnis, dan
+              nomor WhatsApp pribadi dokter.</li>
             <li><strong>Data Pelanggan:</strong> Nama, nomor WhatsApp, riwayat layanan, dan jadwal janji temu.</li>
-            <li><strong>Data Pembayaran:</strong> Diproses melalui mitra gateway berlisensi Bank Indonesia (iPaymu). Kami tidak menyimpan nomor kartu kredit atau kode CVV pengguna.</li>
+            <li><strong>Data Pembayaran:</strong> Diproses melalui mitra gateway berlisensi Bank Indonesia (iPaymu).
+              Kami tidak menyimpan nomor kartu kredit atau kode CVV pengguna.</li>
           </ul>
 
           <h2>2. Tujuan Penggunaan Data</h2>
-          <p>Data digunakan semata-mata untuk mengelola reservasi otomatis, mengirimkan notifikasi antrean via WhatsApp, serta menerbitkan invoice tagihan langganan.</p>
+          <p>Data digunakan semata-mata untuk mengelola reservasi otomatis, mengirimkan notifikasi antrean via WhatsApp,
+            serta menerbitkan invoice tagihan langganan.</p>
 
           <h2>3. Keamanan &amp; Hak Pengguna</h2>
-          <p>Seluruh data diisolasi per-tenant dan dienkripsi 256-bit. Pengguna berhak meminta salinan, pembaruan, atau penghapusan data pribadi permanen (Right to be Forgotten) dengan menghubungi <a href="mailto:support@praktika-ai.web.id">support@praktika-ai.web.id</a>.</p>
+          <p>Seluruh data diisolasi per-tenant dan dienkripsi 256-bit. Pengguna berhak meminta salinan, pembaruan, atau
+            penghapusan data pribadi permanen (Right to be Forgotten) dengan menghubungi <a
+              href="mailto:support@praktika-ai.web.id">support@praktika-ai.web.id</a>.</p>
 
           <div style="margin-top:1.5rem; text-align:right;">
-            <a href="/privacy-policy" target="_blank" class="btn btn-secondary" style="font-size:0.84rem; padding:8px 16px;">
+            <a href="/privacy-policy" target="_blank" class="btn btn-secondary"
+              style="font-size:0.84rem; padding:8px 16px;">
               Buka Halaman Lengkap Privacy Policy ↗
             </a>
           </div>
@@ -936,28 +1253,35 @@
       <div class="legal-panel" id="legalRefund">
         <article class="policy-doc">
           <div class="policy-callout">
-            Kami menjamin transparansi, keadilan, dan ketenangan Anda dengan program <strong>Free Trial 30 Hari Penuh</strong> serta garansi pengembalian dana 7 hari untuk kendala teknis sistemik.
+            Kami menjamin transparansi, keadilan, dan ketenangan Anda dengan program <strong>Free Trial 30 Hari
+              Penuh</strong> serta garansi pengembalian dana 7 hari untuk kendala teknis sistemik.
           </div>
 
           <h2>1. Uji Coba Gratis 30 Hari</h2>
           <p>
-            Anda dapat mencoba seluruh fitur PraktikaAI selama 30 hari pertama tanpa kartu kredit. Tidak ada tagihan tersembunyi jika Anda memutuskan tidak melanjutkan.
+            Anda dapat mencoba seluruh fitur PraktikaAI selama 30 hari pertama tanpa kartu kredit. Tidak ada tagihan
+            tersembunyi jika Anda memutuskan tidak melanjutkan.
           </p>
 
           <h2>2. Kebijakan Pembatalan (Cancellation)</h2>
           <p>
-            Anda dapat membatalkan perpanjangan langganan bulanan kapan saja tanpa pinalti atau denda. Akun bot Anda tetap aktif hingga akhir masa aktif berjalan.
+            Anda dapat membatalkan perpanjangan langganan bulanan kapan saja tanpa pinalti atau denda. Akun bot Anda
+            tetap aktif hingga akhir masa aktif berjalan.
           </p>
 
           <h2>3. Ketentuan Pengembalian Dana (Refund)</h2>
           <ul>
-            <li>Permohonan diajukan maksimal <strong>7 (tujuh) hari kalender</strong> sejak transaksi pembayaran berhasil.</li>
-            <li>Berlaku jika terjadi kegagalan sistemik dari pihak PraktikaAI yang menyebabkan bot tidak dapat beroperasi lebih dari 48 jam dan tim teknis kami tidak dapat memperbaikinya.</li>
-            <li>Proses verifikasi membutuhkan 1-2 hari kerja, dan dana dikembalikan dalam waktu <strong>3 - 5 hari kerja</strong> ke rekening bank asal atau metode pembayaran iPaymu.</li>
+            <li>Permohonan diajukan maksimal <strong>7 (tujuh) hari kalender</strong> sejak transaksi pembayaran
+              berhasil.</li>
+            <li>Berlaku jika terjadi kegagalan sistemik dari pihak PraktikaAI yang menyebabkan bot tidak dapat
+              beroperasi lebih dari 48 jam dan tim teknis kami tidak dapat memperbaikinya.</li>
+            <li>Proses verifikasi membutuhkan 1-2 hari kerja, dan dana dikembalikan dalam waktu <strong>3 - 5 hari
+                kerja</strong> ke rekening bank asal atau metode pembayaran iPaymu.</li>
           </ul>
 
           <div style="margin-top:1.5rem; text-align:right;">
-            <a href="/refund-policy" target="_blank" class="btn btn-secondary" style="font-size:0.84rem; padding:8px 16px;">
+            <a href="/refund-policy" target="_blank" class="btn btn-secondary"
+              style="font-size:0.84rem; padding:8px 16px;">
               Buka Halaman Lengkap Refund Policy ↗
             </a>
           </div>
@@ -970,12 +1294,16 @@
           <h2>Hubungi Tim PraktikaAI</h2>
           <p>Punya pertanyaan seputar aktivasi, integrasi, kemitraan, atau penagihan? Kami siap membantu Anda.</p>
 
-          <div style="background:var(--bg-surface-alt); padding:1.2rem; border-radius:14px; border:1px solid var(--border-subtle); margin-bottom:1.5rem;">
+          <div
+            style="background:var(--bg-surface-alt); padding:1.2rem; border-radius:14px; border:1px solid var(--border-subtle); margin-bottom:1.5rem;">
             <div style="display:flex; flex-direction:column; gap:10px; font-size:0.88rem;">
               <div><strong>🏢 Entitas Legal:</strong> PraktikaAI (Usaha Perseorangan a.n. Arya Maulana Nugroho)</div>
-              <div><strong>📍 Alamat Operasional:</strong> Binong Permai E5 No 8 Curug Tangerang 15810, Banten, Indonesia</div>
-              <div><strong>✉️ Email Dukungan:</strong> <a href="mailto:support@praktika-ai.web.id">support@praktika-ai.web.id</a></div>
-              <div><strong>💬 WhatsApp Layanan:</strong> <a href="https://wa.me/817090934764?text=Halo%20PraktikaAI" target="_blank" style="color:#059669; font-weight:700;">+81 70-9093-4764 (Aktif 24/7)</a></div>
+              <div><strong>📍 Alamat Operasional:</strong> Binong Permai E5 No 8 Curug Tangerang 15810, Banten,
+                Indonesia</div>
+              <div><strong>✉️ Email Dukungan:</strong> <a
+                  href="mailto:support@praktika-ai.web.id">support@praktika-ai.web.id</a></div>
+              <div><strong>💬 WhatsApp Layanan:</strong> <a href="https://wa.me/817090934764?text=Halo%20PraktikaAI"
+                  target="_blank" style="color:#059669; font-weight:700;">+81 70-9093-4764 (Aktif 24/7)</a></div>
               <div><strong>🕒 Jam Kerja:</strong> Senin – Jumat: 09:00 – 18:00 WIB</div>
             </div>
           </div>
@@ -991,17 +1319,21 @@
                 </div>
                 <div class="trial-field-group">
                   <label class="trial-field-label">Email Anda <span class="required-star">*</span></label>
-                  <input type="email" id="modalContactEmail" class="trial-input" required placeholder="email@bisnis.com">
+                  <input type="email" id="modalContactEmail" class="trial-input" required
+                    placeholder="email@bisnis.com">
                 </div>
               </div>
               <div class="trial-field-group">
                 <label class="trial-field-label">Pesan / Pertanyaan <span class="required-star">*</span></label>
-                <textarea id="modalContactMessage" class="trial-input" rows="3" required placeholder="Tuliskan pesan Anda..." style="resize:vertical;"></textarea>
+                <textarea id="modalContactMessage" class="trial-input" rows="3" required
+                  placeholder="Tuliskan pesan Anda..." style="resize:vertical;"></textarea>
               </div>
               <button type="submit" class="trial-submit-btn" id="modalContactSubmitBtn" style="padding:10px;">
                 <span>Kirim Pesan Sekarang →</span>
               </button>
-              <div id="modalContactAlert" style="display:none; margin-top:8px; padding:10px; border-radius:8px; font-size:0.84rem; font-weight:600;"></div>
+              <div id="modalContactAlert"
+                style="display:none; margin-top:8px; padding:10px; border-radius:8px; font-size:0.84rem; font-weight:600;">
+              </div>
             </form>
           </div>
 
@@ -1022,19 +1354,21 @@
   <div class="modal-overlay" id="mayarModal">
     <div class="modal-card">
       <button class="modal-close-btn" id="closeMayarModal" aria-label="Tutup">&times;</button>
-      
+
       <!-- STEP 1: Rincian Paket Langganan & Kode Promo -->
       <div id="mayarStep1Package">
         <div class="qris-header">
           <div class="qris-badge">⭐ Rincian Langganan Bot WhatsApp</div>
           <h3 class="qris-title">Aktivasi Paket Layanan</h3>
-          <p style="font-size:0.85rem; color:#475569;">Periksa rincian paket langganan Anda di bawah, lalu klik Lanjut untuk mengisi data bisnis &amp; pembayaran.</p>
+          <p style="font-size:0.85rem; color:#475569;">Periksa rincian paket langganan Anda di bawah, lalu klik Lanjut
+            untuk mengisi data bisnis &amp; pembayaran.</p>
         </div>
 
         <div class="qris-invoice-summary">
           <div class="invoice-row">
             <span>No. Tagihan:</span>
-            <span style="font-family:var(--font-mono); color:#1e293b; font-weight:700;" id="modalInvoiceNo">INV-MYR-849201</span>
+            <span style="font-family:var(--font-mono); color:#1e293b; font-weight:700;"
+              id="modalInvoiceNo">INV-MYR-849201</span>
           </div>
           <div class="invoice-row">
             <span>Paket Dipilih:</span>
@@ -1051,22 +1385,28 @@
         </div>
 
         <!-- Input Kode Promo di Modal -->
-        <div class="trial-field-group" style="margin-top: 1rem; margin-bottom: 1.2rem; background: #f8fafc; padding: 12px 14px; border-radius: 12px; border: 1.5px dashed #0284c7;">
-          <label class="trial-field-label" for="couponCodeInput" style="font-size: 0.82rem; font-weight: 700; color: #0369a1; margin-bottom: 6px; display: block;">
+        <div class="trial-field-group"
+          style="margin-top: 1rem; margin-bottom: 1.2rem; background: #f8fafc; padding: 12px 14px; border-radius: 12px; border: 1.5px dashed #0284c7;">
+          <label class="trial-field-label" for="couponCodeInput"
+            style="font-size: 0.82rem; font-weight: 700; color: #0369a1; margin-bottom: 6px; display: block;">
             🎟️ Kode Promo / Voucher Diskon (Opsional)
           </label>
           <div style="display:flex; gap:8px;">
-            <input type="text" id="couponCodeInput" class="trial-input" placeholder="Masukkan Kode Promo" style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700;">
-            <button type="button" class="btn btn-secondary" id="btnApplyCoupon" style="white-space:nowrap; padding:0.6rem 1.1rem; font-weight:700;">Gunakan</button>
+            <input type="text" id="couponCodeInput" class="trial-input" placeholder="Masukkan Kode Promo"
+              style="text-transform:uppercase; font-family:var(--font-mono); font-weight:700;">
+            <button type="button" class="btn btn-secondary" id="btnApplyCoupon"
+              style="white-space:nowrap; padding:0.6rem 1.1rem; font-weight:700;">Gunakan</button>
           </div>
-          <div id="couponStatusMsg" style="font-size:0.8rem; margin-top:6px; display:none; padding:6px 10px; border-radius:6px;"></div>
+          <div id="couponStatusMsg"
+            style="font-size:0.8rem; margin-top:6px; display:none; padding:6px 10px; border-radius:6px;"></div>
         </div>
 
         <button type="button" class="trial-submit-btn" id="btnMayarNext">
           <span>Lanjut ke Data Bisnis &amp; Pembayaran →</span>
         </button>
 
-        <button type="button" class="btn btn-secondary" style="width:100%; margin-top:8px;" onclick="document.getElementById('mayarModal').classList.remove('active')">
+        <button type="button" class="btn btn-secondary" style="width:100%; margin-top:8px;"
+          onclick="document.getElementById('mayarModal').classList.remove('active')">
           Batalkan
         </button>
       </div>
@@ -1076,7 +1416,8 @@
         <div class="trial-header">
           <div class="trial-badge">📋 Langkah 2 dari 4 • Data Akun</div>
           <h3 class="trial-title">Informasi Bisnis &amp; WhatsApp</h3>
-          <p class="trial-subtitle">Lengkapi data di bawah untuk pencatatan database dan sinkronisasi bot WhatsApp bisnis Anda.</p>
+          <p class="trial-subtitle">Lengkapi data di bawah untuk pencatatan database dan sinkronisasi bot WhatsApp
+            bisnis Anda.</p>
         </div>
 
         <form id="mayarInfoForm">
@@ -1084,7 +1425,8 @@
             <label class="trial-field-label" for="mayarBizName">
               Nama Bisnis / Usaha <span class="required-star">*</span>
             </label>
-            <input type="text" id="mayarBizName" class="trial-input" required placeholder="Contoh: The Heritage Barbershop / Ayra Salon">
+            <input type="text" id="mayarBizName" class="trial-input" required
+              placeholder="Contoh: The Heritage Barbershop / Ayra Salon">
           </div>
 
           <div class="trial-form-grid">
@@ -1106,7 +1448,8 @@
               <label class="trial-field-label" for="mayarOwnerName">
                 Nama Pemilik / PIC <span class="required-star">*</span>
               </label>
-              <input type="text" id="mayarOwnerName" class="trial-input" required placeholder="Contoh: Kevin / drg. Maya">
+              <input type="text" id="mayarOwnerName" class="trial-input" required
+                placeholder="Contoh: Kevin / drg. Maya">
             </div>
           </div>
 
@@ -1121,20 +1464,25 @@
           </div>
 
           <!-- Pilihan Whitelist Nomor Pribadi Dokter / Owner -->
-          <div class="trial-field-group" style="background:#f8fafc; padding:12px 14px; border-radius:10px; border:1.5px solid #e2e8f0; margin-bottom:1rem;">
+          <div class="trial-field-group"
+            style="background:#f8fafc; padding:12px 14px; border-radius:10px; border:1.5px solid #e2e8f0; margin-bottom:1rem;">
             <div style="display:flex; align-items:center; gap:8px;">
               <input type="checkbox" id="mayarSamePhoneCheck" checked style="width:16px; height:16px; cursor:pointer;">
-              <label for="mayarSamePhoneCheck" style="font-size:0.84rem; font-weight:700; color:#0f172a; cursor:pointer; margin:0;">
+              <label for="mayarSamePhoneCheck"
+                style="font-size:0.84rem; font-weight:700; color:#0f172a; cursor:pointer; margin:0;">
                 Nomor WhatsApp Dokter / Owner sama dengan Nomor Bot
               </label>
             </div>
-            <div id="mayarDoctorPhoneGroup" style="display:none; margin-top:10px; border-top:1px dashed #cbd5e1; padding-top:10px;">
-              <label class="trial-field-label" for="mayarDoctorPhone" style="font-size:0.82rem; font-weight:700; color:#0369a1;">
+            <div id="mayarDoctorPhoneGroup"
+              style="display:none; margin-top:10px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+              <label class="trial-field-label" for="mayarDoctorPhone"
+                style="font-size:0.82rem; font-weight:700; color:#0369a1;">
                 Nomor WhatsApp Pribadi Dokter / Owner (Whitelist Copilot) <span class="required-star">*</span>
               </label>
               <input type="tel" id="mayarDoctorPhone" class="trial-input" placeholder="Contoh: 0817090934764">
               <span class="trial-field-hint" style="color:#0369a1;">
-                🛡️ Nomor HP pribadi dokter/owner untuk mengirim perintah Copilot (STATUS, NEXT, DONE, TUTUP, BUKA, DASHBOARD).
+                🛡️ Nomor HP pribadi dokter/owner untuk mengirim perintah Copilot (STATUS, NEXT, DONE, TUTUP, BUKA,
+                DASHBOARD).
               </span>
             </div>
           </div>
@@ -1163,7 +1511,9 @@
             💳 Langkah 3 dari 4 • Pembayaran via iPaymu
           </div>
           <h3 class="trial-title">Selesaikan Pembayaran Langganan</h3>
-          <p class="trial-subtitle">Klik tombol pembayaran di bawah untuk membayar melalui gateway resmi iPaymu (QRIS, VA Bank BCA/Mandiri/BNI/BRI, E-Wallet). Setelah sync pembayaran berhasil, QR code aktivasi WhatsApp bot akan langsung muncul otomatis.</p>
+          <p class="trial-subtitle">Klik tombol pembayaran di bawah untuk membayar melalui gateway resmi iPaymu (QRIS,
+            VA Bank BCA/Mandiri/BNI/BRI, E-Wallet). Setelah sync pembayaran berhasil, QR code aktivasi WhatsApp bot akan
+            langsung muncul otomatis.</p>
         </div>
 
         <div class="qris-invoice-summary" style="margin-bottom:1.2rem;">
@@ -1182,19 +1532,23 @@
         </div>
 
         <div style="margin-bottom:1.2rem;">
-          <a id="btnPayMayarLink" href="#" target="_blank" class="trial-submit-btn" style="text-decoration:none; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; font-weight:700; background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
+          <a id="btnPayMayarLink" href="#" target="_blank" class="trial-submit-btn"
+            style="text-decoration:none; text-align:center; display:flex; align-items:center; justify-content:center; gap:8px; font-weight:700; background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
             <span>💳 Bayar Sekarang via iPaymu (QRIS / VA / E-Wallet) ↗</span>
           </a>
         </div>
 
         <!-- Live Payment Sync Status Box -->
-        <div id="paymentSyncBox" style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:14px; padding:16px; margin-bottom:14px; text-align:center;">
-          <div id="paymentSyncStatus" style="font-size:0.88rem; font-weight:700; color:#b45309; display:flex; align-items:center; justify-content:center; gap:8px;">
+        <div id="paymentSyncBox"
+          style="background:#fffbeb; border:1.5px solid #fde68a; border-radius:14px; padding:16px; margin-bottom:14px; text-align:center;">
+          <div id="paymentSyncStatus"
+            style="font-size:0.88rem; font-weight:700; color:#b45309; display:flex; align-items:center; justify-content:center; gap:8px;">
             <span style="font-size:1.1rem; animation:spin 2s linear infinite; display:inline-block;">🔄</span>
             <span>Menunggu konfirmasi pembayaran dari iPaymu...</span>
           </div>
           <p style="font-size:0.78rem; color:#78350f; margin-top:6px; margin-bottom:0; line-height:1.4;">
-            Sistem otomatis mendeteksi status pembayaran secara real-time. Begitu transaksi terverifikasi, layar ini otomatis beralih ke kode QR WhatsApp bot.
+            Sistem otomatis mendeteksi status pembayaran secara real-time. Begitu transaksi terverifikasi, layar ini
+            otomatis beralih ke kode QR WhatsApp bot.
           </p>
         </div>
 
@@ -1205,41 +1559,51 @@
 
       <!-- STEP 4: Generate QR & Aktivasi WhatsApp (Setelah Sync Pembayaran Berhasil) -->
       <div id="mayarStep3Qr" style="display:none; text-align:center;">
-        <div class="trial-badge" style="background:rgba(0,210,158,0.18); color:#008767; border-color:#00d29e;">
+        <div class="trial-badge" style="background:rgba(16,185,129,0.18); color:#059669; border-color:#10b981;">
           🟢 Langkah 4 dari 4 • Pembayaran Terverifikasi • 1 QR untuk 1 Bot
         </div>
         <h3 class="trial-title" id="mayarQrTitle">Scan QR WhatsApp Bisnis Anda</h3>
-        <p class="trial-subtitle" id="mayarQrSubtitle">Pembayaran berhasil diverifikasi! Pindai kode QR di bawah menggunakan WhatsApp di ponsel bisnis Anda untuk mengaktifkan asisten AI booking Anda.</p>
+        <p class="trial-subtitle" id="mayarQrSubtitle">Pembayaran berhasil diverifikasi! Pindai kode QR di bawah
+          menggunakan WhatsApp di ponsel bisnis Anda untuk mengaktifkan asisten AI booking Anda.</p>
 
         <!-- QR Display Box -->
-        <div style="background:#fff; border:2px solid #e2e8f0; border-radius:20px; padding:1.4rem; display:flex; flex-direction:column; align-items:center; margin:1.2rem auto; max-width:320px; box-shadow:0 10px 25px rgba(15,23,42,0.06);">
-          <div style="width:100%; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:0.75rem; font-weight:800; color:#1e293b; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">
+        <div
+          style="background:#fff; border:2px solid #e2e8f0; border-radius:20px; padding:1.4rem; display:flex; flex-direction:column; align-items:center; margin:1.2rem auto; max-width:320px; box-shadow:0 10px 25px rgba(15,23,42,0.06);">
+          <div
+            style="width:100%; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-size:0.75rem; font-weight:800; color:#1e293b; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">
             <span>WHATSAPP BISNIS ANDA</span>
-            <span style="color:#008767;">1 NOMOR : 1 QR</span>
+            <span style="color:#059669;">1 NOMOR : 1 QR</span>
           </div>
 
-          <img id="baileysModalQrImg" src="" alt="WhatsApp QR Code" style="width:230px; height:230px; border-radius:10px; display:block; object-fit:contain;">
+          <img id="baileysModalQrImg" src="" alt="WhatsApp QR Code"
+            style="width:230px; height:230px; border-radius:10px; display:block; object-fit:contain;">
 
-          <div id="baileysModalQrStatus" style="margin-top:12px; font-size:0.82rem; font-weight:700; color:#d97706; display:flex; align-items:center; gap:6px;">
+          <div id="baileysModalQrStatus"
+            style="margin-top:12px; font-size:0.82rem; font-weight:700; color:#d97706; display:flex; align-items:center; gap:6px;">
             <span>🟡 Menunggu Scan WhatsApp dari HP Anda...</span>
           </div>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:10px;">
-          <button type="button" class="trial-submit-btn" id="btnCloseAndSendEmailBtn" style="background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:#fff; box-shadow:0 8px 20px rgba(2,132,199,0.35);">
+          <button type="button" class="trial-submit-btn" id="btnCloseAndSendEmailBtn"
+            style="background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:#fff; box-shadow:0 8px 20px rgba(2,132,199,0.35);">
             ✉️ Tutup dan Kirim QR ke Email
           </button>
-          <a id="btnOpenConnectTab" href="#" target="_blank" class="btn btn-secondary" style="width:100%; text-align:center; padding:10px; font-size:0.86rem; font-weight:700; text-decoration:none;">
+          <a id="btnOpenConnectTab" href="#" target="_blank" class="btn btn-secondary"
+            style="width:100%; text-align:center; padding:10px; font-size:0.86rem; font-weight:700; text-decoration:none;">
             📲 Buka Halaman Scan di Tab Penuh
           </a>
-          <button type="button" class="btn btn-secondary" id="btnBackToStep2FromQr" style="width:100%; text-align:center; padding:10px; font-size:0.86rem; font-weight:700;">
+          <button type="button" class="btn btn-secondary" id="btnBackToStep2FromQr"
+            style="width:100%; text-align:center; padding:10px; font-size:0.86rem; font-weight:700;">
             ← Kembali / Ganti Nomor WhatsApp
           </button>
         </div>
 
         <p style="font-size:0.75rem; color:#64748b; margin-top:14px; line-height:1.5;">
-          💡 <strong>Cara Scan:</strong> Buka WhatsApp di HP Anda &gt; Menu Titik Tiga / Pengaturan &gt; Perangkat Tertaut &gt; Tautkan Perangkat &gt; Arahkan kamera ke layar ini.<br>
-          <em>Tips: Pastikan kuota Perangkat Tertaut (maks. 4) di ponsel Anda belum penuh. Setelah scan, tunggu beberapa detik hingga status berubah hijau.</em>
+          💡 <strong>Cara Scan:</strong> Buka WhatsApp di HP Anda &gt; Menu Titik Tiga / Pengaturan &gt; Perangkat
+          Tertaut &gt; Tautkan Perangkat &gt; Arahkan kamera ke layar ini.<br>
+          <em>Tips: Pastikan kuota Perangkat Tertaut (maks. 4) di ponsel Anda belum penuh. Setelah scan, tunggu beberapa
+            detik hingga status berubah hijau.</em>
         </p>
       </div>
 
@@ -1252,13 +1616,14 @@
   <div class="modal-overlay" id="trialModal">
     <div class="modal-card">
       <button class="modal-close-btn" id="closeTrialModal" aria-label="Tutup">&times;</button>
-      
+
       <!-- Screen 1: Registration Form -->
       <div id="trialFormContainer">
         <div class="trial-header">
           <div class="trial-badge">Paket Free • 25 Booking/Bulan</div>
           <h3 class="trial-title">Mulai Asisten WhatsApp Bisnis Anda</h3>
-          <p class="trial-subtitle">Otomatisasi reservasi dan chat pelanggan 24/7. Tanpa kartu kredit, aktif dalam 2 menit.</p>
+          <p class="trial-subtitle">Otomatisasi reservasi dan chat pelanggan 24/7. Tanpa kartu kredit, aktif dalam 2
+            menit.</p>
         </div>
 
         <form id="trialForm">
@@ -1266,7 +1631,8 @@
             <label class="trial-field-label" for="trialClinicName">
               Nama Bisnis / Brand / Usaha <span class="required-star">*</span>
             </label>
-            <input type="text" id="trialClinicName" class="trial-input" required placeholder="Contoh: The Heritage Barbershop / Ayra Salon">
+            <input type="text" id="trialClinicName" class="trial-input" required
+              placeholder="Contoh: The Heritage Barbershop / Ayra Salon">
           </div>
 
           <div class="trial-form-grid">
@@ -1303,20 +1669,25 @@
           </div>
 
           <!-- Pilihan Whitelist Nomor Pribadi Dokter / Owner -->
-          <div class="trial-field-group" style="background:#f8fafc; padding:12px 14px; border-radius:10px; border:1.5px solid #e2e8f0; margin-bottom:1rem;">
+          <div class="trial-field-group"
+            style="background:#f8fafc; padding:12px 14px; border-radius:10px; border:1.5px solid #e2e8f0; margin-bottom:1rem;">
             <div style="display:flex; align-items:center; gap:8px;">
               <input type="checkbox" id="trialSamePhoneCheck" checked style="width:16px; height:16px; cursor:pointer;">
-              <label for="trialSamePhoneCheck" style="font-size:0.84rem; font-weight:700; color:#0f172a; cursor:pointer; margin:0;">
+              <label for="trialSamePhoneCheck"
+                style="font-size:0.84rem; font-weight:700; color:#0f172a; cursor:pointer; margin:0;">
                 Nomor WhatsApp Dokter / Owner sama dengan Nomor Bot
               </label>
             </div>
-            <div id="trialDoctorPhoneGroup" style="display:none; margin-top:10px; border-top:1px dashed #cbd5e1; padding-top:10px;">
-              <label class="trial-field-label" for="trialDoctorPhone" style="font-size:0.82rem; font-weight:700; color:#0369a1;">
+            <div id="trialDoctorPhoneGroup"
+              style="display:none; margin-top:10px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+              <label class="trial-field-label" for="trialDoctorPhone"
+                style="font-size:0.82rem; font-weight:700; color:#0369a1;">
                 Nomor WhatsApp Pribadi Dokter / Owner (Whitelist Copilot) <span class="required-star">*</span>
               </label>
               <input type="tel" id="trialDoctorPhone" class="trial-input" placeholder="Contoh: 0817090934764">
               <span class="trial-field-hint" style="color:#0369a1;">
-                🛡️ Nomor HP pribadi dokter/owner untuk mengirim perintah Copilot (STATUS, NEXT, DONE, TUTUP, BUKA, DASHBOARD).
+                🛡️ Nomor HP pribadi dokter/owner untuk mengirim perintah Copilot (STATUS, NEXT, DONE, TUTUP, BUKA,
+                DASHBOARD).
               </span>
             </div>
           </div>
@@ -1325,8 +1696,11 @@
             <label class="trial-field-label" for="trialCouponCode">
               <span>Kode Promo / Kupon <span class="optional-tag">(Opsional)</span></span>
             </label>
-            <input type="text" id="trialCouponCode" class="trial-input" placeholder="Masukkan Kode Promo" style="font-family:var(--font-mono); text-transform:uppercase;">
-            <div id="trialCouponAlert" style="display:none; margin-top:6px; font-size:0.78rem; font-weight:700; color:#15803d; background:#dcfce7; padding:6px 12px; border-radius:8px; border:1px solid #86efac;"></div>
+            <input type="text" id="trialCouponCode" class="trial-input" placeholder="Masukkan Kode Promo"
+              style="font-family:var(--font-mono); text-transform:uppercase;">
+            <div id="trialCouponAlert"
+              style="display:none; margin-top:6px; font-size:0.78rem; font-weight:700; color:#15803d; background:#dcfce7; padding:6px 12px; border-radius:8px; border:1px solid #86efac;">
+            </div>
           </div>
 
           <button type="submit" class="trial-submit-btn" id="trialSubmitBtn">
@@ -1346,11 +1720,12 @@
       <!-- Screen 2: Celebration & WhatsApp Connect Hub -->
       <div id="trialSuccessView" class="trial-success-box" style="display:none;">
         <div class="trial-success-icon">🎉</div>
-        <div class="trial-badge" style="background:rgba(0,210,158,0.18); color:#008767; border-color:#00d29e;">
+        <div class="trial-badge" style="background:rgba(16,185,129,0.18); color:#059669; border-color:#10b981;">
           AKUN BOT BERHASIL AKTIF
         </div>
         <h3 class="trial-title" id="trialSuccessTitle">Selamat! Bot Siap Dihubungkan</h3>
-        <p class="trial-subtitle" id="trialSuccessSubtitle">Akun reservasi pintar telah disiapkan. Langkah terakhir adalah memindai QR code WhatsApp dengan HP Anda.</p>
+        <p class="trial-subtitle" id="trialSuccessSubtitle">Akun reservasi pintar telah disiapkan. Langkah terakhir
+          adalah memindai QR code WhatsApp dengan HP Anda.</p>
 
         <div class="trial-success-card">
           <div class="trial-summary-row">
@@ -1363,7 +1738,7 @@
           </div>
           <div class="trial-summary-row">
             <span style="color:#475569;">Paket Akses:</span>
-            <span style="color:#008767; font-weight:800;" id="trialSummaryPlan">Uji Coba 30 Hari Gratis</span>
+            <span style="color:#059669; font-weight:800;" id="trialSummaryPlan">Uji Coba 30 Hari Gratis</span>
           </div>
           <div class="trial-summary-row">
             <span style="color:#475569;">Status Bot:</span>
@@ -1375,16 +1750,19 @@
           <a id="trialConnectActionBtn" href="#" class="trial-submit-btn" style="text-decoration:none;">
             📲 Buka Halaman Scan QR WhatsApp (Langkah Terakhir) →
           </a>
-          <button type="button" class="btn btn-secondary" id="trialCopyLinkBtn" style="padding:10px; font-size:0.86rem; font-weight:700;">
+          <button type="button" class="btn btn-secondary" id="trialCopyLinkBtn"
+            style="padding:10px; font-size:0.86rem; font-weight:700;">
             📋 Salin Link WhatsApp Reservasi Pasien
           </button>
-          <button type="button" class="btn btn-secondary" id="trialBackToEditBtn" style="padding:10px; font-size:0.86rem; font-weight:700;">
+          <button type="button" class="btn btn-secondary" id="trialBackToEditBtn"
+            style="padding:10px; font-size:0.86rem; font-weight:700;">
             ← Kembali / Ganti Nomor WhatsApp
           </button>
         </div>
 
         <p style="font-size:0.76rem; color:#64748b; margin-top:14px; line-height:1.5;">
-          💡 <strong>Cara Scan:</strong> Buka WhatsApp di HP Anda &gt; Ketuk Menu Titik Tiga / Pengaturan &gt; Perangkat Tertaut &gt; Tautkan Perangkat &gt; Arahkan kamera ke layar monitor.
+          💡 <strong>Cara Scan:</strong> Buka WhatsApp di HP Anda &gt; Ketuk Menu Titik Tiga / Pengaturan &gt; Perangkat
+          Tertaut &gt; Tautkan Perangkat &gt; Arahkan kamera ke layar monitor.
         </p>
       </div>
 
@@ -1404,7 +1782,7 @@
     </div>
 
     <div class="admin-drawer-body">
-      
+
       <!-- Baileys Gateway Health Card -->
       <div class="admin-metric-card">
         <div class="admin-metric-header">
@@ -1439,7 +1817,7 @@
           <span>Utilisasi Kuota Bulanan Tenant</span>
           <span>view_tenant_quota_monitoring</span>
         </div>
-        
+
         <div style="margin-bottom:10px;">
           <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#cbd5e1;">
             <span>drg. Maya (Paket PRO)</span>
@@ -1463,7 +1841,8 @@
 
       <!-- Idempotency & Concurrency Live Matrix Runner (PRD Section 7.1) -->
       <div class="idempotency-test-box">
-        <div style="font-size:0.84rem; font-weight:700; color:#f8fafc; margin-bottom:8px; display:flex; justify-content:space-between;">
+        <div
+          style="font-size:0.84rem; font-weight:700; color:#f8fafc; margin-bottom:8px; display:flex; justify-content:space-between;">
           <span>⚡ Matriks Konkurensi & Idempotensi (7 Skenario)</span>
         </div>
         <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:10px;">
@@ -1499,14 +1878,29 @@
           <span>▶</span>
         </button>
 
-        <div id="idempotencyOutput" style="margin-top:12px; padding:10px; background:#0e1524; border-radius:8px; border:1px solid rgba(16,185,129,0.3); font-size:0.8rem;">
-          <span style="color:#64748b;">Pilih salah satu skenario di atas untuk melihat simulasi eksekusi database.</span>
+        <div id="idempotencyOutput"
+          style="margin-top:12px; padding:10px; background:#0e1524; border-radius:8px; border:1px solid rgba(16,185,129,0.3); font-size:0.8rem;">
+          <span style="color:#64748b;">Pilih salah satu skenario di atas untuk melihat simulasi eksekusi
+            database.</span>
         </div>
       </div>
-
     </div>
   </aside>
 
+  <!-- Floating Mobile Sticky Bottom Bar (Quick Trial CTA) -->
+  <div class="mobile-sticky-bar" id="mobileStickyBar" aria-hidden="true">
+    <div class="mobile-sticky-content">
+      <div class="mobile-sticky-text">
+        <span class="mobile-sticky-title">⚡ Coba Gratis 30 Hari</span>
+        <span class="mobile-sticky-sub">Tanpa kartu kredit • Siap 2 menit</span>
+      </div>
+      <button type="button" class="btn btn-primary mobile-sticky-btn" data-open-trial>
+        Mulai Sekarang →
+      </button>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
+
 </html>

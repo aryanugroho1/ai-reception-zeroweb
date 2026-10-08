@@ -10,6 +10,8 @@ gmail_accounts.json
 
 # Temporary & intermediate files
 .tmp/
+.gemini
+.antigravity/
 temp/
 sessions/
 auth_baileys/

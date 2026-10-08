@@ -394,8 +394,11 @@ class PatientSimulator {
         if (msg.sender === 'bot') sfx.playPop();
         else sfx.playSent();
 
-        if (msg.isConfirmed && this.doctorSim) {
-          this.doctorSim.notifyNewBooking(msg.bookingDetails);
+        if (msg.isConfirmed) {
+          if (this.doctorSim) {
+            this.doctorSim.notifyNewBooking(msg.bookingDetails);
+          }
+          window.dispatchEvent(new CustomEvent('praktika:bookingConfirmed', { detail: msg.bookingDetails }));
         }
       }, delay);
       this.timeouts.push(t2);
@@ -961,7 +964,7 @@ class MayarPaymentModal {
   constructor() {
     this.modal = document.getElementById('mayarModal');
     this.closeBtn = document.getElementById('closeMayarModal');
-    
+
     // Steps
     this.step1 = document.getElementById('mayarStep1Package');
     this.step2 = document.getElementById('mayarStep2Info');
@@ -1233,8 +1236,8 @@ class MayarPaymentModal {
       const label = code === 'LIFETIMEFREE' ? 'LIFETIME PARTNER SELAMANYA' : 'PRO TIER 1 BULAN';
 
       // Update Plan Price to Rp 0
-      this.planAmountEl.innerHTML = `<span style="text-decoration:line-through; color:#94a3b8; font-size:0.95rem; margin-right:6px;">${this.originalPrice}</span> <span style="color:#008767; font-weight:800;">Rp 0 (${label})</span>`;
-      
+      this.planAmountEl.innerHTML = `<span style="text-decoration:line-through; color:#94a3b8; font-size:0.95rem; margin-right:6px;">${this.originalPrice}</span> <span style="color:#059669; font-weight:800;">Rp 0 (${label})</span>`;
+
       this.showCouponMsg(`🎉 Kupon <strong>${code}</strong> valid! ${data.label} (Sisa kuota: ${data.quota_remaining} nomor). Mayar.id dilewati (100% Free).`, '#15803d', '#dcfce7');
       if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
 
@@ -1245,7 +1248,7 @@ class MayarPaymentModal {
       console.warn('Coupon check error:', err);
       if (code === 'LIFETIMEFREE' || code === 'FREEPRO') {
         this.activeCoupon = code;
-        this.planAmountEl.innerHTML = `<span style="text-decoration:line-through; color:#94a3b8; font-size:0.95rem; margin-right:6px;">${this.originalPrice}</span> <span style="color:#008767; font-weight:800;">Rp 0 (GRATIS)</span>`;
+        this.planAmountEl.innerHTML = `<span style="text-decoration:line-through; color:#94a3b8; font-size:0.95rem; margin-right:6px;">${this.originalPrice}</span> <span style="color:#059669; font-weight:800;">Rp 0 (GRATIS)</span>`;
         this.showCouponMsg(`🎉 Kupon <strong>${code}</strong> berhasil diterapkan! Mayar.id dilewati.`, '#15803d', '#dcfce7');
       }
     }
@@ -1273,7 +1276,7 @@ class MayarPaymentModal {
     if (this.step2) this.step2.style.display = 'block';
     if (this.stepPayment) this.stepPayment.style.display = 'none';
     if (this.step3) this.step3.style.display = 'none';
-    
+
     if (this.btnSubmitMayarInfo) {
       if (this.activeCoupon) {
         this.btnSubmitMayarInfo.innerHTML = '<span>Lanjut ke Scan QR WhatsApp (Gratis Kupon) →</span>';
@@ -1339,7 +1342,7 @@ class MayarPaymentModal {
             this.showStep3Qr(statusData, this.currentPhone, this.currentBizName);
           }, 800);
         }
-      } catch (e) {}
+      } catch (e) { }
     }, 2500);
   }
 
@@ -1546,7 +1549,7 @@ class MayarPaymentModal {
         const resp = await fetch(`/api/connect/status?token=${encodeURIComponent(token)}`);
         if (!resp.ok) return;
         const statusData = await resp.json();
-        
+
         if (statusData.status === 'CONNECTED') {
           clearInterval(this.pollInterval);
           if (this.qrStatus) {
@@ -1562,7 +1565,7 @@ class MayarPaymentModal {
             this.qrStatus.style.color = '#d97706';
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }, 2500);
   }
 
@@ -1842,7 +1845,7 @@ class FreeTrialModal {
             phone: cleanPhone,
             coupon: coupon
           }));
-        } catch (e) {}
+        } catch (e) { }
 
         if (this.submitBtn) {
           this.submitBtn.disabled = true;
@@ -2245,6 +2248,323 @@ class LegalModalManager {
   }
 }
 
+// --- Mobile Navigation Drawer Manager ---
+class MobileNavManager {
+  constructor() {
+    this.toggleBtn = document.getElementById('mobileNavToggle');
+    this.drawer = document.getElementById('mobileNavDrawer');
+    this.closeBtn = document.getElementById('mobileNavClose');
+    this.backdrop = document.getElementById('mobileNavBackdrop');
+    this.links = document.querySelectorAll('.mobile-nav-link');
+  }
+
+  init() {
+    if (!this.toggleBtn || !this.drawer) return;
+
+    this.toggleBtn.addEventListener('click', () => {
+      const isOpen = this.drawer.classList.contains('open');
+      if (isOpen) {
+        this.close();
+      } else {
+        this.open();
+      }
+    });
+
+    if (this.closeBtn) {
+      this.closeBtn.addEventListener('click', () => this.close());
+    }
+
+    if (this.backdrop) {
+      this.backdrop.addEventListener('click', () => this.close());
+    }
+
+    this.links.forEach(link => {
+      link.addEventListener('click', () => {
+        this.close();
+      });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.drawer.classList.contains('open')) {
+        this.close();
+      }
+    });
+  }
+
+  open() {
+    this.drawer.classList.add('open');
+    this.drawer.setAttribute('aria-hidden', 'false');
+    this.toggleBtn.classList.add('open');
+    this.toggleBtn.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+
+  close() {
+    this.drawer.classList.remove('open');
+    this.drawer.setAttribute('aria-hidden', 'true');
+    this.toggleBtn.classList.remove('open');
+    this.toggleBtn.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+}
+
+// --- Mobile Perspective Simulator Manager ---
+class MobilePerspectiveManager {
+  constructor() {
+    this.tabsWrap = document.getElementById('phonePerspectiveTabs');
+    this.tabPatient = document.getElementById('tabPerspPatient');
+    this.tabDoctor = document.getElementById('tabPerspDoctor');
+    this.showcase = document.getElementById('demoLive');
+    this.syncBadge = document.getElementById('perspSyncBadge');
+    this.activePersp = 'patient';
+  }
+
+  init() {
+    if (!this.tabsWrap || !this.showcase) return;
+
+    this.showcase.setAttribute('data-active-persp', 'patient');
+
+    if (this.tabPatient) {
+      this.tabPatient.addEventListener('click', () => this.switchPerspective('patient'));
+    }
+
+    if (this.tabDoctor) {
+      this.tabDoctor.addEventListener('click', () => {
+        this.switchPerspective('doctor');
+        if (this.syncBadge) this.syncBadge.style.display = 'none';
+      });
+    }
+
+    window.addEventListener('praktika:bookingConfirmed', () => {
+      if (this.activePersp === 'patient' && this.syncBadge) {
+        this.syncBadge.style.display = 'inline-block';
+      }
+    });
+  }
+
+  switchPerspective(persp) {
+    this.activePersp = persp;
+    this.showcase.setAttribute('data-active-persp', persp);
+
+    if (persp === 'patient') {
+      this.tabPatient?.classList.add('active');
+      this.tabPatient?.setAttribute('aria-selected', 'true');
+      this.tabDoctor?.classList.remove('active');
+      this.tabDoctor?.setAttribute('aria-selected', 'false');
+    } else {
+      this.tabDoctor?.classList.add('active');
+      this.tabDoctor?.setAttribute('aria-selected', 'true');
+      this.tabPatient?.classList.remove('active');
+      this.tabPatient?.setAttribute('aria-selected', 'false');
+      if (this.syncBadge) this.syncBadge.style.display = 'none';
+    }
+  }
+}
+
+// --- Interactive ROI & Time Saved Calculator ---
+class RoiCalculator {
+  constructor() {
+    this.bookingsSlider = document.getElementById('roiBookingsRange');
+    this.minutesSlider = document.getElementById('roiMinutesRange');
+    this.priceSlider = document.getElementById('roiPriceRange');
+
+    this.bookingsVal = document.getElementById('roiBookingsVal');
+    this.minutesVal = document.getElementById('roiMinutesVal');
+    this.priceVal = document.getElementById('roiPriceVal');
+
+    this.hoursOutput = document.getElementById('roiHoursSaved');
+    this.revenueOutput = document.getElementById('roiRevenueSaved');
+  }
+
+  init() {
+    if (!this.bookingsSlider || !this.minutesSlider || !this.priceSlider) return;
+
+    const updateCalc = () => {
+      const bookings = parseInt(this.bookingsSlider.value, 10);
+      const minutes = parseInt(this.minutesSlider.value, 10);
+      const price = parseInt(this.priceSlider.value, 10);
+
+      if (this.bookingsVal) this.bookingsVal.textContent = `${bookings} Booking`;
+      if (this.minutesVal) this.minutesVal.textContent = `${minutes} Menit`;
+      if (this.priceVal) this.priceVal.textContent = `Rp ${price.toLocaleString('id-ID')}`;
+
+      const totalBookingsMonth = bookings * 26;
+      const hoursSaved = Math.round((totalBookingsMonth * minutes) / 60);
+      const protectedBookings = Math.round(totalBookingsMonth * 0.12);
+      const revenueSaved = protectedBookings * price;
+
+      if (this.hoursOutput) {
+        this.hoursOutput.innerHTML = `~${hoursSaved} <span>Jam / Bulan</span>`;
+      }
+      if (this.revenueOutput) {
+        this.revenueOutput.innerHTML = `Rp ${revenueSaved.toLocaleString('id-ID')} <span>/ Bulan</span>`;
+      }
+    };
+
+    this.bookingsSlider.addEventListener('input', updateCalc);
+    this.minutesSlider.addEventListener('input', updateCalc);
+    this.priceSlider.addEventListener('input', updateCalc);
+
+    updateCalc();
+  }
+}
+
+// --- Floating Mobile Sticky Bar Manager ---
+class MobileStickyBarManager {
+  constructor() {
+    this.bar = document.getElementById('mobileStickyBar');
+  }
+
+  init() {
+    if (!this.bar) return;
+
+    let ticking = false;
+    window.addEventListener('scroll', () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const scrollY = window.scrollY;
+          const docHeight = document.documentElement.scrollHeight;
+          const winHeight = window.innerHeight;
+          const nearBottom = scrollY + winHeight > docHeight - 400;
+
+          if (scrollY > 500 && !nearBottom) {
+            this.bar.classList.add('visible');
+            this.bar.setAttribute('aria-hidden', 'false');
+          } else {
+            this.bar.classList.remove('visible');
+            this.bar.setAttribute('aria-hidden', 'true');
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
+    }, { passive: true });
+  }
+}
+
+// --- Antigravity Spatial & 3D Motion Engine ---
+class AntigravitySpatialMotionEngine {
+  init() {
+    this.init3DCardTilt();
+    this.initScrollMotion();
+    this.initShowcaseParallax();
+  }
+
+  // 1. Interactive 3D Cursor Tilt on Hover for Cards
+  init3DCardTilt() {
+    const isMobile = window.matchMedia('(max-width: 860px)').matches;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (isMobile || prefersReducedMotion) return;
+
+    const cards = document.querySelectorAll(
+      '.pain-card, .step-card, .pricing-card, .testimonial-card, .roi-calculator-card'
+    );
+
+    cards.forEach(card => {
+      let bounds = null;
+
+      const handleMouseEnter = () => {
+        bounds = card.getBoundingClientRect();
+      };
+
+      const handleMouseMove = (e) => {
+        if (!bounds) bounds = card.getBoundingClientRect();
+        const x = e.clientX - bounds.left;
+        const y = e.clientY - bounds.top;
+        const xPercent = (x / bounds.width - 0.5) * 2;
+        const yPercent = (y / bounds.height - 0.5) * 2;
+
+        const rotateX = -yPercent * 6;
+        const rotateY = xPercent * 6;
+
+        card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-8px) scale3d(1.015, 1.015, 1.015)`;
+      };
+
+      const handleMouseLeave = () => {
+        card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(0px) scale3d(1, 1, 1)';
+        bounds = null;
+      };
+
+      card.addEventListener('mouseenter', handleMouseEnter);
+      card.addEventListener('mousemove', handleMouseMove);
+      card.addEventListener('mouseleave', handleMouseLeave);
+    });
+  }
+
+  // 2. 3D Spatial Stage Parallax for Dual Phone Showcase
+  initShowcaseParallax() {
+    const showcase = document.getElementById('demoLive');
+    if (!showcase || window.matchMedia('(max-width: 860px)').matches) return;
+
+    showcase.addEventListener('mousemove', (e) => {
+      const rect = showcase.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width - 0.5;
+      const y = (e.clientY - rect.top) / rect.height - 0.5;
+
+      const decorGlow = showcase.querySelector('.phone-decor-glow');
+      if (decorGlow) {
+        decorGlow.style.transform = `translate(${x * 40}px, ${y * 30}px)`;
+      }
+    });
+
+    showcase.addEventListener('mouseleave', () => {
+      const decorGlow = showcase.querySelector('.phone-decor-glow');
+      if (decorGlow) decorGlow.style.transform = 'translate(0, 0)';
+    });
+  }
+
+  // 3. GSAP ScrollTrigger Staggered Entrances with Fallback
+  initScrollMotion() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    if (window.gsap && window.ScrollTrigger) {
+      gsap.registerPlugin(ScrollTrigger);
+
+      gsap.from('.hero-content-centered > *', {
+        y: 35,
+        opacity: 0,
+        duration: 0.9,
+        stagger: 0.12,
+        ease: 'power3.out'
+      });
+
+      gsap.from('#demoLive', {
+        y: 60,
+        opacity: 0,
+        scale: 0.96,
+        duration: 1.1,
+        ease: 'power3.out',
+        delay: 0.25
+      });
+
+      const revealSection = (selector, itemSelector) => {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        gsap.from(itemSelector, {
+          scrollTrigger: {
+            trigger: el,
+            start: 'top 82%',
+            toggleActions: 'play none none none'
+          },
+          y: 45,
+          opacity: 0,
+          scale: 0.97,
+          stagger: 0.1,
+          duration: 0.8,
+          ease: 'power3.out'
+        });
+      };
+
+      revealSection('#masalah', '.pain-card');
+      revealSection('#cara-kerja', '.step-card');
+      revealSection('#kalkulator', '.roi-calculator-card');
+      revealSection('#harga', '.pricing-card');
+      revealSection('#testimoni', '.testimonial-card');
+      revealSection('#faq', '.faq-item');
+    }
+  }
+}
+
 // --- Application Bootstrapping ---
 document.addEventListener('DOMContentLoaded', () => {
   const theme = new ThemeEngine();
@@ -2258,6 +2578,21 @@ document.addEventListener('DOMContentLoaded', () => {
   patientSim.setDoctorSim(doctorSim);
 
   initSimulatorControls(patientSim, doctorSim);
+
+  const mobileNav = new MobileNavManager();
+  mobileNav.init();
+
+  const mobilePersp = new MobilePerspectiveManager();
+  mobilePersp.init();
+
+  const roiCalc = new RoiCalculator();
+  roiCalc.init();
+
+  const mobileSticky = new MobileStickyBarManager();
+  mobileSticky.init();
+
+  const spatialEngine = new AntigravitySpatialMotionEngine();
+  spatialEngine.init();
 
   const pricing = new PricingEngine();
   pricing.init();
