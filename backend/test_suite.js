@@ -47,7 +47,7 @@ function assert(condition, message) {
 async function runTestSuite() {
   console.log(bold('\n======================================================'));
   console.log(bold('🚀 STARTING BACKEND COMPREHENSIVE VERIFICATION SUITE'));
-  console.log(bold('   ZeroWeb AI Receptionist Engine v3.0.0-PROD-COMPLETE'));
+  console.log(bold('   ZeroWeb AI Receptionist Engine v3.1.0-PROD-ANTIBAN'));
   console.log(bold('======================================================\n'));
 
   // -------------------------------------------------------------
@@ -123,19 +123,19 @@ async function runTestSuite() {
     const maya = db.getTenantBySlug('drg_maya');
     const service = db.getServicesByTenant(maya.id)[0];
 
-    // Book first appointment: 2026-10-15 09:00 - 09:40
+    // Book first appointment: 2026-12-25 09:00 - 09:40
     const appt1 = db.createAppointment({
       tenant_id: maya.id,
       service_id: service.id,
       customer_name: 'Patient Alpha',
       customer_phone: '62811111111',
-      start_time: '2026-10-15T09:00:00.000Z',
-      end_time: '2026-10-15T09:40:00.000Z',
+      start_time: '2026-12-25T09:00:00.000Z',
+      end_time: '2026-12-25T09:40:00.000Z',
       status: 'CONFIRMED'
     });
     assert(appt1.id !== undefined, 'Initial slot 09:00-09:40 booked successfully');
 
-    // Attempt overlapping appointment: 2026-10-15 09:20 - 10:00 (overlaps by 20 mins)
+    // Attempt overlapping appointment: 2026-12-25 09:20 - 10:00 (overlaps by 20 mins)
     let overlapPrevented = false;
     try {
       db.createAppointment({
@@ -143,8 +143,8 @@ async function runTestSuite() {
         service_id: service.id,
         customer_name: 'Patient Beta',
         customer_phone: '62822222222',
-        start_time: '2026-10-15T09:20:00.000Z',
-        end_time: '2026-10-15T10:00:00.000Z',
+        start_time: '2026-12-25T09:20:00.000Z',
+        end_time: '2026-12-25T10:00:00.000Z',
         status: 'CONFIRMED'
       });
     } catch (err) {
@@ -153,14 +153,14 @@ async function runTestSuite() {
     }
     assert(overlapPrevented, 'Overlapping appointment was blocked');
 
-    // Attempt adjacent appointment: 2026-10-15 09:40 - 10:20 (exact boundary -> should SUCCEED)
+    // Attempt adjacent appointment: 2026-12-25 09:40 - 10:20 (exact boundary -> should SUCCEED)
     const apptAdjacent = db.createAppointment({
       tenant_id: maya.id,
       service_id: service.id,
       customer_name: 'Patient Gamma',
       customer_phone: '62833333333',
-      start_time: '2026-10-15T09:40:00.000Z',
-      end_time: '2026-10-15T10:20:00.000Z',
+      start_time: '2026-12-25T09:40:00.000Z',
+      end_time: '2026-12-25T10:20:00.000Z',
       status: 'CONFIRMED'
     });
     assert(apptAdjacent.id !== undefined, 'Adjacent slot 09:40-10:20 allowed without conflict');
@@ -173,8 +173,8 @@ async function runTestSuite() {
       service_id: rianService.id,
       customer_name: 'Patient Delta',
       customer_phone: '62844444444',
-      start_time: '2026-10-15T09:00:00.000Z',
-      end_time: '2026-10-15T09:30:00.000Z',
+      start_time: '2026-12-25T09:00:00.000Z',
+      end_time: '2026-12-25T09:30:00.000Z',
       status: 'CONFIRMED'
     });
     assert(rianAppt.id !== undefined, 'Multi-tenant isolation: different tenant can use same timestamp');
@@ -582,6 +582,118 @@ async function runTestSuite() {
     assert(result.status === 'PAID', 'Invoice status updated to PAID via iPaymu');
     assert(budi.subscription_plan === 'PRO', 'Tenant upgraded to PRO tier automatically via iPaymu');
     assert(result.receipt_message && result.receipt_message.includes('BUKTI PEMBAYARAN RESMI PRAKTIKAAI'), 'Official WhatsApp payment receipt created for iPaymu');
+  }
+
+  // -------------------------------------------------------------
+  // TEST GROUP 7C: iPaymu Paid-Only Tenant Creation & Transaction Status Check
+  // -------------------------------------------------------------
+  console.log(bold('\n--- TEST SUITE 7C: iPaymu Paid-Only Tenant Creation & Status Check ---'));
+  {
+    const db = new DatabaseEngine();
+    const ipaymu = new IPaymuPaymentService(db, { va: '1179008158722770', apiKey: 'test-api-key', isProduction: false });
+
+    // Mirror server checkout: invoice persisted with registration_data, tenant row NOT created yet
+    const pendingTenantId = 't-pending-' + Date.now();
+    const invId = 'inv-reg-' + Date.now();
+    const subUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    db.subscriptionInvoices.set(invId, {
+      id: invId,
+      tenant_id: pendingTenantId,
+      plan_tier: 'PRO',
+      billing_cycle: 'MONTHLY',
+      amount: 199000,
+      status: 'PENDING',
+      payment_provider: 'IPAYMU',
+      registration_data: {
+        id: pendingTenantId,
+        name: 'Klinik Gigi Bayar Dulu',
+        slug: 'klinik_gigi_bayar_dulu',
+        rawPhone: '081277788899',
+        owner_phone: '6281277788899',
+        email: 'owner@klinik-test.id',
+        category: 'DENTAL',
+        plan: 'PRO',
+        billing_cycle: 'MONTHLY',
+        subUntil
+      }
+    });
+    assert(!db.tenants.has(pendingTenantId), 'Checkout: no tenant row exists before payment');
+
+    // 1. Unpaid callback must NOT create a tenant
+    const unpaidCallback = { trx_id: '555001', reference_id: invId, status: 'pending', status_code: '0' };
+    const unpaidRes = await ipaymu.handleWebhook({
+      signature: ipaymu.generateSignature(unpaidCallback, 'POST'),
+      payload: unpaidCallback,
+      rawBody: JSON.stringify(unpaidCallback)
+    });
+    assert(unpaidRes.handled === false, 'Unpaid iPaymu callback ignored');
+    assert(!db.tenants.has(pendingTenantId), 'Unpaid callback did not create tenant row in database');
+    assert(db.subscriptionInvoices.get(invId).status === 'PENDING', 'Invoice remains PENDING after unpaid callback');
+
+    // 2. Paid callback creates the tenant from registration_data
+    const paidCallback = { trx_id: '555002', reference_id: invId, status: 'berhasil', status_code: '1', via: 'qris' };
+    const paidRes = await ipaymu.handleWebhook({
+      signature: ipaymu.generateSignature(paidCallback, 'POST'),
+      payload: paidCallback,
+      rawBody: JSON.stringify(paidCallback)
+    });
+    const newTenant = db.tenants.get(pendingTenantId);
+    assert(paidRes.handled === true && paidRes.tenant_id === pendingTenantId, 'Paid callback handled for pending registration');
+    assert(newTenant !== undefined && newTenant.slug === 'klinik_gigi_bayar_dulu', 'Tenant row created only after payment confirmed');
+    assert(newTenant.subscription_plan === 'PRO' && newTenant.subscription_until === subUntil, 'New tenant carries paid plan and registration subUntil');
+    assert(newTenant.owner_phone === '6281277788899' && newTenant.is_accepting_patients === false, 'New tenant owner phone set and practice paused until WhatsApp connected');
+    assert(db.getServicesByTenant(pendingTenantId).length === 3, 'DENTAL starter services seeded for new paid tenant');
+    assert(db.subscriptionInvoices.get(invId).status === 'PAID', 'Invoice marked PAID');
+    assert(paidRes.receipt_message && paidRes.receipt_message.includes('555002'), 'Receipt generated for new tenant with iPaymu trx id');
+
+    // 3. ANNUAL registration without subUntil defaults to ~365 days
+    const annualTenantId = 't-annual-' + Date.now();
+    const annualInvId = 'inv-annual-' + Date.now();
+    db.subscriptionInvoices.set(annualInvId, {
+      id: annualInvId,
+      tenant_id: annualTenantId,
+      plan_tier: 'PRO',
+      billing_cycle: 'ANNUAL',
+      amount: 1990000,
+      status: 'PENDING',
+      registration_data: { id: annualTenantId, name: 'Barber Tahunan', slug: 'barber_tahunan', owner_phone: '6281200000011', category: 'BARBER' }
+    });
+    const annualCallback = { trx_id: '555003', reference_id: annualInvId, status: 'berhasil' };
+    await ipaymu.handleWebhook({
+      signature: ipaymu.generateSignature(annualCallback, 'POST'),
+      payload: annualCallback,
+      rawBody: JSON.stringify(annualCallback)
+    });
+    const annualTenant = db.tenants.get(annualTenantId);
+    const annualDays = (new Date(annualTenant.subscription_until).getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    assert(annualDays > 364 && annualDays <= 365, 'ANNUAL registration without subUntil gets 365-day subscription');
+
+    // 4. checkTransactionStatus with stubbed iPaymu API
+    const missingIdRes = await ipaymu.checkTransactionStatus({});
+    assert(missingIdRes.success === false, 'checkTransactionStatus rejects missing transactionId');
+
+    let capturedUrl = null;
+    let capturedBody = null;
+    ipaymu._postRequest = async (url, body) => {
+      capturedUrl = url;
+      capturedBody = JSON.parse(body);
+      return { Status: 200, Data: { TransactionId: 555002, ReferenceId: invId, Status: 'Berhasil', StatusCode: 1, Amount: 199000 } };
+    };
+    const paidStatus = await ipaymu.checkTransactionStatus({ transactionId: '555002' });
+    assert(capturedUrl === 'https://sandbox.ipaymu.com/api/v2/transaction' && capturedBody.transactionId === 555002, 'checkTransactionStatus posts numeric transactionId to sandbox /api/v2/transaction');
+    assert(paidStatus.success === true && paidStatus.is_paid === true && paidStatus.reference_id === invId, 'checkTransactionStatus reports paid transaction');
+
+    ipaymu._postRequest = async () => ({ Status: 200, Data: { TransactionId: 555004, Status: 'Pending', StatusCode: 0 } });
+    const pendingStatus = await ipaymu.checkTransactionStatus({ transactionId: 555004 });
+    assert(pendingStatus.success === true && pendingStatus.is_paid === false, 'checkTransactionStatus reports pending transaction as unpaid');
+
+    ipaymu._postRequest = async () => ({ Status: 404, Message: 'Transaction not found' });
+    const notFoundStatus = await ipaymu.checkTransactionStatus({ transactionId: 999 });
+    assert(notFoundStatus.success === false && notFoundStatus.error === 'Transaction not found', 'checkTransactionStatus surfaces iPaymu error message');
+
+    ipaymu._postRequest = async () => { throw new Error('Request to iPaymu timed out'); };
+    const timeoutStatus = await ipaymu.checkTransactionStatus({ transactionId: 1 });
+    assert(timeoutStatus.success === false && timeoutStatus.error.includes('timed out'), 'checkTransactionStatus handles network failure without throwing');
   }
 
   // -------------------------------------------------------------
@@ -1089,6 +1201,12 @@ async function runTestSuite() {
     });
     assert(close3DaysRes && close3DaysRes.action === 'CLOSE_DATE_RANGE' && close3DaysRes.closed_dates.length === 3, 'Doctor command "besok tutup 3 hari" closed 3 consecutive days');
     
+    // Ensure the entire booking horizon (today + tomorrow + lusa) is closed regardless of test run time of day
+    const todayStrInJkt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
+    if (!testTenant.closed_dates.includes(todayStrInJkt)) {
+      testTenant.closed_dates.push(todayStrInJkt);
+    }
+
     // When patient tries to book during complete closure across H+2
     const bookingDuringClosure = await app.ingressRouter.routeMessage({
       from: '6285556667778@s.whatsapp.net',
@@ -1142,6 +1260,94 @@ async function runTestSuite() {
 
     await app.close();
     assert(true, 'HTTP REST server gracefully closed');
+  }
+
+  // -------------------------------------------------------------
+  // TEST GROUP 12: WhatsApp Anti-Ban & Humanized Throttling Engine
+  // -------------------------------------------------------------
+  console.log(bold('\n--- TEST SUITE 12: WhatsApp Anti-Ban & Humanized Throttling Engine ---'));
+  {
+    const { BaileysManager } = require('./baileys_manager');
+    const { DatabaseEngine } = require('./database');
+    const db = new DatabaseEngine();
+    const bm = new BaileysManager({ db, ingressRouter: null });
+
+    // 1. Anti-Hash Footprint Validation
+    const rawTemplate = 'Halo, jadwal reservasi Anda telah kami konfirmasi.';
+    const antiHash1 = bm.applyAntiHashFootprint(rawTemplate);
+    const antiHash2 = bm.applyAntiHashFootprint(rawTemplate);
+
+    assert(antiHash1.replace(/\u200B/g, '') === rawTemplate, 'Anti-Ban: Visually identical to recipient (zero-width spaces unrendered)');
+    assert(antiHash1.includes('\u200B'), 'Anti-Ban: Zero-width space injected for unique cryptographic hash');
+    assert(antiHash1.length > rawTemplate.length, 'Anti-Ban: Message byte length modified to evade duplicate blast detection');
+
+    // 2. Typing Delay Calculation
+    // In test mode: 0ms delay to keep test suite blazing fast
+    const testDelay = bm.calculateTypingDelay(rawTemplate, false);
+    assert(testDelay === 0, 'Anti-Ban: Test mode runs with 0ms artificial delay for fast CI/CD');
+
+    // Simulate production mode
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const prodPatientDelay = bm.calculateTypingDelay(rawTemplate, false);
+      assert(prodPatientDelay >= 1200 && prodPatientDelay <= 3500, 'Anti-Ban: Production patient typing delay is realistic (1.2s - 3.5s)');
+
+      const prodDoctorDelay = bm.calculateTypingDelay(rawTemplate, true);
+      assert(prodDoctorDelay <= 200, 'Anti-Ban: Doctor Copilot typing delay is rapid and responsive (<= 200ms)');
+
+      const prodJitter = bm.calculateInterMessageJitter();
+      assert(prodJitter >= 1800 && prodJitter <= 3200, 'Anti-Ban: Inter-message jitter is within safe 1.8s - 3.2s window');
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
+
+    // 3. Sequential Outbound Queue per Tenant
+    const executionOrder = [];
+    const q1 = bm.enqueueOutboundNotification('tenant-a', async () => {
+      await bm.sleep(10);
+      executionOrder.push('A1');
+    });
+    const q2 = bm.enqueueOutboundNotification('tenant-a', async () => {
+      executionOrder.push('A2');
+    });
+    const q3 = bm.enqueueOutboundNotification('tenant-b', async () => {
+      executionOrder.push('B1');
+    });
+
+    await Promise.all([q1, q2, q3]);
+    assert(executionOrder.indexOf('A1') < executionOrder.indexOf('A2'), 'Anti-Ban: Tenant A notifications executed sequentially in FIFO order');
+    assert(executionOrder.includes('B1'), 'Anti-Ban: Multi-tenant queue isolation preserves independent tenant dispatch');
+
+    // 4. Safe Send Message Mock Verification
+    const mockCalls = [];
+    const mockSock = {
+      readMessages: async (keys) => { mockCalls.push({ action: 'read', keys }); },
+      sendPresenceUpdate: async (type, jid) => { mockCalls.push({ action: 'presence', type, jid }); },
+      sendMessage: async (jid, payload) => {
+        mockCalls.push({ action: 'send', jid, payload });
+        return { key: { id: 'msg-mock-12345' } };
+      }
+    };
+
+    const sendRes = await bm.safeSendMessage(mockSock, '628123456789@s.whatsapp.net', 'Test Message', {
+      isDoctor: false,
+      quoteKey: { id: 'quote-1' }
+    });
+
+    assert(sendRes && sendRes.key.id === 'msg-mock-12345', 'Anti-Ban: safeSendMessage returns sent message metadata');
+    assert(mockCalls.some(c => c.action === 'read'), 'Anti-Ban: Incoming message marked as read before reply');
+    assert(mockCalls.some(c => c.action === 'send'), 'Anti-Ban: Socket message delivered successfully');
+    assert(bm.sentMessageIds.has('msg-mock-12345'), 'Anti-Ban: Sent message ID recorded in anti-loop filter');
+
+    // 5. Graceful Fallback when Presence Update fails
+    const failingSock = {
+      sendPresenceUpdate: async () => { throw new Error('Network timeout in presence'); },
+      sendMessage: async (jid, payload) => ({ key: { id: 'msg-mock-fallback' } })
+    };
+
+    const fallbackRes = await bm.safeSendMessage(failingSock, '628123456789@s.whatsapp.net', 'Fallback Test');
+    assert(fallbackRes && fallbackRes.key.id === 'msg-mock-fallback', 'Anti-Ban: Presence failure handled gracefully without aborting message delivery');
   }
 
   // -------------------------------------------------------------

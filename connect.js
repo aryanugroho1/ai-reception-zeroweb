@@ -170,13 +170,30 @@ document.addEventListener('DOMContentLoaded', () => {
         qrImg.src = data.qr_image;
         qrBox.style.display = 'flex';
       } else {
+        const loadingTitle = document.getElementById('loadingTitle');
+        const loadingSubtitle = document.getElementById('loadingSubtitle');
+        if (loadingTitle) loadingTitle.textContent = 'Menyiapkan QR Code Resmi...';
+        if (loadingSubtitle) loadingSubtitle.textContent = 'Membutuhkan waktu 2-4 detik...';
         loadingBox.style.display = 'block';
       }
       btnStart.style.display = 'block';
       btnStart.textContent = '🔄 Refresh QR Code';
     } else if (data.status === 'CONNECTING' || data.status === 'INITIALIZING') {
       statusBadge.classList.add('initializing');
-      statusText.textContent = 'Menghubungkan ke WhatsApp...';
+      const isPairing = data.has_auth_saved || !data.qr_image;
+      statusText.textContent = isPairing ? 'Menautkan Perangkat...' : 'Menyiapkan Server...';
+      const loadingTitle = document.getElementById('loadingTitle');
+      const loadingSubtitle = document.getElementById('loadingSubtitle');
+      if (loadingTitle) {
+        loadingTitle.textContent = isPairing
+          ? '🔄 QR Berhasil Dipindai! Sedang Menghubungkan ke WhatsApp...'
+          : 'Menyiapkan server WhatsApp & QR Code...';
+      }
+      if (loadingSubtitle) {
+        loadingSubtitle.textContent = isPairing
+          ? 'Mohon jangan tutup atau refresh halaman ini (proses 5-10 detik)...'
+          : 'Membutuhkan waktu 3-6 detik...';
+      }
       loadingBox.style.display = 'block';
     } else {
       // OFFLINE or DISCONNECTED

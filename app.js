@@ -1,6 +1,6 @@
 /* ==========================================================================
    AI-RECEPTIONIST ZERO-WEB: INTERACTIVE LOGIC & SIMULATOR ENGINE
-   Compliant with PRD_WHATSAPP_PRACTICE_BOT.md (v3.0.0-PROD-COMPLETE)
+   Compliant with PRD_WHATSAPP_PRACTICE_BOT.md (v3.1.0-PROD-ANTIBAN)
    Supports: Patient Perspective, Doctor Perspective, Dual Live Sync,
    and Full-Access Doctor Insight & Practice Analytics Dashboard.
    ========================================================================== */
@@ -1557,6 +1557,12 @@ class MayarPaymentModal {
             this.qrStatus.style.color = '#15803d';
           }
           if (typeof sfx !== 'undefined' && sfx.playPop) sfx.playPop();
+        } else if (statusData.status === 'CONNECTING' || (!statusData.qr_image && statusData.has_auth_saved)) {
+          if (this.qrImg) this.qrImg.style.display = 'none';
+          if (this.qrStatus) {
+            this.qrStatus.innerHTML = '<span>🔄 QR Berhasil Dipindai! Sedang Menghubungkan ke WhatsApp... Mohon jangan tutup (5-10 detik)</span>';
+            this.qrStatus.style.color = '#0284c7';
+          }
         } else if (statusData.qr_image && this.qrImg) {
           this.qrImg.src = statusData.qr_image;
           this.qrImg.style.display = 'block';

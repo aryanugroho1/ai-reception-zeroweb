@@ -77,6 +77,8 @@ class BaileysManager {
     this.pendingRegistrations = new Map(); // pendingId -> pendingData
     this.lidMap = new Map(); // LID -> Phone and Phone -> LID bidirectional cache
     this.sentMessageIds = new Set(); // Sent message IDs to prevent echo looping in self-chat
+    this.sessionLocks = new Map(); // tenantId -> in-flight startSession Promise (Atomic Mutex)
+    this.outboundQueues = new Map(); // tenantId -> Promise queue for sequential Anti-Ban throttled dispatch
     this.tokensFilePath = path.join(__dirname, '../data/connect_tokens.json');
     this.loadTokens();
 
@@ -88,6 +90,105 @@ class BaileysManager {
         console.error('[BaileysManager] Failed to create sessions dir:', err.message);
       }
     }
+  }
+
+  // --- ANTI-BAN & HUMANIZED MESSAGING ENGINE ---
+
+  // Invisible zero-width character injection to prevent identical message ciphertext/hash detection by Meta
+  applyAntiHashFootprint(text) {
+    if (!text || typeof text !== 'string') return text;
+    // Add 1 to 3 zero-width spaces (\u200B) at the end of text
+    const zwSpaces = '\u200B'.repeat(Math.floor(Math.random() * 3) + 1);
+    return `${text}${zwSpaces}`;
+  }
+
+  // Safe non-blocking delay helper
+  async sleep(ms) {
+    if (!ms || ms <= 0) return;
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Calculate natural typing duration based on message length
+  calculateTypingDelay(text, isDoctor = false) {
+    // In automated test runs, skip artificial delays
+    if (process.env.NODE_ENV === 'test') return 0;
+    // Doctor command responses: fast, crisp feedback (<200ms)
+    if (isDoctor) return Math.min(200, Math.floor(Math.random() * 100) + 100);
+    // Patient messages: 1.2s to 3.0s depending on text length
+    const len = (text || '').length;
+    const base = Math.min(2800, Math.max(1200, Math.floor(len * 18)));
+    const jitter = Math.floor(Math.random() * 500);
+    return base + jitter;
+  }
+
+  // Calculate inter-message jitter between separate recipients (1.8s - 3.2s)
+  calculateInterMessageJitter() {
+    if (process.env.NODE_ENV === 'test') return 0;
+    return Math.floor(Math.random() * 1400) + 1800; // 1800ms - 3200ms
+  }
+
+  // Send message safely with Anti-Ban: read receipt + typing indicator + randomized delay + anti-hash footprint
+  async safeSendMessage(sock, jid, text, options = {}) {
+    if (!sock || !jid || !text) return null;
+    const { isDoctor = false, quoteKey = null } = options;
+
+    // 1. Mark incoming message as read if key provided (mimic human reading)
+    if (quoteKey && !isDoctor) {
+      try {
+        if (typeof sock.readMessages === 'function') {
+          await sock.readMessages([quoteKey]);
+        }
+      } catch (e) {}
+    }
+
+    // 2. Simulate typing presence
+    const typingDuration = this.calculateTypingDelay(text, isDoctor);
+    if (typingDuration > 0) {
+      try {
+        if (typeof sock.sendPresenceUpdate === 'function') {
+          await sock.sendPresenceUpdate('composing', jid);
+        }
+      } catch (e) {}
+
+      await this.sleep(typingDuration);
+
+      try {
+        if (typeof sock.sendPresenceUpdate === 'function') {
+          await sock.sendPresenceUpdate('paused', jid);
+        }
+      } catch (e) {}
+    }
+
+    // 3. Inject anti-fingerprint invisible unicode variation
+    const messageToSend = isDoctor ? text : this.applyAntiHashFootprint(text);
+
+    // 4. Send actual message
+    const sent = await sock.sendMessage(jid, { text: messageToSend });
+    if (sent?.key?.id) {
+      this.sentMessageIds.add(sent.key.id);
+      setTimeout(() => this.sentMessageIds.delete(sent.key.id), 180000);
+    }
+    return sent;
+  }
+
+  // Enqueue outbound patient notifications sequentially with Anti-Ban Jitter per tenant
+  enqueueOutboundNotification(tenantId, taskFn) {
+    if (!this.outboundQueues) this.outboundQueues = new Map();
+    const currentQueue = this.outboundQueues.get(tenantId) || Promise.resolve();
+    const nextQueue = currentQueue
+      .then(async () => {
+        try {
+          await taskFn();
+        } catch (err) {
+          console.error(`[BaileysManager:AntiBan] Error executing queued outbound message for tenant ${tenantId}:`, err.message);
+        }
+      })
+      .catch(err => {
+        console.error(`[BaileysManager:AntiBan] Unhandled queue error for tenant ${tenantId}:`, err.message);
+      });
+
+    this.outboundQueues.set(tenantId, nextQueue);
+    return nextQueue;
   }
 
   loadTokens() {
@@ -494,6 +595,21 @@ class BaileysManager {
     }
   }
 
+  hasIntermediateHandshake(tenantId) {
+    const dir = this.getSessionDir(tenantId);
+    const credsPath = path.join(dir, 'creds.json');
+    if (!fs.existsSync(credsPath)) return false;
+    try {
+      const stat = fs.statSync(credsPath);
+      if (stat.size < 50) return false;
+      const data = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+      // Contains keys created during the initial QR scan pairing handshake before 515 restart
+      return !!(data && (data.noiseKey || data.signedIdentityKey || data.accountSyncCounter));
+    } catch (e) {
+      return false;
+    }
+  }
+
   async ensureSessionStarted(tenantId) {
     if (!tenantId) return null;
     let session = this.sessions.get(tenantId);
@@ -523,107 +639,119 @@ class BaileysManager {
 
     const tenantId = tenant.id;
 
-    // Check existing active session
-    let session = this.sessions.get(tenantId);
-    if (session && session.status === 'CONNECTED' && session.sock) {
-      return this.formatSessionResponse(tenant, session);
+    // 1. Atomic Mutex Lock: If this tenant's socket is already being started, return the in-flight Promise
+    this.sessionLocks = this.sessionLocks || new Map();
+    if (this.sessionLocks.has(tenantId)) {
+      return this.sessionLocks.get(tenantId);
     }
 
-    // Do NOT tear down a socket that is showing a QR or finishing the handshake.
-    // Killing it here (page reload, "Refresh QR", second tab, polling) is what made
-    // the phone show "no connection / couldn't link device" right after scanning.
-    if (session && session.sock && (session.status === 'SCAN_QR' || session.status === 'CONNECTING')) {
-      const ageMs = Date.now() - new Date(session.updatedAt || 0).getTime();
-      if (ageMs < 120000) {
+    const initPromise = (async () => {
+      // Check existing active session
+      let session = this.sessions.get(tenantId);
+      if (session && session.status === 'CONNECTED' && session.sock) {
         return this.formatSessionResponse(tenant, session);
       }
-    }
 
-    if (session && session.sock && session.status !== 'CONNECTED') {
-      try {
-        session.sock.ev.removeAllListeners();
-        session.sock.end(undefined);
-      } catch (e) {}
-      session.sock = null;
-    }
-
-    if (!session) {
-      session = {
-        tenantId,
-        sock: null,
-        status: 'INITIALIZING',
-        qr: null,
-        qrImage: null,
-        phone: tenant.owner_phone || null,
-        lastError: null,
-        updatedAt: new Date().toISOString()
-      };
-      this.sessions.set(tenantId, session);
-    }
-
-    // Lazy load Baileys & QRCode
-    let baileys, pino, QRCode;
-    try {
-      baileys = require('@whiskeysockets/baileys');
-      pino = require('pino');
-      QRCode = require('qrcode');
-    } catch (err) {
-      console.warn('[BaileysManager] Baileys libraries not available:', err.message);
-      session.status = 'OFFLINE';
-      session.lastError = 'Baileys libraries missing';
-      return this.formatSessionResponse(tenant, session);
-    }
-
-    const {
-      default: makeWASocket,
-      useMultiFileAuthState,
-      DisconnectReason,
-      fetchLatestBaileysVersion
-    } = baileys;
-
-    const tenantSessionDir = this.getSessionDir(tenantId);
-    const hasAuth = this.hasExistingCredentials(tenantId);
-
-    if (!fs.existsSync(tenantSessionDir)) {
-      fs.mkdirSync(tenantSessionDir, { recursive: true });
-    }
-
-    try {
-      const { state, saveCreds } = await useMultiFileAuthState(tenantSessionDir);
-      let version;
-      try {
-        const vInfo = await fetchLatestBaileysVersion();
-        version = vInfo.version;
-      } catch (e) {
-        version = [2, 3000, 1043857760];
+      // Do NOT tear down a socket that is actively showing a QR or finishing the handshake.
+      if (session && session.sock && (session.status === 'SCAN_QR' || session.status === 'CONNECTING')) {
+        const ageMs = Date.now() - new Date(session.updatedAt || 0).getTime();
+        if (ageMs < 90000) {
+          return this.formatSessionResponse(tenant, session);
+        }
       }
 
-      session.status = hasAuth ? 'CONNECTING' : 'SCAN_QR';
-      session.updatedAt = new Date().toISOString();
+      if (session && session.sock && session.status !== 'CONNECTED') {
+        try {
+          session.sock.ev.removeAllListeners();
+          session.sock.end(undefined);
+        } catch (e) {}
+        session.sock = null;
+      }
 
-      // Standard Desktop WhatsApp Web browser tuple (Windows Desktop)
-      const browserTuple = (baileys.Browsers && typeof baileys.Browsers.appropriate === 'function')
-        ? baileys.Browsers.appropriate('Desktop')
-        : (baileys.Browsers && typeof baileys.Browsers.windows === 'function')
-          ? baileys.Browsers.windows('Desktop')
-          : ['Windows', 'Desktop', '10.0.22631'];
+      if (!session) {
+        session = {
+          tenantId,
+          sock: null,
+          status: 'INITIALIZING',
+          qr: null,
+          qrImage: null,
+          phone: tenant.owner_phone || null,
+          lastError: null,
+          updatedAt: new Date().toISOString()
+        };
+        this.sessions.set(tenantId, session);
+      }
 
-      const sock = (makeWASocket.default || makeWASocket)({
-        version,
-        auth: state,
-        logger: pino({ level: 'silent' }),
-        printQRInTerminal: false,
-        browser: browserTuple,
-        syncFullHistory: false,
-        generateHighQualityLinkPreview: false,
-        connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 60000,
-        keepAliveIntervalMs: 25000,
-        markOnlineOnConnect: true,
-        getMessage: async () => ({ conversation: '' })
-      });
+      // Lazy load Baileys & QRCode
+      let baileys, pino, QRCode;
+      try {
+        baileys = require('@whiskeysockets/baileys');
+        pino = require('pino');
+        QRCode = require('qrcode');
+      } catch (err) {
+        console.warn('[BaileysManager] Baileys libraries not available:', err.message);
+        session.status = 'OFFLINE';
+        session.lastError = 'Baileys libraries missing';
+        return this.formatSessionResponse(tenant, session);
+      }
 
-      session.sock = sock;
+      const {
+        default: makeWASocket,
+        useMultiFileAuthState,
+        DisconnectReason,
+        fetchLatestBaileysVersion
+      } = baileys;
+
+      const tenantSessionDir = this.getSessionDir(tenantId);
+      const hasFullAuth = this.hasExistingCredentials(tenantId);
+      const hasHandshake = this.hasIntermediateHandshake(tenantId);
+      const isResuming = hasFullAuth || hasHandshake;
+
+      if (!fs.existsSync(tenantSessionDir)) {
+        fs.mkdirSync(tenantSessionDir, { recursive: true });
+      }
+
+      try {
+        const { state, saveCreds } = await useMultiFileAuthState(tenantSessionDir);
+        let version;
+        try {
+          const vInfo = await fetchLatestBaileysVersion();
+          version = vInfo.version;
+        } catch (e) {
+          version = [2, 3000, 1043857760];
+        }
+
+        session.status = isResuming ? 'CONNECTING' : 'SCAN_QR';
+        if (isResuming) {
+          session.qr = null;
+          session.qrImage = null;
+        }
+        session.updatedAt = new Date().toISOString();
+
+        // Standard Universal Linux Chrome Browser Tuple - 100% stable with WhatsApp server handshake
+        const browserTuple = (baileys.Browsers && typeof baileys.Browsers.ubuntu === 'function')
+          ? baileys.Browsers.ubuntu('Chrome')
+          : ['Ubuntu', 'Chrome', '20.0.04'];
+
+        const sock = (makeWASocket.default || makeWASocket)({
+          version,
+          auth: state,
+          logger: pino({ level: 'silent' }),
+          printQRInTerminal: false,
+          browser: browserTuple,
+          syncFullHistory: false,
+          generateHighQualityLinkPreview: false,
+          connectTimeoutMs: 60000,
+          defaultQueryTimeoutMs: 60000,
+          keepAliveIntervalMs: 25000,
+          markOnlineOnConnect: true,
+          qrTimeout: 45000,
+          retryRequestDelayMs: 250,
+          maxMsgRetryCount: 3,
+          getMessage: async () => ({ conversation: '' })
+        });
+
+        session.sock = sock;
 
       // Handle Credentials Update
       sock.ev.on('creds.update', async () => {
@@ -717,22 +845,27 @@ class BaileysManager {
             session.sock = null;
             console.warn(`[BaileysManager] Sesi ${tenant.slug} ditutup (loggedOut). Berkas autentikasi disk tetap diamankan.`);
           } else {
-            // After a QR scan WhatsApp always closes with 515 (restartRequired) and
-            // expects the client to reconnect right away. Waiting 5s here made the
-            // phone time out with "no connection" during "Link a device".
+            // After a QR scan WhatsApp closes with 515 (restartRequired) to resume authenticated stream.
             const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
             session.status = isRestartRequired ? 'CONNECTING' : 'OFFLINE';
+            if (isRestartRequired) {
+              session.qr = null;
+              session.qrImage = null;
+            }
             if (session.sock === sock) session.sock = null;
             try { sock.ev.removeAllListeners(); } catch (e) {}
             session.reconnectAttempts = isRestartRequired ? 0 : (session.reconnectAttempts || 0) + 1;
-            const delay = isRestartRequired ? 0 : Math.min(30000, 2000 * session.reconnectAttempts);
-            // Use the session's current tenantId: after commit it is the real tenant id,
-            // the captured pendingId no longer resolves.
+            const delay = isRestartRequired ? 150 : Math.min(30000, 2000 * session.reconnectAttempts);
+            // Use the session's current tenantId: after commit it is the real tenant id
             const reconnectId = session.tenantId || tenantId;
-            setTimeout(() => {
+            setTimeout(async () => {
               const s = this.sessions.get(reconnectId);
               if (s && s.status !== 'DISCONNECTED' && !s.sock) {
-                this.startSession(reconnectId).catch(err => console.error('[BaileysManager] Reconnect error:', err.message));
+                try {
+                  await this.startSession(reconnectId);
+                } catch (err) {
+                  console.error('[BaileysManager] Reconnect error:', err.message);
+                }
               }
             }, delay);
           }
@@ -820,58 +953,63 @@ class BaileysManager {
             });
 
             if (reply && reply.message) {
-              const sent = await sock.sendMessage(senderJid, { text: reply.message });
-              if (sent?.key?.id) {
-                this.sentMessageIds.add(sent.key.id);
-                // Evict after 3 minutes to keep memory footprint bounded
-                setTimeout(() => this.sentMessageIds.delete(sent.key.id), 180000);
-              }
+              const sent = await this.safeSendMessage(sock, senderJid, reply.message, {
+                isDoctor: isDoctorOrOwner,
+                quoteKey: msg.key || null
+              });
               if (isDoctorOrOwner && this.logger && typeof this.logger.addAuditLog === 'function') {
                 this.logger.addAuditLog('success', 'KOPILOT', `Balasan Kopilot terkirim ke Dokter ${senderLabel}`);
               }
             }
 
             // Dispatch any outbound patient notifications (e.g. Patient called on NEXT, queue nudge, or completed)
+            // Routed through sequential Anti-Ban Queue with humanized typing & inter-message jitter
             if (Array.isArray(reply?.notifications) && reply.notifications.length > 0) {
-              for (const notif of reply.notifications) {
-                if (!notif.phone || !notif.message) continue;
-                const normPhone = this.normalizePhone(notif.phone);
-                if (!normPhone) continue;
-                const notifJid = `${normPhone}@s.whatsapp.net`;
-                console.log(`[BaileysManager] Mengirim notifikasi [${notif.type}] ke target: ${notifJid} (raw: ${notif.phone})`);
-                try {
-                  const notifSent = await sock.sendMessage(notifJid, { text: notif.message });
-                  if (notifSent?.key?.id) {
-                    this.sentMessageIds.add(notifSent.key.id);
-                    setTimeout(() => this.sentMessageIds.delete(notifSent.key.id), 180000);
+              this.enqueueOutboundNotification(tenant.id, async () => {
+                for (let i = 0; i < reply.notifications.length; i++) {
+                  const notif = reply.notifications[i];
+                  if (!notif.phone || !notif.message) continue;
+                  const normPhone = this.normalizePhone(notif.phone);
+                  if (!normPhone) continue;
+                  const notifJid = `${normPhone}@s.whatsapp.net`;
+
+                  // Anti-Ban: Apply inter-message jitter between separate recipients (1.8s - 3.2s)
+                  if (i > 0) {
+                    const interDelay = this.calculateInterMessageJitter();
+                    if (interDelay > 0) await this.sleep(interDelay);
                   }
-                  console.log(`[BaileysManager] Berhasil mengirim notifikasi [${notif.type}] ke ${notifJid}`);
-                  if (this.logger && typeof this.logger.addAuditLog === 'function') {
-                    this.logger.addAuditLog('success', 'NOTIFIKASI', `Pengingat [${notif.type}] terkirim ke pasien +${normPhone}`);
-                  }
-                } catch (notifErr) {
-                  console.warn(`[BaileysManager] Gagal kirim ke ${notifJid} (${notifErr.message}), mencoba fallback LID...`);
-                  const mappedLid = this.lidMap && (this.lidMap.get(normPhone) || this.lidMap.get(notif.phone));
-                  if (mappedLid) {
-                    try {
-                      const lidJid = `${mappedLid}@lid`;
-                      const notifSentLid = await sock.sendMessage(lidJid, { text: notif.message });
-                      if (notifSentLid?.key?.id) {
-                        this.sentMessageIds.add(notifSentLid.key.id);
-                        setTimeout(() => this.sentMessageIds.delete(notifSentLid.key.id), 180000);
-                      }
-                      console.log(`[BaileysManager] Berhasil mengirim notifikasi via LID fallback: ${lidJid}`);
-                      if (this.logger && typeof this.logger.addAuditLog === 'function') {
-                        this.logger.addAuditLog('success', 'NOTIFIKASI', `Pengingat [${notif.type}] terkirim ke pasien via LID: ${mappedLid}`);
-                      }
-                    } catch (lidErr) {
-                      console.error(`[BaileysManager] Gagal mengirim pengingat via LID fallback:`, lidErr.message);
+
+                  console.log(`[BaileysManager:AntiBan] Mengirim notifikasi [${notif.type}] ke target: ${notifJid} (raw: ${notif.phone})`);
+                  try {
+                    const notifSent = await this.safeSendMessage(sock, notifJid, notif.message, {
+                      isDoctor: false
+                    });
+                    console.log(`[BaileysManager:AntiBan] Berhasil mengirim notifikasi [${notif.type}] ke ${notifJid}`);
+                    if (this.logger && typeof this.logger.addAuditLog === 'function') {
+                      this.logger.addAuditLog('success', 'NOTIFIKASI', `Pengingat [${notif.type}] terkirim ke pasien +${normPhone}`);
                     }
-                  } else {
-                    console.error(`[BaileysManager] Gagal mengirim pengingat ke +${normPhone}:`, notifErr.message);
+                  } catch (notifErr) {
+                    console.warn(`[BaileysManager:AntiBan] Gagal kirim ke ${notifJid} (${notifErr.message}), mencoba fallback LID...`);
+                    const mappedLid = this.lidMap && (this.lidMap.get(normPhone) || this.lidMap.get(notif.phone));
+                    if (mappedLid) {
+                      try {
+                        const lidJid = `${mappedLid}@lid`;
+                        const notifSentLid = await this.safeSendMessage(sock, lidJid, notif.message, {
+                          isDoctor: false
+                        });
+                        console.log(`[BaileysManager:AntiBan] Berhasil mengirim notifikasi via LID fallback: ${lidJid}`);
+                        if (this.logger && typeof this.logger.addAuditLog === 'function') {
+                          this.logger.addAuditLog('success', 'NOTIFIKASI', `Pengingat [${notif.type}] terkirim ke pasien via LID: ${mappedLid}`);
+                        }
+                      } catch (lidErr) {
+                        console.error(`[BaileysManager:AntiBan] Gagal mengirim pengingat via LID fallback:`, lidErr.message);
+                      }
+                    } else {
+                      console.error(`[BaileysManager:AntiBan] Gagal mengirim pengingat ke +${normPhone}:`, notifErr.message);
+                    }
                   }
                 }
-              }
+              });
             }
           }
         } catch (msgErr) {
@@ -882,12 +1020,20 @@ class BaileysManager {
         }
       });
 
-      return this.formatSessionResponse(tenant, session);
-    } catch (err) {
-      console.error(`[BaileysManager] Error launching session for ${tenant.slug}:`, err.message);
-      session.status = 'OFFLINE';
-      session.lastError = err.message;
-      return this.formatSessionResponse(tenant, session);
+        return this.formatSessionResponse(tenant, session);
+      } catch (err) {
+        console.error(`[BaileysManager] Error launching session for ${tenant.slug}:`, err.message);
+        session.status = 'OFFLINE';
+        session.lastError = err.message;
+        return this.formatSessionResponse(tenant, session);
+      }
+    })();
+
+    this.sessionLocks.set(tenantId, initPromise);
+    try {
+      return await initPromise;
+    } finally {
+      this.sessionLocks.delete(tenantId);
     }
   }
 
@@ -936,6 +1082,11 @@ class BaileysManager {
       } catch (e) {}
     }
 
+    if (this.outboundQueues) {
+      this.outboundQueues.delete(targetId);
+      if (tenant && tenant.slug) this.outboundQueues.delete(tenant.slug);
+    }
+
     if (purgeAuth) {
       this.purgeAuthFiles(targetId);
       this.sessions.delete(targetId);
@@ -980,7 +1131,7 @@ class BaileysManager {
     const cleanPhone = recipientPhone.replace(/\D/g, '');
     const jid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
 
-    await session.sock.sendMessage(jid, { text });
+    await this.safeSendMessage(session.sock, jid, text, { isDoctor: true });
     return { success: true, recipient: jid, sent_at: new Date().toISOString() };
   }
 
