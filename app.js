@@ -1,6 +1,6 @@
 /* ==========================================================================
    AI-RECEPTIONIST ZERO-WEB: INTERACTIVE LOGIC & SIMULATOR ENGINE
-   Compliant with PRD_WHATSAPP_PRACTICE_BOT.md (v3.1.0-PROD-ANTIBAN)
+   Compliant with PRD_WHATSAPP_PRACTICE_BOT.md (v3.1.1-PROD-ANTIBAN)
    Supports: Patient Perspective, Doctor Perspective, Dual Live Sync,
    and Full-Access Doctor Insight & Practice Analytics Dashboard.
    ========================================================================== */

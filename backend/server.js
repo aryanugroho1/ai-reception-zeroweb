@@ -45,7 +45,7 @@ class AppServer {
 
     this.auditLogs = [];
     this.logCounter = 0;
-    this.addAuditLog('info', 'SYSTEM', 'ZeroWeb Backend API Engine v3.1.0-PROD-ANTIBAN siap & aktif melayani.');
+    this.addAuditLog('info', 'SYSTEM', 'ZeroWeb Backend API Engine v3.1.1-PROD-ANTIBAN siap & aktif melayani.');
 
     // Auto-restore any existing connected Baileys WhatsApp sessions on server startup
     if (process.env.NODE_ENV !== 'test') {
@@ -324,7 +324,7 @@ class AppServer {
       if (pathname === '/api/health' && method === 'GET') {
         return this.sendJson(res, 200, {
           status: 'UP',
-          version: '3.1.0-PROD-ANTIBAN',
+          version: '3.1.1-PROD-ANTIBAN',
           tenants_count: this.db.tenants.size,
           appointments_count: this.db.appointments.size,
           timestamp: new Date().toISOString()

@@ -47,7 +47,7 @@ function assert(condition, message) {
 async function runTestSuite() {
   console.log(bold('\n======================================================'));
   console.log(bold('🚀 STARTING BACKEND COMPREHENSIVE VERIFICATION SUITE'));
-  console.log(bold('   ZeroWeb AI Receptionist Engine v3.1.0-PROD-ANTIBAN'));
+  console.log(bold('   ZeroWeb AI Receptionist Engine v3.1.1-PROD-ANTIBAN'));
   console.log(bold('======================================================\n'));
 
   // -------------------------------------------------------------
