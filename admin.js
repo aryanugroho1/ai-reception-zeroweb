@@ -255,51 +255,51 @@ let SAAS_INVOICES = [];
 /* Legacy sample invoices (loaded from live backend)
 let _MOCK_INVOICES = [
   {
-    id: 'INV-MYR-849201',
+    id: 'INV-IPY-849201',
     tenantName: 'drg. Maya Dental Care',
     plan: 'PRO',
     amount: 199000,
-    method: 'MAYAR_DYNAMIC_QRIS',
+    method: 'IPAYMU_DYNAMIC_QRIS',
     paidAt: '2026-09-29 14:15 WIB',
     status: 'PAID',
     hmacVerified: true
   },
   {
-    id: 'INV-MYR-849202',
+    id: 'INV-IPY-849202',
     tenantName: 'dr. Sarah Estetika & Skincare',
     plan: 'CLINIC',
     amount: 349000,
-    method: 'MAYAR_DYNAMIC_QRIS',
+    method: 'IPAYMU_DYNAMIC_QRIS',
     paidAt: '2026-09-28 11:20 WIB',
     status: 'PAID',
     hmacVerified: true
   },
   {
-    id: 'INV-MYR-849203',
+    id: 'INV-IPY-849203',
     tenantName: 'dr. Lukman Sp.OG',
     plan: 'PRO',
     amount: 199000,
-    method: 'MAYAR_DYNAMIC_QRIS',
+    method: 'IPAYMU_DYNAMIC_QRIS',
     paidAt: '2026-09-24 16:45 WIB',
     status: 'PAID',
     hmacVerified: true
   },
   {
-    id: 'INV-MYR-849204',
+    id: 'INV-IPY-849204',
     tenantName: 'dr. Rian Sp.PD',
     plan: 'STARTER',
     amount: 99000,
-    method: 'MAYAR_DYNAMIC_QRIS',
+    method: 'IPAYMU_DYNAMIC_QRIS',
     paidAt: '2026-09-18 10:10 WIB',
     status: 'PAID',
     hmacVerified: true
   },
   {
-    id: 'INV-MYR-849205',
+    id: 'INV-IPY-849205',
     tenantName: 'drg. Siti Fadilah Orthodontics',
     plan: 'PRO',
     amount: 199000,
-    method: 'MAYAR_DYNAMIC_QRIS',
+    method: 'IPAYMU_DYNAMIC_QRIS',
     paidAt: '2026-09-22 13:30 WIB',
     status: 'PAID',
     hmacVerified: true
@@ -1220,21 +1220,21 @@ class SuperadminController {
 
         const planPrices = { STARTER: 149000, PRO: 299000, CLINIC: 599000 };
         const price = planPrices[plan] || 299000;
-        const invNo = `INV-MYR-${Math.floor(100000 + Math.random() * 900000)}`;
+        const invNo = `INV-IPY-${Math.floor(100000 + Math.random() * 900000)}`;
 
         try {
-          const res = await fetch('/api/webhooks/mayar/simulate', {
+          const res = await fetch('/api/payment/ipaymu/simulate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              event: 'payment.received',
-              data: {
-                invoice_id: invNo,
-                tenant_id: tenantId,
-                plan_tier: plan,
-                amount: price,
-                status: 'PAID'
-              }
+              status: 'berhasil',
+              status_code: '1',
+              trx_id: `TRX-IPY-${Math.floor(100000 + Math.random() * 900000)}`,
+              reference_id: invNo,
+              tenant_id: tenantId,
+              plan_tier: plan,
+              total: price,
+              via: 'QRIS'
             })
           });
 
@@ -1243,21 +1243,21 @@ class SuperadminController {
 
           await this.loadBackendData();
 
-          this.logAudit('success', `Mayar Webhook ${invNo} verified (HMAC: ${data.signature.slice(0, 16)}...). Tenant ${target.name} diperpanjang +30 hari (Paket: ${plan}).`);
+          this.logAudit('success', `iPaymu Webhook ${invNo} verified (HMAC: ${data.signature ? data.signature.slice(0, 16) : 'OK'}...). Tenant ${target.name} diperpanjang +30 hari (Paket: ${plan}).`);
 
           alert(
-            `🎉 SIMULASI WEBHOOK MAYAR.ID SUKSES VIA BACKEND ENGINE!\n\n` +
-            `• Event: payment.received\n` +
+            `🎉 SIMULASI WEBHOOK IPAYMU SUKSES VIA BACKEND ENGINE!\n\n` +
+            `• Status: Berhasil (Paid)\n` +
             `• Tagihan: ${invNo}\n` +
             `• Tenant: ${target.name}\n` +
             `• Paket: ${plan} (Rp ${price.toLocaleString('id-ID')})\n` +
-            `• Signature HMAC-SHA256: VALID (${data.signature.slice(0, 16)}...)\n` +
+            `• Signature HMAC-SHA256: VALID (${data.signature ? data.signature.slice(0, 16) : 'OK'}...)\n` +
             `• Masa Aktif Baru: ${data.subscription_until ? data.subscription_until.slice(0, 10) : 'Diperpanjang'}\n\n` +
-            `Pesan Resi Resmi WhatsApp telah dibuat:\n\n${data.receipt_message}`
+            `Pesan Resi Resmi WhatsApp telah dibuat:\n\n${data.receipt_message || '-'}`
           );
         } catch (err) {
-          alert('❌ Gagal memproses webhook Mayar: ' + err.message);
-          this.logAudit('danger', `Webhook Mayar gagal: ${err.message}`);
+          alert('❌ Gagal memproses webhook iPaymu: ' + err.message);
+          this.logAudit('danger', `Webhook iPaymu gagal: ${err.message}`);
         }
       });
     }

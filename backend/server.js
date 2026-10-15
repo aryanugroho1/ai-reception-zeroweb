@@ -1575,8 +1575,8 @@ class AppServer {
         }
       }
 
-      // 6D. iPaymu Webhook Simulator (Test / Admin): POST /api/payment/ipaymu/simulate
-      if (pathname === '/api/payment/ipaymu/simulate' && method === 'POST') {
+      // 6D. iPaymu Webhook Simulator (Test / Admin): POST /api/payment/ipaymu/simulate & /api/webhooks/ipaymu/simulate
+      if ((pathname === '/api/payment/ipaymu/simulate' || pathname === '/api/webhooks/ipaymu/simulate') && method === 'POST') {
         const body = await this.readRequestBody(req);
         const rawBody = typeof body === 'string' ? body : JSON.stringify(body);
         const signature = this.ipaymu.generateSignature(body, 'POST');
@@ -1758,7 +1758,7 @@ class AppServer {
             tenantName: tenant ? tenant.name : inv.tenant_id,
             plan: inv.plan_tier,
             amount: inv.amount,
-            method: 'MAYAR_DYNAMIC_QRIS',
+            method: (inv.payment_provider || 'IPAYMU') + '_' + (inv.payment_method || 'DYNAMIC_QRIS'),
             paidAt: inv.paid_at ? new Date(inv.paid_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) + ' WIB' : 'Pending',
             status: inv.status,
             hmacVerified: true

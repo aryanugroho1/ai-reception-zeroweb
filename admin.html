@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Super Admin SaaS Control Panel - PraktikaAI Engine</title>
   <meta name="description"
-    content="Super Admin Platform untuk manajemen multi-tenant dokter mandiri, monitoring kuota, penagihan Mayar.id, dan kesehatan Baileys Gateway.">
+    content="Super Admin Platform untuk manajemen multi-tenant dokter mandiri, monitoring kuota, penagihan iPaymu, dan kesehatan Baileys Gateway.">
   <link rel="stylesheet" href="admin.css">
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
@@ -130,7 +130,7 @@
             🔄 <span>Refresh</span>
           </button>
           <button class="btn btn-secondary btn-sm" id="btnTestWebhookTop">
-            ⚡ <span>Test Webhook Mayar</span>
+            ⚡ <span>Test Webhook iPaymu</span>
           </button>
           <button class="btn btn-primary btn-sm btn-pulse" id="btnOpenAddTenant">
             + <span>Daftarkan Tenant Baru</span>
@@ -209,7 +209,7 @@
             🏢 <span>Manajemen Tenant &amp; Kuota</span>
           </button>
           <button class="tab-btn" data-tab="billing">
-            💳 <span>Penagihan Mayar.id &amp; Invoices</span>
+            💳 <span>Penagihan iPaymu &amp; Invoices</span>
           </button>
           <button class="tab-btn" data-tab="gateway">
             🤖 <span>Router Gateway Baileys (+62 812-3456-7890)</span>
@@ -281,7 +281,7 @@
         </section>
 
         <!-- ==================================================================
-           TAB 2: BILLING & MAYAR.ID INVOICES
+           TAB 2: BILLING & IPAYMU INVOICES
            ================================================================== -->
         <section class="admin-tab-pane" id="paneBilling">
 
@@ -351,14 +351,14 @@
             <!-- Right: Live Webhook Testing Console -->
             <div class="admin-card">
               <div class="admin-card-head">
-                <h3 class="admin-card-title">⚡ Mayar.id Webhook Dispatcher</h3>
+                <h3 class="admin-card-title">⚡ iPaymu Webhook Dispatcher</h3>
                 <span class="badge-mini" style="background:rgba(16,185,129,0.2); color:#34d399;">HMAC-SHA256
                   Ready</span>
               </div>
 
               <p style="font-size:0.82rem; color:#94a3b8; line-height:1.5; margin-bottom:1rem;">
-                Uji coba penerimaan event callback Mayar.id <code>payment.received</code>. Sistem akan otomatis
-                memvalidasi signature header, memperpanjang masa aktif tenant +30 hari, dan mengirim pesan WhatsApp
+                Uji coba penerimaan event callback iPaymu (status: <code>berhasil</code>). Sistem akan otomatis
+                memvalidasi signature header HMAC-SHA256, memperpanjang masa aktif tenant +30 hari, dan mengirim pesan WhatsApp
                 konfirmasi ke nomor dokter pemilik.
               </p>
 
@@ -392,7 +392,7 @@
               style="padding: 12px 16px; background:#0f172a; border-bottom:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center;">
               <strong style="font-size:0.88rem; color:#f1f5f9;">Buku Besar Invoice Langganan
                 (subscription_invoices)</strong>
-              <span style="font-size:0.75rem; color:#64748b;">Sinkronisasi Gateway Mayar.id</span>
+              <span style="font-size:0.75rem; color:#64748b;">Sinkronisasi Gateway iPaymu</span>
             </div>
             <table class="admin-table">
               <thead>
@@ -464,7 +464,7 @@
                   <span class="flow-num">1</span>
                   <div>
                     <strong>Dokter Membayar &amp; Menerima Link Onboarding</strong>
-                    <p>Setelah webhook Mayar sukses, sistem mengirim instruksi &amp; link
+                    <p>Setelah webhook iPaymu sukses, sistem mengirim instruksi &amp; link
                       <code>/connect?token=...</code> ke nomor dokter.</p>
                   </div>
                 </div>
@@ -664,7 +664,7 @@ GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code>
                 </div>
                 <p style="font-size: 0.86rem; color: var(--text-muted); margin: 0; max-width: 850px; line-height: 1.5;">
                   Kelola kapasitas dan pantau utilisasi kupon promosi pilot project. Pengguna yang menukarkan kode kupon
-                  ini dapat langsung onboarding mandiri dan melewati gateway pembayaran Mayar.id. Anda dapat menambahkan
+                  ini dapat langsung onboarding mandiri dan melewati gateway pembayaran iPaymu. Anda dapat menambahkan
                   atau memodifikasi kuota secara real-time.
                 </p>
               </div>
@@ -865,7 +865,7 @@ GROUP BY t.id, t.name, t.slug, t.subscription_plan, t.subscription_until;</code>
         <!-- Bottom System Audit Event Stream -->
         <section class="admin-event-console" style="margin-top: 2rem;">
           <div class="console-head">
-            <span>📡 Live Event Audit Log (Baileys Ingress • Mayar Webhook • GIST Range-Lock)</span>
+            <span>📡 Live Event Audit Log (Baileys Ingress • iPaymu Webhook • GIST Range-Lock)</span>
             <button class="btn-clear-log" id="btnClearLog">Hapus Tampilan Log</button>
           </div>
           <div class="console-body" id="systemAuditLog">

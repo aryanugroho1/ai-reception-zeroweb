@@ -285,6 +285,19 @@ class IPaymuPaymentService {
       }
     }
 
+    // 3B. If invoice not found by ID, but tenant_id is provided and valid (e.g. Admin Simulation), create invoice record
+    if (!invoice && data.tenant_id && this.db.tenants.has(data.tenant_id)) {
+      invoice = this.db.createSubscriptionInvoice({
+        id: invoiceId,
+        tenant_id: data.tenant_id,
+        amount: Number(data.total || data.amount || 299000),
+        plan_tier: data.plan_tier || 'PRO',
+        status: 'PENDING',
+        payment_provider: 'IPAYMU',
+        billing_cycle: data.billing_cycle || 'MONTHLY'
+      });
+    }
+
     if (!invoice) {
       return {
         handled: false,
